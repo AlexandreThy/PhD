@@ -173,7 +173,7 @@ def ExploreMovements(Pert,FSpan,Noise):
     plt.show()
 
 
-def NonlinearityImpact(MovementArray,DurationArray,Func):
+def NonlinearityImpact(MovementArray,DurationArray,Func,ylabel):
     SIZE = len(DurationArray)
     COLORLQG = "#F89D36"
     fig,ax = plt.subplots(figsize = (10,10))
@@ -196,16 +196,17 @@ def NonlinearityImpact(MovementArray,DurationArray,Func):
         
         else : plt.plot(DurationArray,max_dev_LQG,color = COLORLQG)
         ax.text(
-            0.2,
+            -0.03,
             max_dev_LQG[0],
             str(MovementLength)+" cm",
             color=COLORLQG,
+            fontsize = 8,
             horizontalalignment="left",
             verticalalignment="center",
         )
-        plt.title("Maximal lateral deviation of hand trajectories in function\n of movement time for a " +str(MovementLength) +" cm movement")
+        plt.title(ylabel + " of hand trajectories in function\n of movement time for a " +str(MovementLength) +" cm movement")
         plt.xlabel("Movement Time [seconds]")
-        plt.ylabel("Maximal lateral deviation [cm]")
+        plt.ylabel(ylabel)
 
         ax.spines["right"].set_visible(False)
         ax.spines["left"].set_visible(False)
