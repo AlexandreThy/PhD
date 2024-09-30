@@ -176,6 +176,7 @@ def ExploreMovements(Pert,FSpan,Noise):
 def NonlinearityImpact(MovementArray,DurationArray,Func,ylabel):
     SIZE = len(DurationArray)
     COLORLQG = "#F89D36"
+    COLORFL = "#8D99AE"
     fig,ax = plt.subplots(figsize = (10,10))
 
     for MovementLength in MovementArray:
@@ -190,11 +191,13 @@ def NonlinearityImpact(MovementArray,DurationArray,Func,ylabel):
             max_dev_FL[idx] = Func(XFL,YFL)
             max_dev_LQG[idx] = Func(XLQG,YLQG)
 
-        if MovementLength ==10: 
-            plt.plot(DurationArray,max_dev_FL,color = "#8D99AE",label = "Nonlinear Controller")
+        if MovementLength == MovementArray[0]: 
+            plt.plot(DurationArray,max_dev_FL,color = COLORFL,label = "Nonlinear Controller",alpha = .3, linestyle = "--")
             plt.plot(DurationArray,max_dev_LQG,color = COLORLQG,label = "Linear Controller")
         
-        else : plt.plot(DurationArray,max_dev_LQG,color = COLORLQG)
+        else : 
+            plt.plot(DurationArray,max_dev_LQG,color = COLORLQG)
+            plt.plot(DurationArray,max_dev_FL,color = COLORFL,alpha = .3, linestyle = "--")
         ax.text(
             -0.03,
             max_dev_LQG[0],
@@ -204,17 +207,27 @@ def NonlinearityImpact(MovementArray,DurationArray,Func,ylabel):
             horizontalalignment="left",
             verticalalignment="center",
         )
-        plt.title(ylabel + " of hand trajectories in function\n of movement time for a " +str(MovementLength) +" cm movement")
-        plt.xlabel("Movement Time [seconds]")
-        plt.ylabel(ylabel)
+        ax.text(
+            -0.03,
+            max_dev_FL[0],
+            str(MovementLength)+" cm",
+            color=COLORFL,
+            fontsize = 8,
+            horizontalalignment="left",
+            verticalalignment="center",
+            alpha = .3
+        )
+    plt.title(ylabel + " of hand trajectories in function\n of movement time")
+    plt.xlabel("Movement Time [seconds]")
+    plt.ylabel(ylabel)
 
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.spines["top"].set_visible(False)
 
         # Only show ticks on the left and bottom spines
-        ax.yaxis.set_ticks_position("left")
-        ax.xaxis.set_ticks_position("bottom")
+    ax.yaxis.set_ticks_position("left")
+    ax.xaxis.set_ticks_position("bottom")
 
 
-        plt.legend()
+    plt.legend()
