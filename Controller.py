@@ -1,6 +1,6 @@
 from Helpers import *
 
-def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,30],plot = True,Noise_Variance = 1e-6,ForceField = [0,0],ForceFieldSpan = [0,0]):
+def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,30],plot = True,Noise_Variance = 1e-6,ForceField = [0,0],ForceFieldSpan = [0,0],newtonfunc = f,newtondfunc = df):
     
     """
     Duration (float) : Duration of the movement
@@ -35,8 +35,8 @@ def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_
     Num_iter = 600
     dt = Duration/Num_iter 
 
-    st1,st2 = newton(f,df,1e-8,1000,starting_point[0],starting_point[1])
-    obj1,obj2 = newton(f,df,1e-8,1000,targets[0],targets[1])
+    obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1]) #Defini les targets
+    st1,st2 = newton(newtonfunc,newtondfunc,1e-8,1000,starting_point[0],starting_point[1])
 
     x0 = np.array([st1,0,0,st2,0,0,obj1,obj2])
 
@@ -173,7 +173,7 @@ def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_
     #print("Optimum values " + str(J1)[:8]+" and "+str(J2)[:8])
     return X,Y
 
-def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],ForceField = [0,0],plot = True,ForceFieldSpan = [0,0.6],Noise_Variance = 1e-6):
+def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],ForceField = [0,0],plot = True,ForceFieldSpan = [0,0.6],Noise_Variance = 1e-6,newtonfunc = f,newtondfunc = df):
 
     """
     Duration (float) : Duration of the movement
@@ -208,8 +208,8 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
     Num_iter = 600
     dt = Duration/Num_iter
 
-    obj1,obj2 = newton(f,df,1e-8,1000,targets[0],targets[1]) #Defini les targets
-    st1,st2 = newton(f,df,1e-8,1000,starting_point[0],starting_point[1])
+    obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1]) #Defini les targets
+    st1,st2 = newton(newtonfunc,newtondfunc,1e-8,1000,starting_point[0],starting_point[1])
 
     xstart = np.array([st1,0,0,st2,0,0,obj1,0,obj2,0])
     x0 = np.array([st1,0,0,st2,0,0,obj1,obj2])
