@@ -1,6 +1,6 @@
 from Helpers import *
 
-def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,30],plot = True,Noise_Variance = 1e-6,ForceField = [0,0],ForceFieldSpan = [0,0],newtonfunc = f,newtondfunc = df):
+def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,30],plot = True,Noise_Variance = 1e-6,ForceField = [0,0],ForceFieldSpan = [0,0],newtonfunc = f,newtondfunc = df,Num_iter = 600):
     
     """
     Duration (float) : Duration of the movement
@@ -32,7 +32,6 @@ def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_
     ForceFieldSpan (array of float of size 2) : The time span in seconds of the lateral forcefield (to the right)
     """
 
-    Num_iter = 600
     dt = Duration/Num_iter 
 
     obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1]) #Defini les targets
@@ -94,7 +93,7 @@ def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_
     new_x_nonlinhat = np.copy(x_nonlin)
 
     #Perform the task
-
+    J = 0
     for k in range(Num_iter-1):
 
         #Compute the matrices of the system in function of the current state 
@@ -125,7 +124,7 @@ def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_
 
         v = -L[k].reshape(np.flip(B.shape))@xhat
         u = 1/Kfactor*M@(v)-1/Kfactor*M@Minvdot@M@(np.array([xhat[2],xhat[5]]))+M@(np.array([xhat[2],xhat[5]]))+C+Bdyn@np.array([xhat[1],xhat[4]])+1/Kfactor*Cdot+1/Kfactor*Bdyn@np.array([xhat[2],xhat[5]])
-
+        J+= u.T@R@u
         # True state of the system
         new_x_nonlin[0:2] += dt*x_nonlin[2:4]+motor_noise[:2]
         new_x_nonlin[2:4] += dt*(Minv@(x_nonlin[4:6]-Bdyn@(x_nonlin[2:4])-C))  
@@ -157,7 +156,8 @@ def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_
         #print(array_x_true[k-1,2],((array_x_true[k]-array_x_true[k-1])/dt)[1])   
 
     #Change of coordinates from angular to cartesian 
-    
+    J+= x_true.T@Q@x_true
+    print("Total cost of FL: "+str(J)[:7])
     x_nonlin = array_x_nonlin.T[:,1:][:,::1]
     X = np.cos(x_nonlin[0]+x_nonlin[1])*33+np.cos(x_nonlin[0])*30
     Y = np.sin(x_nonlin[0]+x_nonlin[1])*33+np.sin(x_nonlin[0])*30
@@ -171,9 +171,11 @@ def Feedback_Linearization(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_
         plt.ylabel("Y [cm]")
         plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "black")
     #print("Optimum values " + str(J1)[:8]+" and "+str(J2)[:8])
+
+    
     return X,Y
 
-def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],ForceField = [0,0],plot = True,ForceFieldSpan = [0,0.6],Noise_Variance = 1e-6,newtonfunc = f,newtondfunc = df):
+def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],ForceField = [0,0],plot = True,ForceFieldSpan = [0,0.6],Noise_Variance = 1e-6,newtonfunc = f,newtondfunc = df,Num_iter = 600):
 
     """
     Duration (float) : Duration of the movement
@@ -205,7 +207,7 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
     ForceFieldSpan (array of float of size 2) : The time span in seconds of the lateral forcefield (to the right)
     """
         
-    Num_iter = 600
+    
     dt = Duration/Num_iter
 
     obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1]) #Defini les targets
@@ -263,7 +265,7 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
     new_x_nonlin = x_nonlin
 
     sigma = np.identity(Num_Var)*10**-6 #Espérance de (erreur erreur^) avec erreur = x - xhat
-
+    J = 0
     for k in range(Num_iter-1):
         F = ForceField if ((k*dt > ForceFieldSpan[0]) and (k*dt < ForceFieldSpan[1])) else 0
         
@@ -276,7 +278,7 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
         xhat = A@xhat - B@L[k].reshape(np.flip(B.shape))@xhat + K@(y[k]-H@xhat)
         x = A@x-B@L[k].reshape(np.flip(B.shape))@xhat+motor_noise
         u = -L[k].reshape(np.flip(B.shape))@xhat
-            
+        J += u.T@R@u
         C = np.array([-x_nonlin[3]*(2*x_nonlin[2]+x_nonlin[3])*a2*np.sin(x_nonlin[1]),x_nonlin[2]*x_nonlin[2]*a2*np.sin(x_nonlin[1])])
         Denominator = a3*(a1-a3)-a2*a2*np.cos(x_nonlin[1])*np.cos(x_nonlin[1])
         Minv = np.array([[a3/Denominator,(-a2*np.cos(x_nonlin[1])-a3)/Denominator],[(-a2*np.cos(x_nonlin[1])-a3)/Denominator,(2*a2*np.cos(x_nonlin[1])+a1)/Denominator]])
@@ -294,7 +296,8 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
 #Plot
     x0 = xstart
     x_nonlin = array_x_nonlin.T[:,1:][:,::1]
-
+    J+= x.T@Q@x
+    print("Total cost of LQG : "+str(J)[:7])
 
     X = np.cos(x_nonlin[0]+x_nonlin[1])*33+np.cos(x_nonlin[0])*30
     Y = np.sin(x_nonlin[0]+x_nonlin[1])*33+np.sin(x_nonlin[0])*30
