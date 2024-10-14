@@ -429,13 +429,17 @@ def hxx(x,w1,w2):
                      [0,0,0,0,0,0],
                      [0,0,0,0,0,0]])
 
-def step1(x0,u,Duration):
+def step1(x0,u,Duration,Noise,Variance):
+    
     K = np.shape(u)[0]+1
     dt = Duration/(K-1)
     newx = np.zeros((K,len(x0)))
     newx[0] = x0
     for i in range(K-1):
-        newx[i+1] = newx[i] + dt*f(newx[i],u[i])
+        if Noise : 
+            noise = np.random.normal(0,np.sqrt(Variance),len(x0))
+        else: noise = 0
+        newx[i+1] = newx[i] + dt*f(newx[i],u[i]) + noise
     return newx
 
 def step2(x,u,Duration,w1,w2,r1,xtarg):
@@ -531,7 +535,7 @@ def ILQG_SingleArm(Duration,w1,w2,r1,xtarg,K,x0=np.array([pi/2,0]),m=1):
     return x,u
 
 
-def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True):
+def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Variance = 1e-6):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
@@ -543,22 +547,32 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True):
     C = np.zeros((K,n,m))
     cbold = np.zeros((K,n))
     u_incr = [1]
+    cmap = plt.get_cmap('Spectral')
 
-    #while np.max(u_incr) > 1e-12: 
-    for _ in range(50):    
-        x = step1(x0,u,Duration)
+# Generate 50 evenly spaced values between 0 and 1
+    values = np.linspace(0, 1, 200)
+    oldx = np.ones(K)*100
+    # Create an array of 50 colors from the colormap
+    colors = cmap(values)
+
+    for i in range(200):     
+        x = step1(x0,u,Duration,Noise = Noise,Variance = Variance)
+        X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
+        Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
+        if np.max(np.abs(oldx-X))<1e-3:
+            print(i)
+            break
+        
+        plt.plot(X,Y,linewidth = .5,color = colors[i],alpha = .7)
         A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,np.array([obj1,obj2]))
         l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
         u_incr = step4(l,L,K,A,B)
         u += u_incr
-    x = step1(x0,u,Duration)
+        oldx = np.copy(X)
 
-    X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
-    Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
-
-
-    Xtg = np.cos(x[0]+x[1])*33+np.cos(x[0])*30
-    Ytg = np.sin(x[0]+x[1])*33+np.sin(x[0])*30
+    print(x[-1,2],x[-1,3])
+    Xtg = targets[0]
+    Ytg = targets[1]
 
         #Plotting
     if plot :

@@ -52,16 +52,17 @@ def plotFL(Pert,FSpan,Noise):
     plt.savefig("img/FL2.png",dpi = 300)
     plt.show()
     
-def plotSimpleMovements(Pert,FSpan,Noise):
+def plotSimpleMovements(Pert,FSpan,Noise,K = 4000):
     fig,ax = plt.subplots()
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_visible(False)
     ax.spines["top"].set_visible(False)
     _,_ = LQG(0.6,1e6,1e6,1e6,1e6,1e-5,1e-5,targets = [0,55],starting_point = [0,20],ForceField = Pert,ForceFieldSpan= FSpan,plot = True,Noise_Variance=Noise)
     X,Y = Feedback_Linearization(0.6,1e8,1e8,1e5,1e5,1e-6,1e-6,targets = [0,55],starting_point = [0,20],ForceField = Pert,ForceFieldSpan= FSpan,plot = True,Noise_Variance=Noise)
+    XILQG,YILQG,_ = ILQG(0.6,1e5,1e3,1e-3,K = K,targets = [0,55],start = [0,20],plot = True)
     #plt.legend()
     ax.text(
-        10,
+        8,
         50,
         "LQG",
         color="green",
@@ -70,10 +71,19 @@ def plotSimpleMovements(Pert,FSpan,Noise):
         verticalalignment="center",
     )
     ax.text(
-        X[50]-15,
-        50,
+        X[40]+1,
+        42,
         "Feedback\n Linearization",
         color="red",
+        fontweight="bold",
+        horizontalalignment="left",
+        verticalalignment="center",
+    )
+    ax.text(
+        XILQG[50]-5,
+        50,
+        "ILQG",
+        color="blue",
         fontweight="bold",
         horizontalalignment="left",
         verticalalignment="center",
