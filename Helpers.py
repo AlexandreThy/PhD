@@ -1,17 +1,6 @@
 import numpy as np
-from scipy.linalg import *
 from matplotlib import pyplot as plt
-from matplotlib import cm, ticker
 from math import *
-import random
-from sympy.solvers import solve
-from sympy import Symbol
-import sympy as sym
-import pandas as pd
-from scipy.io import loadmat
-import scipy as scipy
-import plotly.express as px
-import plotly.graph_objects as go
 
 I1 = 0.025
 I2 = 0.045
