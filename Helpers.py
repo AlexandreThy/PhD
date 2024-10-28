@@ -16,12 +16,8 @@ tau = 0.06
 a1 = I1 + I2 + m2*l2*l2
 a2 = m2*l1*s2
 a3 = I2
-B = np.array([[0.5,0.025],[0.025,0.5]])
 
 Bdyn = np.array([[0.5,0.025],[0.025,0.5]])
-np.random.seed(0)
-
-Bruit = True
 
 
 def Compute_Noise(NbreVar,Variance):
