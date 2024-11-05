@@ -22,13 +22,12 @@ Bdyn = np.array([[0.5,0.025],[0.025,0.5]])
 
 def Compute_Noise(NbreVar,Variance):
 
-    Omega_sens = np.diag(np.concatenate((np.ones(int(NbreVar/2)),np.zeros(int(NbreVar/2)))))
-    motor_noise = np.concatenate((np.random.normal(0,np.sqrt(Variance),int(NbreVar/2)),np.zeros(int(NbreVar/2)))).T
+    Omega_sens = np.diag(np.ones(NbreVar)*Variance)
+    motor_noise = np.random.normal(0,np.sqrt(Variance),NbreVar).T
     Omega_measure = np.diag(np.ones(NbreVar)*Variance)
-    measure_noise = np.concatenate((np.random.normal(0,np.sqrt(Variance),int(NbreVar/2)),np.zeros(int(NbreVar/2)))).T
+    measure_noise = np.random.normal(0,np.sqrt(Variance),NbreVar).T
 
     return Omega_sens,motor_noise,Omega_measure,measure_noise
-
 def f1(a,Nf):
     Td = 0.066
     return np.exp(-(a/(0.56*Nf))**Nf)*Nf/Td*(1/(0.56*Nf))**Nf*a**(Nf-1)

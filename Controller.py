@@ -132,6 +132,7 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
         plt.plot(X,Y,color = "green",label = "LQG",linewidth = .8)
 
     return X,Y
+
 def f(x,u):
     tau = 0.06
     C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
@@ -351,7 +352,7 @@ def ILQG_SingleArm(Duration,w1,w2,r1,xtarg,K,x0=np.array([pi/2,0]),m=1):
     u_incr = [1]
 
     #while np.max(u_incr) > 1e-12: 
-    for _ in range(50):    
+    for _ in range(200):    
         x = step1(x0,u,Duration)
         A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,xtarg)
         l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
@@ -376,7 +377,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Variance = 
     oldx = np.ones(K)*100
     # Create an array of 50 colors from the colormap
 
-    for _ in range(200):     
+    for _ in range(50):     
         x = step1(x0,u,Duration,False,Variance)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
