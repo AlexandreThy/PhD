@@ -1,46 +1,19 @@
 from Helpers import *
 from FLController import *
 
-def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],ForceField = [0,0],plot = True,ForceFieldSpan = [0,0.6],Noise_Variance = 1e-6,newtonfunc = f,newtondfunc = df,Num_iter = 600):
-
-    """
-    Duration (float) : Duration of the movement
-
-    w1 (float) : Weight associated to the penalty on shoulder angle 
-    
-    w2 (float) : Weight associated to the penalty on elbow angle 
-
-    w3 (float) : Weight associated to the penalty on shoulder angular velocity
-
-    w4 (float) : Weight associated to the penalty on elbow angular velocity
-
-    r1 (float) : Weight associated to the motor cost on shoulder torques
-
-    r2 (float) : Weight associated to the motor cost on elbow torques
-
-    targets (array of float of size 2): X,Y Position of the end point of the movement
-        must be a biomechanically feasible end point considering that the shoulder is at (0,0)
-
-    starting_point (array of float of size 2): X,Y Position of the starting point of the movement
-        must be a biomechanically feasible starting point considering that the shoulder is at (0,0)
-    
-    plot (boolean) : Allowing plot outputs of the hand trajectory for the experiment
-
-    Noise_Variance (float) : Gaussian variance associated to the white noise in the model
-
-    ForceField (array of float of size 2) : Shoulder and Elbow Perturbations Torques applied during the movement 
-
-    ForceFieldSpan (array of float of size 2) : The time span in seconds of the lateral forcefield (to the right)
-    """
-        
+def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],ForceField = [0,0],plot = True,Delay = 0,plotXhat = True,ForceFieldSpan = [0,0.6],Noise_Variance = 1e-6,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 60):
     
     dt = Duration/Num_iter
+    kdelay = int(Delay/dt)
 
     obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(newtonfunc,newtondfunc,1e-8,1000,starting_point[0],starting_point[1])
 
     xstart = np.array([st1,0,0,st2,0,0,obj1,0,obj2,0])
     x0 = np.array([st1,0,0,st2,0,0,obj1,obj2])
+    x0_with_delay = np.copy(x0)
+    for _ in range(kdelay):
+        x0_with_delay = np.concatenate((x0_with_delay,x0))
     Num_Var = 8
     
     #Define Weight Matrices
@@ -53,17 +26,30 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
     
     #Define Dynamic Matrices  
 
-    A = np.array([[1,dt,0,0,0,0,0,0],[0,1+dt*(-0.5*a1+0.025*a3)/((a1-a3)*a3),dt*a1/((a1-a3)*a3),0,dt*(-0.025*a1+0.5*a3)/((a1-a3)*a3),dt/(a3-a1),0,0],
+    A_basic = np.array([[1,dt,0,0,0,0,0,0],[0,1+dt*(-0.5*a1+0.025*a3)/((a1-a3)*a3),dt*a1/((a1-a3)*a3),0,dt*(-0.025*a1+0.5*a3)/((a1-a3)*a3),dt/(a3-a1),0,0],
      [0,0,1-dt/tau,0,0,0,0,0],[0,0,0,1,dt,0,0,0],[0,dt*0.475/(a1-a3),-dt/(a1-a3),0,1-dt*0.475/(a1-a3),dt/(a1-a3),0,0],
      [0,0,0,0,0,1-dt/tau,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
 
-    B = np.transpose([[0,0,dt/tau,0,0,0,0,0],[0,0,0,0,0,dt/tau,0,0]])
+    B_basic = np.transpose([[0,0,dt/tau,0,0,0,0,0],[0,0,0,0,0,dt/tau,0,0]])
+
+    NewQ = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
+    NewQ[:Num_Var,:Num_Var] = Q 
+    Q = NewQ
+
+    H = np.zeros((Num_Var,(kdelay+1)*Num_Var))
+    H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
+
+    A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
+    A[:Num_Var,:Num_Var] = A_basic
+    A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
+    B = np.zeros(((kdelay+1)*Num_Var,2))
+    B[:Num_Var] = B_basic
     
     S = Q
 
     
-    array_L = np.zeros((Num_iter-1,2,Num_Var))   
-    array_S = np.zeros((Num_iter,Num_Var,Num_Var)) 
+    array_L = np.zeros((Num_iter-1,2,Num_Var*(kdelay+1)))   
+    array_S = np.zeros((Num_iter,Num_Var*(kdelay+1),Num_Var*(kdelay+1))) 
     array_S[-1] = Q
     for k in range(Num_iter-1):
         L = np.linalg.inv(R+B.T@S@B)@B.T@S@A
@@ -73,65 +59,60 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
         
     #print(array_L[0])
     #Feedback
-    H,L= np.identity(8),array_L
+    L=array_L
         
     array_x = np.zeros((Num_iter,Num_Var))
     array_xhat = np.zeros((Num_iter,Num_Var))
-    array_x_nonlin = np.zeros((Num_iter,Num_Var-2)) 
-    y = np.zeros((Num_iter,Num_Var))
+    y = np.zeros((Num_iter-1,Num_Var))
 
     array_x[0] = x0.flatten()
     array_xhat[0] = x0.flatten()
-    xhat = x0
-    x = x0
+    xhat = np.copy(x0_with_delay)
+    x = np.copy(x0_with_delay)
 
-    x_nonlin = np.zeros(Num_Var-2)
-    x_nonlin[0] = x[0]
-    x_nonlin[1] = x[3]
-    new_x_nonlin = x_nonlin
-
-    sigma = np.identity(Num_Var)*10**-6 #Espérance de (erreur erreur^) avec erreur = x - xhat
+    sigma = np.identity(Num_Var*(kdelay+1))*10**-6 
     J = 0
     for k in range(Num_iter-1):
-        F = ForceField if ((k*dt > ForceFieldSpan[0]) and (k*dt < ForceFieldSpan[1])) else 0
-        
-
-        x[0],x[1],x[3],x[4] = x_nonlin[0],x_nonlin[2],x_nonlin[1],x_nonlin[3]        
-        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,Noise_Variance)
-        y[k] = (H@x+measure_noise).flatten()
+        F = ForceField if ((k*dt > ForceFieldSpan[0]) and (k*dt < ForceFieldSpan[1])) else [0,0]
+             
+        _,_,Omega_measure,measure_noise = Compute_Noise(Num_Var,Noise_Variance)
+        Omega_sens,motor_noise,_,_ = Compute_Noise(Num_Var*(kdelay+1),Noise_Variance)
+    
+        y[k] = (H@x).flatten()
         K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
         sigma = Omega_sens + (A - K@H)@sigma@A.T
-        xhat = A@xhat - B@L[k].reshape(np.flip(B.shape))@xhat + K@(y[k]-H@xhat)
-        x = A@x-B@L[k].reshape(np.flip(B.shape))@xhat+motor_noise
-        u = -L[k].reshape(np.flip(B.shape))@xhat
-        J += u.T@R@u
-        C = np.array([-x_nonlin[3]*(2*x_nonlin[2]+x_nonlin[3])*a2*np.sin(x_nonlin[1]),x_nonlin[2]*x_nonlin[2]*a2*np.sin(x_nonlin[1])])
-        Denominator = a3*(a1-a3)-a2*a2*np.cos(x_nonlin[1])*np.cos(x_nonlin[1])
-        Minv = np.array([[a3/Denominator,(-a2*np.cos(x_nonlin[1])-a3)/Denominator],[(-a2*np.cos(x_nonlin[1])-a3)/Denominator,(2*a2*np.cos(x_nonlin[1])+a1)/Denominator]])
-        new_x_nonlin[0:2] += dt*x_nonlin[2:4]+motor_noise[:2]
-        new_x_nonlin[2:4] += dt*(Minv@(x_nonlin[4:6]-Bdyn@(x_nonlin[2:4])-C))  
-        K = 1/0.06
-        new_x_nonlin[4:6] += dt*K*(u-x_nonlin[4:6]+F)
-            
-        array_xhat[k+1] = xhat.flatten()
-        array_x[k+1]= x.flatten()
-        array_x_nonlin[k+1] = new_x_nonlin.flatten()
-        x_nonlin = new_x_nonlin 
+        u = - L[k].reshape(np.flip(B.shape))@xhat
+        J+= u.T@R@u
+        xhat = A@xhat + B@u + K@(y[k]-H@xhat)
+        x = A@x+B@u+np.concatenate(([0,0,dt/tau*F[0],0,0,dt/tau*F[1],0,0],np.zeros(Num_Var*kdelay))).flatten()
+        array_xhat[k+1] = xhat[:Num_Var].flatten()
+        array_x[k+1] = x[:Num_Var].flatten()
+
         #print(array_x[k-1,2],((array_x[k]-array_x[k-1])/dt)[1])   
 
 #Plot
-    x0 = xstart
-    x_nonlin = array_x_nonlin.T[:,1:][:,::1]
     J+= x.T@Q@x
-    print("Total cost of LQG : "+str(J)[:7])
+    x0 = xstart
+    if plotXhat :
+        x_nonlin = array_xhat.T[:,1:][:,::1]
+        X = np.cos(x_nonlin[0]+x_nonlin[3])*33+np.cos(x_nonlin[0])*30
+        Y = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
+        plt.plot(X,Y,color = "green",label = "Estimate",linewidth = .8)
+        plt.axis("equal")
+        plt.scatter([targets[0]],[targets[1]])
+        
 
-    X = np.cos(x_nonlin[0]+x_nonlin[1])*33+np.cos(x_nonlin[0])*30
-    Y = np.sin(x_nonlin[0]+x_nonlin[1])*33+np.sin(x_nonlin[0])*30
+    x_nonlin = array_x.T[:,1:][:,::1]
+    X = np.cos(x_nonlin[0]+x_nonlin[3])*33+np.cos(x_nonlin[0])*30
+    Y = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
 
     if plot:
-        plt.plot(X,Y,color = "green",label = "LQG",linewidth = .8)
+        plt.plot(X,Y,color = "blue",label = "LQG",linewidth = .8)
+        plt.axis("equal")
+        plt.scatter([targets[0]],[targets[1]])
+        plt.grid(linestyle='--')
 
-    return X,Y
+    return array_xhat,J
 
 def f(x,u):
     tau = 0.06

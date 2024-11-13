@@ -1,57 +1,6 @@
-import numpy as np
-from matplotlib import pyplot as plt
-from math import *
+from Helpers import *
 
-I1 = 0.025
-I2 = 0.045
-m2 = 1
-l1 = 0.3
-l2 = 0.33
-s2 = 0.16
-K = 1/0.06
-tau = 0.06
-
-#SHOULDER THEN ELBOW
-
-a1 = I1 + I2 + m2*l2*l2
-a2 = m2*l1*s2
-a3 = I2
-
-Bdyn = np.array([[0.5,0.025],[0.025,0.5]])
-
-
-def Compute_Noise(NbreVar,Variance):
-
-    Omega_sens = np.diag(np.concatenate((np.ones(int(NbreVar/2)),np.zeros(int(NbreVar/2)))))
-    motor_noise = np.concatenate((np.random.normal(0,np.sqrt(Variance),int(NbreVar/2)),np.zeros(int(NbreVar/2)))).T
-    Omega_measure = np.diag(np.ones(NbreVar)*Variance)
-    measure_noise = np.concatenate((np.random.normal(0,np.sqrt(Variance),int(NbreVar/2)),np.zeros(int(NbreVar/2)))).T
-
-    return Omega_sens,motor_noise,Omega_measure,measure_noise
-
-def newton(f,Df,epsilon,max_iter,X,Y,x0 = np.array([0.8,1.5])):
-    xn = x0
-    for n in range(0,max_iter):
-        fxn = f(xn,X,Y)
-        if abs(np.max(np.abs(fxn))) < epsilon:
-            return xn
-        Dfxn = Df(xn)
-        if np.max(np.abs(Dfxn)) < epsilon:
-            print('Zero derivative. No solution found.')
-            return None
-        xn = xn - np.linalg.inv(Dfxn)@fxn
-    print('Exceeded maximum iterations. No solution found.')
-    return None
-
-def f(var,X,Y):
-    u,v = var
-    return np.array([33*np.cos(u+v)+30*np.cos(u)-X,33*np.sin(u+v)+30*np.sin(u)-Y])
-
-def df(var):
-    u,v = var
-    return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
-
-def Feedback_Linearization(Duration = .6,w1 = 1e7,w2 = 1e7,w3 = 1e5,w4 = 1e5,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,Noise_Variance = 1e-6,ForceField = [0,0],ForceFieldSpan = [0,0],newtonfunc = f,newtondfunc = df,Num_iter = 600, ShowJ = True):
+def Feedback_Linearization(Duration = .6,w1 = 1e7,w2 = 1e7,w3 = 1e5,w4 = 1e5,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,Noise_Variance = 1e-6,ForceField = [0,0],ForceFieldSpan = [0,0],newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 600, ShowJ = True):
     
     """
     Duration (float) : Duration of the movement
@@ -231,7 +180,4 @@ def Feedback_Linearization(Duration = .6,w1 = 1e7,w2 = 1e7,w3 = 1e5,w4 = 1e5,r1 
 
     
     return X,Y
-
-
-Feedback_Linearization(Noise_Variance=1e-16) #Unnoisy traj
 

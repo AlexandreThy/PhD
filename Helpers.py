@@ -56,10 +56,10 @@ def newton(f,Df,epsilon,max_iter,X,Y,x0 = np.array([0.8,1.5])):
     print('Exceeded maximum iterations. No solution found.')
     return None
 
-def f(var,X,Y):
+def newtonf(var,X,Y):
     u,v = var
     return np.array([33*np.cos(u+v)+30*np.cos(u)-X,33*np.sin(u+v)+30*np.sin(u)-Y])
 
-def df(var):
+def newtondf(var):
     u,v = var
     return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
