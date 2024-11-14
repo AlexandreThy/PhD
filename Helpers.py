@@ -1,6 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 from math import *
+from scipy.linalg import expm
 
 I1 = 0.025
 I2 = 0.045

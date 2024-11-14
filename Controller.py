@@ -73,7 +73,7 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
     sigma = np.identity(Num_Var*(kdelay+1))*10**-6 
     J = 0
     for k in range(Num_iter-1):
-        F = ForceField if ((k*dt > ForceFieldSpan[0]) and (k*dt < ForceFieldSpan[1])) else [0,0]
+        F = ForceField if ((k*dt >= ForceFieldSpan[0]) and (k*dt < ForceFieldSpan[1])) else [0,0]
              
         _,_,Omega_measure,measure_noise = Compute_Noise(Num_Var,Noise_Variance)
         Omega_sens,motor_noise,_,_ = Compute_Noise(Num_Var*(kdelay+1),Noise_Variance)
@@ -97,7 +97,7 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
         x_nonlin = array_xhat.T[:,1:][:,::1]
         X = np.cos(x_nonlin[0]+x_nonlin[3])*33+np.cos(x_nonlin[0])*30
         Y = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
-        plt.plot(X,Y,color = "green",label = "Estimate",linewidth = .8)
+        plt.plot(X,Y,color = "black",label = "Estimate",linewidth = .8,linestyle = "--")
         plt.axis("equal")
         plt.scatter([targets[0]],[targets[1]])
         
