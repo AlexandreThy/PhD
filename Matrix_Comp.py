@@ -1,6 +1,4 @@
-from Helpers import *
-
-def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,alpha = 1,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06):
+def Feedback_Linearization_with_Delay2(Duration = .6,w1 = 1e7,w2 = 1e7,w3 = 1e5,w4 = 1e5,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,Noise_Variance = 1e-6,Activate_Noise = False,ForceField = [0,0],ForceFieldSpan = [0,0],newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 600, ShowJ = True, ShowEstimate = False,Delay = .100):
     
     """
     Duration (float) : Duration of the movement
@@ -27,8 +25,10 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
 
     Noise_Variance (float) : Gaussian variance associated to the white noises in the model
 
-    Side (String) : Side of the force field ("Left" or "Right")
-    
+    ForceField (array of float of size 2) : Shoulder and Elbow Perturbations Torques applied during the movement 
+
+    ForceFieldSpan (array of float of size 2) : The time span in seconds of the lateral forcefield (to the right)
+
     newtonfunc([thetas,thetae],X,Y) : Function that computes the difference between the change of variable from the angular to cartesian system, and the targetted X,Y position
                                       It's a tool for the newton method to compute the desired joint angles that generate a precise X,Y position of the hand
 
@@ -61,6 +61,14 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     #Define the Dynamic of the linear system 
 
     Kfactor = 1/0.06
+    Am = np.array([[0,1,0,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,1,0,0,0],[0,0,0,0,0,1,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]])
+    Bm = np.array([[0,0],[0,0],[1,0],[0,0],[0,0],[0,1],[0,0],[0,0]])
+
+    A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
+    A[:Num_Var,:Num_Var] = Am
+    A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
+    B = np.zeros(((kdelay+1)*Num_Var,2))
+    B[:Num_Var] = Bm
 
     A_basic = np.array([[1,dt,0,0,0,0,0,0],[0,1,dt,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,1,dt,0,0,0],[0,0,0,0,1,dt,0,0],[0,0,0,0,0,1,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
     B_basic = np.array([[0,0],[0,0],[dt,0],[0,0],[0,0],[0,dt],[0,0],[0,0]])
@@ -68,25 +76,30 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
 
     #Incorporation of delay 
 
+    NewQ = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
+    NewQ[:Num_Var,:Num_Var] = Q 
+    Q = NewQ
+
     H = np.zeros((Num_Var,(kdelay+1)*Num_Var))
     H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
 
-    A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
-    A[:Num_Var,:Num_Var] = A_basic
-    A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
-    B = np.zeros(((kdelay+1)*Num_Var,2))
-    B[:Num_Var] = B_basic
+    A_iter = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
+    A_iter[:Num_Var,:Num_Var] = A_basic
+    A_iter[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
+    B_iter = np.zeros(((kdelay+1)*Num_Var,2))
+    B_iter[:Num_Var] = B_basic
 
     #Compute the Feedback Gain of the Control law
     S = Q
 
-    array_L = np.zeros((Num_iter-1,2,Num_Var))   
-    array_S = np.zeros((Num_iter,Num_Var,Num_Var)) 
+    
+    array_L = np.zeros((Num_iter-1,2,Num_Var*(kdelay+1)))   
+    array_S = np.zeros((Num_iter,Num_Var*(kdelay+1),Num_Var*(kdelay+1))) 
     array_S[-1] = S
     for k in range(Num_iter-1):
-        L = np.linalg.inv(R+B_basic.T@S@B_basic)@B_basic.T@S@A_basic
+        L = np.linalg.inv(R+B_iter.T@S@B_iter)@B_iter.T@S@A_iter
         array_L[Num_iter-2-k] = L
-        S = A_basic.T@S@(A_basic-B_basic@L)
+        S = A_iter.T@S@(A_iter-B_iter@L)
         array_S[Num_iter-2-k] = S
         
     #Initialize matrices 
@@ -119,15 +132,10 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     for k in range(Num_iter-1):
         #Compute the matrices of the FL technique in function of the current estimate state 
         
-        if np.sin(x[0]+x[1])*33+np.sin(x[0])*30 > 35:
-
-            F = Compute_f_new_version(x[0:2],x[2:4],acc,.5)
-            if Side == "Left": F*=-1
-
-        else : 
-            F = [0,0]
-
-        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise2(Num_Var,alpha,B,kdelay)
+        F = ForceField if ((k*dt >= ForceFieldSpan[0]) and (k*dt < ForceFieldSpan[1])) else np.array([0,0])
+        
+        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,Noise_Variance,kdelay)
+        Omega_sens[Num_Var:,Num_Var:] = np.zeros((Num_Var*kdelay,Num_Var*kdelay))
 
         C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
 
@@ -140,7 +148,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
        
         # Compute the command through the FL technique
         
-        v = -L[k].reshape(np.flip(B_basic.shape))@zhat[:Num_Var]
+        v = -L[k].reshape(np.flip(B.shape))@zhat
         u = 1/Kfactor*M@(v)+1/Kfactor*Mdot@(np.array([zhat[2],zhat[5]]))+M@(np.array([zhat[2],zhat[5]]))+C+Bdyn@np.array([zhat[1],zhat[4]])+1/Kfactor*Cdot+1/Kfactor*Bdyn@np.array([zhat[2],zhat[5]])
         if ShowJ : J+= u.T@R@u
         # Delayed Observation of the Nonlinear system expressed in linear coordinates
@@ -150,12 +158,12 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         
         # Kalman Filter Gains 
 
-        K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
-        sigma = Omega_sens + (A - K@H)@sigma@A.T
+        K = A_iter@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
+        sigma = Omega_sens + (A_iter - K@H)@sigma@A_iter.T
 
         # Compute the Estimation of the system in the linear system
         
-        zhat = A@zhat + B@v + K@(y[k]-H@zhat)
+        zhat = Matrix_Iteration(zhat,A,B,v,dt) #+ K@(y[k]-H@zhat)
         
         # Simulate the nonlinear plant 
         
@@ -171,8 +179,8 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         
         #print(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))-acc)
         new_x[0:2] += dt*x[2:4]
-        new_x[2:4] += dt*(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))+F)
-        new_x[4:6] += dt*Kfactor*(u-x[4:6])
+        new_x[2:4] += dt*np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))
+        new_x[4:6] += dt*Kfactor*(u-x[4:6]+F)
 
         if Activate_Noise : new_x+=motor_noise[:6]
         
@@ -218,6 +226,14 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
             plt.plot(X2,Y2,color ="black",label = "Estimation",linewidth = .8,linestyle = "--")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
-        plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
+        plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "black")
+    print(X[-1],Y[-1])
     return X,Y
 
+def Matrix_Iteration(x,A,B,u,dt):
+    ExpA = expm(A*dt)
+    n, m = A.shape[0], B.shape[1]
+    block_matrix = np.block([[A, B], [np.zeros((m, n)), np.zeros((m, m))]])
+    exp_block = expm(block_matrix * dt)
+    ExpB = exp_block[:n, n:]
+    return ExpA @ x + ExpB @ u
