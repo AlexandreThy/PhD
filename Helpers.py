@@ -20,16 +20,7 @@ a3 = I2
 Bdyn = np.array([[0.5,0.025],[0.025,0.5]])
 
 
-def Compute_Noise(NbreVar,Variance,B,kdelay = 0):
-
-    Omega_sens = np.diag(np.ones(NbreVar*(kdelay+1))*Variance)
-    motor_noise = np.random.normal(0,np.sqrt(Variance),NbreVar*(kdelay+1)).T
-    Omega_measure = np.diag(np.ones(NbreVar)*Variance)
-    measure_noise = np.random.normal(0,np.sqrt(Variance),NbreVar).T
-    print("cc",Omega_sens[:NbreVar,:NbreVar],Omega_measure)
-    return Omega_sens,motor_noise,Omega_measure,measure_noise
-
-def Compute_Noise2(NbreVar,alpha,B,kdelay):
+def Compute_Noise(NbreVar,alpha,B,kdelay):
     B = B[:NbreVar]
     O_sens = alpha*B@B.T
 

@@ -115,7 +115,6 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     #Perform the task
     J = 0
     acc = np.zeros(2)
-
     for k in range(Num_iter-1):
         #Compute the matrices of the FL technique in function of the current estimate state 
         
@@ -127,7 +126,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         else : 
             F = [0,0]
 
-        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise2(Num_Var,alpha,B,kdelay)
+        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B,kdelay)
 
         C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
 
@@ -181,7 +180,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         
         M = np.array([[a1+2*a2*cos(new_x[1]),a3+a2*cos(new_x[1])],[a3+a2*cos(new_x[1]),a3]])
 
-        acc = np.linalg.solve(M,(new_x[4:6]-Bdyn@(new_x[2:4])-C))
+        acc = np.linalg.solve(M,(new_x[4:6]-Bdyn@(new_x[2:4])-C))+F
         
         z = np.concatenate((np.array([new_x[0],new_x[2],acc[0],new_x[1],new_x[3],acc[1],z[6],z[7]]),z[:-Num_Var]))
         #Stock the true and estimated states
