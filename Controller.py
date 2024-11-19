@@ -75,9 +75,7 @@ def LQG(Duration,w1,w2,w3,w4,r1,r2,targets = [0,55],starting_point = [0,20],Forc
     for k in range(Num_iter-1):
         F = ForceField if ((k*dt >= ForceFieldSpan[0]) and (k*dt < ForceFieldSpan[1])) else [0,0]
              
-        _,_,Omega_measure,measure_noise = Compute_Noise(Num_Var,Noise_Variance)
-        Omega_sens,motor_noise,_,_ = Compute_Noise(Num_Var*(kdelay+1),Noise_Variance)
-    
+        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,1e-3,B,kdelay)
         y[k] = (H@x).flatten()
         K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
         sigma = Omega_sens + (A - K@H)@sigma@A.T
