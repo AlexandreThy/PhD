@@ -1,6 +1,6 @@
 from Helpers import *
 
-def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,alpha = 1,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06):
+def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,alpha = 1,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06,FF = False):
     
     """
     Duration (float) : Duration of the movement
@@ -118,9 +118,9 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     for k in range(Num_iter-1):
         #Compute the matrices of the FL technique in function of the current estimate state 
         
-        if np.sin(x[0]+x[1])*33+np.sin(x[0])*30 > 35:
+        if (np.sin(x[0]+x[1])*33+np.sin(x[0])*30 > 35) and (FF == True):
 
-            F = Compute_f_new_version(x[0:2],x[2:4],acc,.5)
+            F = Compute_f_new_version(x[0:2],x[2:4],acc,1)
             if Side == "Left": F*=-1
 
         else : 
@@ -193,7 +193,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         
 
     if ShowJ : 
-        J+= z.T@Q@z
+        #J+= z.T@Q@z
         print("Total cost of FL: "+str(J)[:7])
 
     #Change of coordinates from angular to cartesian 
@@ -207,16 +207,18 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         Y2 = np.sin(array_zhat[:,0]+array_zhat[:,3])*33+np.sin(array_zhat[:,0])*30
 
     #Plotting
-    color1 = plt.get_cmap('viridis')(kdelay*4 / Num_iter)
+    color1 = plt.get_cmap('RdPu')(kdelay*10 / Num_iter)
 
     if plot : 
         plt.grid(linestyle='--')
         plt.axis("equal")
-        plt.plot(X,Y,color = color1,label = "True movement with "+str(int(kdelay*dt*1000))+ " \n miliseconds delay",linewidth = .8)
+        if Delay > 0 : plt.plot(X,Y,color = color1,label = "FL movement with "+str(int(kdelay*dt*1000))+ " \n ms delay",linewidth = .8)
+        else : plt.plot(X,Y,color = color1,label = "Feedback Linearization",linewidth = .8)
         if ShowEstimate: 
             plt.plot(X2,Y2,color ="black",label = "Estimation",linewidth = .8,linestyle = "--")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
+    if ShowJ : return X,Y,J,x
     return X,Y
 

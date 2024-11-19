@@ -1,7 +1,7 @@
 from Helpers import *
 
 
-def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = "True",Side = "Right",plot = True,Delay = 0,plotEstimation = False,alpha = .1,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300,Activate_Noise = False):
+def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,plotEstimation = False,alpha = .1,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300,Activate_Noise = False):
 
 
     
@@ -77,13 +77,14 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
     F = [0,0]
     for k in range(Num_iter-1):
         
-        C = np.array([-x[4]*(2*x[1]+x[4])*a2*np.sin(x[3]),x[1]*x[1]*a2*np.sin(x[3])])
+        #C = np.array([-x[4]*(2*x[1]+x[4])*a2*np.sin(x[3]),x[1]*x[1]*a2*np.sin(x[3])])
         
-        M = np.array([[a1+2*a2*cos(x[3]),a3+a2*cos(x[3])],[a3+a2*cos(x[3]),a3]])
-        acc = np.linalg.solve(M,(np.array([x[2],x[5]])-Bdyn@np.array([x[1],x[4]])-C))+F
-        if np.sin(x[0]+x[3])*33+np.sin(x[0])*30 > 35:
+        #M = np.array([[a1+2*a2*cos(x[3]),a3+a2*cos(x[3])],[a3+a2*cos(x[3]),a3]])
+        #acc = np.linalg.solve(M,(np.array([x[2],x[5]])-Bdyn@np.array([x[1],x[4]])-C))+F
+        acc = (np.array([array_x[k][2],array_x[k][5]])-np.array([array_x[k-1][2],array_x[k-1][5]]))/dt
+        if (np.sin(x[0]+x[3])*33+np.sin(x[0])*30 > 35) and (FF == True):
 
-            F = Compute_f_new_version(np.array([x[0],x[3]]),np.array([x[1],x[4]]),acc,.5)
+            F = Compute_f_new_version(np.array([x[0],x[3]]),np.array([x[1],x[4]]),acc,1)
             if Side == "Left": F*=-1
 
         else : 
