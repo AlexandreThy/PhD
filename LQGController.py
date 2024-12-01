@@ -90,7 +90,6 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
         else : 
             F = [0,0]
         Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B,kdelay)
-    
         y[k] = (H@x).flatten()
         if Activate_Noise == True : y[k]+=measure_noise
         K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
@@ -116,11 +115,10 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
     if plot:
         plt.plot(X,Y,color = "green",label = "LQG",linewidth = .8)
         plt.axis("equal")
-        plt.scatter([targets[0]],[targets[1]])
+        plt.scatter([targets[0]],[targets[1]],color = "black")
         if plotEstimation :
             x_nonlin = array_xhat.T[:,1:][:,::1]
             X2 = np.cos(x_nonlin[0]+x_nonlin[3])*33+np.cos(x_nonlin[0])*30
             Y2 = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
             plt.plot(X2,Y2,color = "black",label = "Estimation",linewidth = .8,linestyle ="--",alpha = .5)
-
     return X,Y,J

@@ -128,12 +128,30 @@ def step1(x0,u,Duration,Noise,Variance):
     K = np.shape(u)[0]+1
     dt = Duration/(K-1)
     newx = np.zeros((K,len(x0)))
-    newx[0] = x0
+    newx[0] = np.copy(x0)
+    for i in range(K-1):
+        if Noise == True: 
+            noise = np.random.normal(0,np.sqrt(Variance),len(x0))
+            newx[i+1] = newx[i] + dt*f(newx[i],u[i]) + noise
+        newx[i+1] = newx[i] + dt*f(newx[i],u[i])
+    return newx
+
+def step5(x0,l,L,Duration,Noise,Variance,A,B):
+    
+    K = np.shape(u)[0]+1
+    dt = Duration/(K-1)
+    newx = np.zeros((K,len(x0)))
+    newx[0] = np.copy(x0)
+    x = np.copy(x0)
+    H = np.identity(len(x0))
     for i in range(K-1):
         if Noise : 
-            noise = np.random.normal(0,np.sqrt(Variance),len(x0))
-        else: noise = 0
-        newx[i+1] = newx[i] + dt*f(newx[i],u[i]) + noise
+            Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(len(x0),0,B,0)
+            
+            measure_noise = np.random.normal(0,np.sqrt(Variance),len(x0))
+            newx[i+1] = newx[i] + dt*f(newx[i],u[i]) + motor_noise
+
+        else: newx[i+1] = newx[i] + dt*f(newx[i],u[i])
     return newx
 
 def step2(x,u,Duration,w1,w2,r1,xtarg):

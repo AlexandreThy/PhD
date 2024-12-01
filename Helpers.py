@@ -19,21 +19,31 @@ a2 = m2*l1*s2
 a3 = I2
 
 Bdyn = np.array([[0.5,0.025],[0.025,0.5]])
+def Old_Compute_Noise(NbreVar,Var,kdelay):
+    Omega_sens = np.zeros((NbreVar*(kdelay+1),NbreVar*(kdelay+1)))
+    Om = np.diag(np.ones(NbreVar)*Var)
+    Omega_sens[:NbreVar,:NbreVar] = Om
+    motor_noise = np.zeros(NbreVar*(kdelay+1))
+    mn = np.random.normal(0,np.sqrt(Var),NbreVar).T
+    motor_noise[:NbreVar] = mn
+    
+    Omega_measure = np.diag(np.ones(NbreVar)*Var)
+    measure_noise = np.random.normal(0,np.sqrt(Var),NbreVar).T
 
+    return Omega_sens,motor_noise.T,Omega_measure,measure_noise
 
 def Compute_Noise(NbreVar,alpha,B,kdelay):
-    B = B[:NbreVar]
-    O_sens = alpha*B@B.T
-
-    O_sens = np.diag(np.ones(NbreVar)*O_sens[2,2])
+    #B = B[:NbreVar]
+    Omega_sens = alpha*B@B.T
+    O_sens = np.diag(np.ones(NbreVar)*1e-6)
     Omega_sens = np.zeros((NbreVar*(kdelay+1),NbreVar*(kdelay+1)))
     Omega_sens[:NbreVar,:NbreVar] = O_sens
     #Ok que si omegasens est diag
     motor_noise = np.zeros(NbreVar)
-    for i in range(NbreVar):
+    for i in [2,5]:
         motor_noise[i] = np.random.normal(0,np.sqrt(Omega_sens[i,i]))
-    Omega_measure = np.diag(np.ones(NbreVar)*1e-7)
-    measure_noise = np.random.normal(0,np.sqrt(1e-7),NbreVar).T
+    Omega_measure = np.diag(np.ones(NbreVar)*1e-6)
+    measure_noise = np.random.normal(0,np.sqrt(1e-6),NbreVar).T
 
     return Omega_sens,motor_noise.T,Omega_measure,measure_noise
 

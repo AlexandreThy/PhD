@@ -212,10 +212,10 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     if plot : 
         plt.grid(linestyle='--')
         plt.axis("equal")
-        if Delay > 0 : plt.plot(X,Y,color = color1,label = "FL movement with "+str(int(kdelay*dt*1000))+ " \n ms delay",linewidth = .8)
-        else : plt.plot(X,Y,color = color1,label = "Feedback Linearization",linewidth = .8)
+        if Delay > 0 : plt.plot(X,Y,color = "cyan",label = "FL movement with "+str(int(kdelay*dt*1000))+ " \n ms delay",linewidth = 1)
+        else : plt.plot(X,Y,color = "#48494B",label = "Feedback Linearization",linewidth = 1)
         if ShowEstimate: 
-            plt.plot(X2,Y2,color ="black",label = "Estimation",linewidth = .8,linestyle = "--")
+            plt.plot(X2,Y2,color ="black",label = "Estimation",linewidth = 1,linestyle = "--",alpha = .8)
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
