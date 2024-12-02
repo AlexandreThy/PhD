@@ -35,12 +35,9 @@ def Old_Compute_Noise(NbreVar,Var,kdelay):
 def Compute_Noise(NbreVar,alpha,B,kdelay):
     #B = B[:NbreVar]
     Omega_sens = alpha*B@B.T
-    O_sens = np.diag(np.ones(NbreVar)*1e-6)
-    Omega_sens = np.zeros((NbreVar*(kdelay+1),NbreVar*(kdelay+1)))
-    Omega_sens[:NbreVar,:NbreVar] = O_sens
     #Ok que si omegasens est diag
-    motor_noise = np.zeros(NbreVar)
-    for i in [2,5]:
+    motor_noise = np.zeros(Omega_sens.shape[0])
+    for i in range(Omega_sens.shape[0]):
         motor_noise[i] = np.random.normal(0,np.sqrt(Omega_sens[i,i]))
     Omega_measure = np.diag(np.ones(NbreVar)*1e-6)
     measure_noise = np.random.normal(0,np.sqrt(1e-6),NbreVar).T
