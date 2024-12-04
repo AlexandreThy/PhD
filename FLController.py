@@ -173,16 +173,15 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         new_x[2:4] += dt*(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))+F)
         new_x[4:6] += dt*Kfactor*(u-x[4:6])
 
-        if Activate_Noise : new_x+=motor_noise[:6]
+        z = np.concatenate((np.array([new_x[0],new_x[2],acc[0],new_x[1],new_x[3],acc[1],z[6],z[7]]),z[:-Num_Var]))
+        if Activate_Noise : z+=motor_noise
         
         # Transform the new nonlinear state into the coordinates of the linear system
-        C = np.array([-new_x[3]*(2*new_x[2]+new_x[3])*a2*np.sin(new_x[1]),new_x[2]*new_x[2]*a2*np.sin(new_x[1])])
-        
-        M = np.array([[a1+2*a2*cos(new_x[1]),a3+a2*cos(new_x[1])],[a3+a2*cos(new_x[1]),a3]])
+        C = np.array([-z[4]*(2*z[1]+z[4])*a2*np.sin(z[3]),z[1]*z[1]*a2*np.sin(z[3])])
+
+        M = np.array([[a1+2*a2*cos(z[3]),a3+a2*cos(z[3])],[a3+a2*cos(z[3]),a3]])
 
         acc = np.linalg.solve(M,(new_x[4:6]-Bdyn@(new_x[2:4])-C))+F
-        
-        z = np.concatenate((np.array([new_x[0],new_x[2],acc[0],new_x[1],new_x[3],acc[1],z[6],z[7]]),z[:-Num_Var]))
         #Stock the true and estimated states
 
         array_z[k+1] = z[:Num_Var].flatten()
