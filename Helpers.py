@@ -43,7 +43,31 @@ def Compute_Noise(NbreVar,alpha,B,kdelay):
     measure_noise = np.random.normal(0,np.sqrt(1e-6),NbreVar).T
 
     return Omega_sens,motor_noise.T,Omega_measure,measure_noise
+def Compute_Multiplicative_Noise(NbreVar,alpha,B,mult_var):
+    #B = B[:NbreVar]
+    Omega_sens = alpha*B@B.T
+    m = B.shape[1]
+    n = B.shape[0]
+    #Ok que si omegasens est diag
+    motor_noise = np.zeros(n)
+    totF = np.zeros((m,m))
+    
+    F =  np.zeros((m,m,m))
+    C = np.zeros((m,n,m))
+    eps = np.random.normal(0,1,m)
+    for i in range(n):
+        motor_noise[i] = np.random.normal(0,np.sqrt(Omega_sens[i,i]))
+    for i in range(m):
+        F[i,i,i] = mult_var
+        totF += F[i]*eps[i]
+        C[i] = B@F[i]
+        
+    mult_noise = B@(totF)
+    Omega_measure = np.diag(np.ones(NbreVar)*1e-6)
+    measure_noise = np.random.normal(0,np.sqrt(1e-6),NbreVar).T
+    
 
+    return Omega_sens,motor_noise.T,Omega_measure,measure_noise,C,mult_noise
 def f1(a,Nf):
     Td = 0.066
     return np.exp(-(a/(0.56*Nf))**Nf)*Nf/Td*(1/(0.56*Nf))**Nf*a**(Nf-1)

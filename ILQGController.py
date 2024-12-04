@@ -122,36 +122,43 @@ def hxx(x,w1,w2):
                      [0,0,0,w2,0,0],
                      [0,0,0,0,0,0],
                      [0,0,0,0,0,0]])
-
-def step1(x0,u,Duration,Noise,Variance):
+def Kalman(Omega_measure,Omega_sens,A,sigma,H):
+    K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
+    sigma = Omega_sens + (A - K@H)@sigma@A.T
+    return K,sigma
+def step1(x0,u,Duration,Noise):
     
     K = np.shape(u)[0]+1
     dt = Duration/(K-1)
     newx = np.zeros((K,len(x0)))
     newx[0] = np.copy(x0)
     for i in range(K-1):
-        if Noise == True: 
-            noise = np.random.normal(0,np.sqrt(Variance),len(x0))
-            newx[i+1] = newx[i] + dt*f(newx[i],u[i]) + noise
         newx[i+1] = newx[i] + dt*f(newx[i],u[i])
     return newx
 
-def step5(x0,l,L,Duration,Noise,Variance,A,B):
-    
-    K = np.shape(u)[0]+1
-    dt = Duration/(K-1)
-    newx = np.zeros((K,len(x0)))
+def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu):
+    dt = Duration/(Num_steps-1)
+    newx = np.zeros((Num_steps,len(x0)))
     newx[0] = np.copy(x0)
-    x = np.copy(x0)
+    x = np.zeros((Num_steps,len(x0)))
+    x[0] = np.copy(x0)
+    xhat = np.zeros((Num_steps,len(x0)))
     H = np.identity(len(x0))
-    for i in range(K-1):
-        if Noise : 
-            Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(len(x0),0,B,0)
-            
-            measure_noise = np.random.normal(0,np.sqrt(Variance),len(x0))
-            newx[i+1] = newx[i] + dt*f(newx[i],u[i]) + motor_noise
-
-        else: newx[i+1] = newx[i] + dt*f(newx[i],u[i])
+    sigma = np.zeros(H.shape)
+    for i in range(Num_steps-1):
+        deltau = l[i]+L[i]@xhat[i]
+        u = bestu[i] + deltau
+        Omega_sens,motor_noise,Omega_measure,measure_noise,C,mult_noise = GetNoise(alpha,mult_var,dt,len(x0))
+        K,sigma = Kalman(Omega_measure,Omega_sens,A[i],sigma,H)
+        newx[i+1] = newx[i] + dt*f(newx[i],u)
+        x[i+1] = x[i] + dt*f(newx[i],u)
+        
+        if Noise: 
+            newx[i+1]+= motor_noise + mult_noise@u
+        y = H@(newx[i]-x[i])
+        if Noise : y+=measure_noise
+        xhat[i+1] = A[i]@xhat[i] + B[i]@deltau + K@(y-H@xhat[i])
+        
     return newx
 
 def step2(x,u,Duration,w1,w2,r1,xtarg):
@@ -197,15 +204,22 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R):
     sbold[-1] = qbold[-1]
 
     for k in np.arange(K-2,-1,-1):
-        gbold = r[k] + B[k].T@sbold[k+1]+np.sum(C[k,:].T@S[k+1]@cbold[k,:])
+        temp1 = 0
+        temp2 = 0
+        temp3 = 0
+        for i in range(m):
+            temp1+=C[k,i,:,:].T@S[k+1]@cbold[k,i,:]
+            temp2+=C[k,i,:,:].T@S[k+1]@C[k,i,:,:]
+            temp3+=cbold[k,i,:].T@S[k+1]@cbold[k,i,:]
+        gbold = r[k] + B[k].T@sbold[k+1]+temp1
         G = B[k].T@S[k+1]@A[k]
-        H = R[k] + B[k].T@S[k+1]@B[k]+np.sum(C[k,:].T@S[k+1]@C[k,:])
+        H = R[k] + B[k].T@S[k+1]@B[k]+temp2
         Hinv = np.linalg.inv(H)
 
 
         S[k] = Q[k] + A[k].T@S[k+1]@A[k]-G.T@Hinv@G
         sbold[k] = qbold[k]+A[k].T@sbold[k+1]-G.T@Hinv@gbold
-        s[k] = q[k] + s[k+1] + 0.5*np.sum(cbold[k,:].T@S[k+1]@cbold[k,:]) - .5*gbold.T@Hinv@gbold
+        s[k] = q[k] + s[k+1] + 0.5*temp3 - .5*gbold.T@Hinv@gbold
 
         l[k] = -Hinv@gbold
         L[k] = -Hinv@G
@@ -221,53 +235,43 @@ def step4(l,L,K,A,B):
         x = A[k]@x+B[k]@u_incr[k]
     return u_incr
 
-def fnewton(var,X,Y):
-    u,v = var
-    return np.array([33*np.cos(u+v)+30*np.cos(u)-X,33*np.sin(u+v)+30*np.sin(u)-Y])
-
-def dfnewton(var):
-    u,v = var
-    return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
-
-def ILQG_SingleArm(Duration,w1,w2,r1,xtarg,K,x0=np.array([pi/2,0]),m=1):
-    n = len(x0)
-    u = np.zeros((K-1,m))
-    C = np.zeros((K,n,m))
-    cbold = np.zeros((K,n))
-    u_incr = [1]
-
-    #while np.max(u_incr) > 1e-12: 
-    for _ in range(200):    
-        x = step1(x0,u,Duration)
-        A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,xtarg)
-        l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
-        u_incr = step4(l,L,K,A,B)
-        u += u_incr
-    x = step1(x0,u,Duration)
-    return x,u
 
 
-def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Variance = 1e-6):
+def GetNoise(alpha,multvar,dt,N = 8):
+    B_basic = np.array([[0,0],[0,0],[0,0],[0,0],[dt/0.06,0],[0,dt/0.06]])
+    B = np.zeros((N,2))
+    B[:N] = B_basic 
+    return Compute_Multiplicative_Noise(N,alpha,B,multvar)
+def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1, multvar = 1e-2):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
     x0 = np.array([st1,st2,0,0,0,0])
-
+    O,_,_,_,C,_ = GetNoise(alpha,multvar,Duration/K,len(x0))
     m = 2
     n = 6
+    
     u = np.zeros((K-1,m))
-    C = np.zeros((K,n,m))
-    cbold = np.ones((K,n))*Variance
+    
+    newcbold = np.zeros((K,m,n))
+    newC = np.zeros((K,m,n,m))
+    for i in range(K):
+        for j in range(m):
+            newcbold[i,j] = np.diag(O)[j]
+        newC[i] = C
+    C = newC 
+    cbold = newcbold
     u_incr = [1]
     oldx = np.ones(K)*100
     # Create an array of 50 colors from the colormap
 
     for _ in range(50):     
-        x = step1(x0,u,Duration,False,Variance)
+        x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
         if np.max(np.abs(oldx-X))<1e-3:
-            x = step1(x0,u,Duration,Noise,Variance)
+            x = step5(x0,l,L,Duration,Noise,alpha,multvar,A,B,K,u-u_incr)
+            #x = step1(x0,u,Duration,Noise)
             X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
             Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
             break
@@ -357,3 +361,28 @@ def SingleArmLQG(Duration,w1,w2,r1,targ,K,Noise_Variance = 1e-12):
 #Plot
 
     return array_x_nonlin,array_u
+
+def fnewton(var,X,Y):
+    u,v = var
+    return np.array([33*np.cos(u+v)+30*np.cos(u)-X,33*np.sin(u+v)+30*np.sin(u)-Y])
+
+def dfnewton(var):
+    u,v = var
+    return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
+
+def ILQG_SingleArm(Duration,w1,w2,r1,xtarg,K,x0=np.array([pi/2,0]),m=1):
+    n = len(x0)
+    u = np.zeros((K-1,m))
+    C = np.zeros((K,n,m))
+    cbold = np.zeros((K,n))
+    u_incr = [1]
+
+    #while np.max(u_incr) > 1e-12: 
+    for _ in range(200):    
+        x = step1(x0,u,Duration)
+        A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,xtarg)
+        l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
+        u_incr = step4(l,L,K,A,B)
+        u += u_incr
+    x = step1(x0,u,Duration)
+    return x,u
