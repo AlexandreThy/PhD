@@ -142,3 +142,9 @@ def Compute_f_new_version(theta,omega,acc,factor):
     F1 = (fe*nu-ge*gamma)/(fe*gs-ge*fs) - acc[0]
     F2 = (gs*gamma-fs*nu)/(gs*fe-ge*fs) - acc[1]
     return np.array([F1,F2])
+
+def MultipleLabel():
+        
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
