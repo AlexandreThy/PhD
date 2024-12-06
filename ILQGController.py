@@ -135,8 +135,13 @@ def step1(x0,u,Duration,Noise):
     for i in range(K-1):
         newx[i+1] = newx[i] + dt*f(newx[i],u[i])
     return newx
+def Compute_acc(x,F):
+    C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
+        
+    M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
 
-def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu):
+    return np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))+F
+def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu,FF,Side):
     dt = Duration/(Num_steps-1)
     newx = np.zeros((Num_steps,len(x0)))
     newx[0] = np.copy(x0)
@@ -146,11 +151,21 @@ def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu):
     H = np.identity(len(x0))
     sigma = np.zeros(H.shape)
     for i in range(Num_steps-1):
+        if FF == True:
+            if i == 0 : acc = np.zeros(2)
+            else : acc = Compute_acc(newx[i],F)
+            F=Compute_f_new_version(newx[i,0:2],newx[i,2:4],acc,.3)
+            if Side == "Left": F*=-1
+            
+        else : 
+            F = np.array([0,0])
+
         deltau = l[i]+L[i]@xhat[i]
         u = bestu[i] + deltau
         Omega_sens,motor_noise,Omega_measure,measure_noise,C,mult_noise = GetNoise(alpha,mult_var,dt,len(x0))
         K,sigma = Kalman(Omega_measure,Omega_sens,A[i],sigma,H)
         newx[i+1] = newx[i] + dt*f(newx[i],u)
+        newx[i+1,2:4]+=dt*F
         x[i+1] = x[i] + dt*f(newx[i],u)
         
         if Noise: 
@@ -238,19 +253,19 @@ def step4(l,L,K,A,B):
 
 
 def GetNoise(alpha,multvar,dt,N = 8):
-    B_basic = np.array([[0,0],[0,0],[0,0],[0,0],[dt/0.06,0],[0,dt/0.06]])
+    B_basic = np.array([[0,0],[0,0],[0,0],[0,0],[dt,0],[0,dt]])
     B = np.zeros((N,2))
     B[:N] = B_basic 
     return Compute_Multiplicative_Noise(N,alpha,B,multvar)
-def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1, multvar = 1e-2):
+def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1, multvar = 1e-2,FF = False,Side = "Left"):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
     x0 = np.array([st1,st2,0,0,0,0])
     O,_,_,_,C,_ = GetNoise(alpha,multvar,Duration/K,len(x0))
+
     m = 2
     n = 6
-    
     u = np.zeros((K-1,m))
     
     newcbold = np.zeros((K,m,n))
@@ -270,7 +285,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1, 
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
         if np.max(np.abs(oldx-X))<1e-3:
-            x = step5(x0,l,L,Duration,Noise,alpha,multvar,A,B,K,u-u_incr)
+            x = step5(x0,l,L,Duration,Noise,alpha,multvar,A,B,K,u-u_incr,FF,Side)
             #x = step1(x0,u,Duration,Noise)
             X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
             Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
