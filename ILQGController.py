@@ -163,13 +163,17 @@ def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu,FF,Side):
         deltau = l[i]+L[i]@xhat[i]
         u = bestu[i] + deltau
         Omega_sens,motor_noise,Omega_measure,measure_noise,C,mult_noise = GetNoise(alpha,mult_var,dt,len(x0))
+        Omega_sens=np.zeros((6,6))
+        Omega_sens[5,5] = 1e-6
+        Omega_sens[4,4] = 1e-6
         K,sigma = Kalman(Omega_measure,Omega_sens,A[i],sigma,H)
         newx[i+1] = newx[i] + dt*f(newx[i],u)
         newx[i+1,2:4]+=dt*F
         x[i+1] = x[i] + dt*f(newx[i],u)
         
         if Noise: 
-            newx[i+1]+= motor_noise + mult_noise@u
+            newx[i,4:6]+=np.random.normal(0,1e-3,2)
+            #newx[i+1]+= motor_noise #+ mult_noise@u
         y = H@(newx[i]-x[i])
         if Noise : y+=measure_noise
         xhat[i+1] = A[i]@xhat[i] + B[i]@deltau + K@(y-H@xhat[i])
@@ -263,7 +267,9 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1, 
 
     x0 = np.array([st1,st2,0,0,0,0])
     O,_,_,_,C,_ = GetNoise(alpha,multvar,Duration/K,len(x0))
-
+    O=np.zeros((6,6))
+    O[5,5] = 1e-6
+    O[4,4] = 1e-6
     m = 2
     n = 6
     u = np.zeros((K-1,m))
