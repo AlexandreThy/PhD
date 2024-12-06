@@ -32,7 +32,7 @@ def Old_Compute_Noise(NbreVar,Var,kdelay):
 
     return Omega_sens,motor_noise.T,Omega_measure,measure_noise
 
-def Compute_Noise(NbreVar,alpha,B,kdelay):
+def Compute_Noise(NbreVar,alpha,B):
     #B = B[:NbreVar]
     Omega_sens = alpha*B@B.T
     #Ok que si omegasens est diag
