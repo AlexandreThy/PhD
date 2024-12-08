@@ -1,6 +1,6 @@
 from Helpers import *
 
-def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,alpha = 1,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06,FF = False):
+def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,alpha = 1,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06,FF = False,FFonset = 0):
     
     """
     Duration (float) : Duration of the movement
@@ -118,18 +118,16 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     for k in range(Num_iter-1):
         #Compute the matrices of the FL technique in function of the current estimate state 
         
-        if (np.sin(x[0]+x[1])*33+np.sin(x[0])*30 > 35) and (FF == True):
+        if (np.sin(x[0]+x[1])*33+np.sin(x[0])*30 > FFonset) and (FF == True):
 
-            F = Compute_f_new_version(x[0:2],x[2:4],acc,1)
+            F = Compute_f_new_version(x[0:2],x[2:4],acc,.3)
             if Side == "Left": F*=-1
 
         else : 
             F = [0,0]
 
         Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B)
-        Omega_sens=np.zeros((8,8))
-        #Omega_sens[4,4] = 1e-6
-        #Omega_sens[5,5] = 1e-6
+        
         C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
 
         M = np.array([[a1+2*a2*cos(zhat[3]),a3+a2*cos(zhat[3])],[a3+a2*cos(zhat[3]),a3]])
@@ -140,7 +138,9 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         Mdot = np.array([[-2*a2*sin(zhat[3])*zhat[4],-a2*sin(zhat[3])*zhat[4]],[-a2*sin(zhat[3])*zhat[4],0]])
        
         # Compute the command through the FL technique
-        
+        O = Cov_Matrix(M,Kfactor,Num_Var)
+        Omega_sens = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1)))
+        Omega_sens[:Num_Var,:Num_Var] = O
         v = -L[k].reshape(np.flip(B_basic.shape))@zhat[:Num_Var]
         u = 1/Kfactor*M@(v)+1/Kfactor*Mdot@(np.array([zhat[2],zhat[5]]))+M@(np.array([zhat[2],zhat[5]]))+C+Bdyn@np.array([zhat[1],zhat[4]])+1/Kfactor*Cdot+1/Kfactor*Bdyn@np.array([zhat[2],zhat[5]])
         if ShowJ : J+= u.T@R@u
@@ -215,9 +215,25 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     color1 = plt.get_cmap('RdPu')(kdelay*10 / Num_iter)
 
     if plot : 
+        
         plt.grid(linestyle='--')
+        #if FF : 
+            #plt.plot(np.linspace(-10,10,100),np.ones(100)*FFonset,linestyle = "--",alpha = .7,color = "grey")
         plt.axis("equal")
-        if Delay > 0 : plt.plot(X,Y,color = "cyan",label = "FL movement with "+str(int(kdelay*dt*1000))+ " \n ms delay",linewidth = 1)
+        color = "cyan"
+        ls = "-"
+        lw = 3
+        if Side == "Right": 
+            ls = "--"
+            lw = 1
+            color = "red"
+        if FF == False:
+            ls = "-"
+            lw = 1
+            color = "grey"
+        if Delay > 0 : 
+            if FF ==False : plt.plot(X,Y,color = color,label = "FL("+str(int(kdelay*dt*1000))+ " ms delay)",linewidth = lw,linestyle = ls)
+            if FF == True : plt.plot(X,Y,color = color,label = "FL("+str(int(kdelay*dt*1000))+ " ms delay)\n "+ str(Side)+" FF",linewidth = lw,linestyle = ls)
         else : plt.plot(X,Y,color = "#48494B",label = "Feedback Linearization",linewidth = 1)
         if ShowEstimate: 
             plt.plot(X2,Y2,color ="black",label = "Estimation",linewidth = 1,linestyle = "--",alpha = .8)
