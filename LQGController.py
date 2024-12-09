@@ -89,7 +89,7 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
 
         else : 
             F = [0,0]
-        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B,kdelay)
+        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B)
         y[k] = (H@x).flatten()
         if Activate_Noise == True : y[k]+=measure_noise
         K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)

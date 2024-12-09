@@ -141,16 +141,30 @@ def Compute_acc(x,F):
     M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
 
     return np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))+F
-def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu,FF,Side):
+def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
+    
     dt = Duration/(Num_steps-1)
-    newx = np.zeros((Num_steps,len(x0)))
+    Num_Var = len(x0)
+    
+
+    x0 = np.tile(x0, kdelay + 1) 
+    xref = np.zeros((Num_steps,Num_Var*(kdelay + 1)))
+    xref[0] = np.copy(x0)
+    newx = np.zeros((Num_steps,Num_Var*(kdelay + 1)))
     newx[0] = np.copy(x0)
-    x = np.zeros((Num_steps,len(x0)))
-    x[0] = np.copy(x0)
-    xhat = np.zeros((Num_steps,len(x0)))
-    H = np.identity(len(x0))
-    sigma = np.zeros(H.shape)
+    xhat = np.zeros((Num_steps,Num_Var*(kdelay + 1)))
+    
+    H = np.zeros((Num_Var,(kdelay+1)*Num_Var))
+    H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
+
+    sigma = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1)))
     for i in range(Num_steps-1):
+        Extended_A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
+        Extended_A[:Num_Var,:Num_Var] = A[i]
+        Extended_A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
+        Extended_B = np.zeros(((kdelay+1)*Num_Var,2))
+        Extended_B[:Num_Var] = B[i]
+
         if FF == True:
             if i == 0 : acc = np.zeros(2)
             else : acc = Compute_acc(newx[i],F)
@@ -160,23 +174,31 @@ def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu,FF,Side):
         else : 
             F = np.array([0,0])
 
-        deltau = l[i]+L[i]@xhat[i]
+        deltau = l[i]+L[i]@xhat[i,:Num_Var]
         u = bestu[i] + deltau
-        Omega_sens,motor_noise,Omega_measure,measure_noise,C,mult_noise = GetNoise(alpha,mult_var,dt,len(x0))
-        Omega_sens=np.zeros((6,6))
-        Omega_sens[5,5] = 1e-6
-        Omega_sens[4,4] = 1e-6
-        K,sigma = Kalman(Omega_measure,Omega_sens,A[i],sigma,H)
-        newx[i+1] = newx[i] + dt*f(newx[i],u)
+        Omega_sens,motor_noise,Omega_measure,measure_noise,C,mult_noise = GetNoise(alpha,mult_var,dt,Num_Var,kdelay)
+        Omega_sens=np.zeros((len(x0),len(x0)))
+        Omega_sens[5,5] = Variance
+        Omega_sens[4,4] = Variance
+        K,sigma = Kalman(Omega_measure,Omega_sens,Extended_A,sigma,H)
+
+        passed_newx = np.copy(newx[i,:-Num_Var])
+        newx[i+1,:Num_Var] = newx[i,:Num_Var] + dt*f(newx[i,:Num_Var],u)
+        newx[i+1,Num_Var:] = passed_newx
         newx[i+1,2:4]+=dt*F
-        x[i+1] = x[i] + dt*f(newx[i],u)
+        #if i==20:
+        #    newx[i+1,4:6]+=np.array([2,0])
+
+        passed_xref = np.copy(xref[i,:-Num_Var])
+        xref[i+1,:Num_Var] = xref[i,:Num_Var] + dt*f(xref[i,:Num_Var],u)
+        xref[i+1,Num_Var:] = passed_xref
         
         if Noise: 
-            newx[i,4:6]+=np.random.normal(0,1e-3,2)
+            newx[i,4:6]+=np.random.normal(0,np.sqrt(Variance),2)
             #newx[i+1]+= motor_noise #+ mult_noise@u
-        y = H@(newx[i]-x[i])
+        y = H@(newx[i]-xref[i])
         if Noise : y+=measure_noise
-        xhat[i+1] = A[i]@xhat[i] + B[i]@deltau + K@(y-H@xhat[i])
+        xhat[i+1] = Extended_A@xhat[i] + Extended_B@deltau + K@(y-H@xhat[i])
         
     return newx
 
@@ -256,24 +278,25 @@ def step4(l,L,K,A,B):
 
 
 
-def GetNoise(alpha,multvar,dt,N = 8):
+def GetNoise(alpha,multvar,dt,N,kdelay):
     B_basic = np.array([[0,0],[0,0],[0,0],[0,0],[dt,0],[0,dt]])
-    B = np.zeros((N,2))
+    B = np.zeros((N*(kdelay+1),2))
     B[:N] = B_basic 
     return Compute_Multiplicative_Noise(N,alpha,B,multvar)
-def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1, multvar = 1e-2,FF = False,Side = "Left"):
+def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1,Delay = 0,multvar = 1e-2,FF = False,Side = "Left",Variance = 1e-6):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
     x0 = np.array([st1,st2,0,0,0,0])
-    O,_,_,_,C,_ = GetNoise(alpha,multvar,Duration/K,len(x0))
+    O,_,_,_,C,_ = GetNoise(alpha,multvar,Duration/K,len(x0),0)
     O=np.zeros((6,6))
-    O[5,5] = 1e-6
-    O[4,4] = 1e-6
+    O[5,5] = Variance
+    O[4,4] = Variance
     m = 2
     n = 6
     u = np.zeros((K-1,m))
-    
+    dt = Duration/K
+    kdelay = int(Delay/dt)
     newcbold = np.zeros((K,m,n))
     newC = np.zeros((K,m,n,m))
     for i in range(K):
@@ -291,7 +314,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1, 
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
         if np.max(np.abs(oldx-X))<1e-3:
-            x = step5(x0,l,L,Duration,Noise,alpha,multvar,A,B,K,u-u_incr,FF,Side)
+            x = step5(x0,l,L,Duration,Noise,alpha,multvar,A,B,K,u-u_incr,FF,Side,kdelay,Variance)
             #x = step1(x0,u,Duration,Noise)
             X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
             Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
