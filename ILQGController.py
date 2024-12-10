@@ -186,8 +186,6 @@ def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu,FF,Side,kdela
         newx[i+1,:Num_Var] = newx[i,:Num_Var] + dt*f(newx[i,:Num_Var],u)
         newx[i+1,Num_Var:] = passed_newx
         newx[i+1,2:4]+=dt*F
-        #if i==20:
-        #    newx[i+1,4:6]+=np.array([2,0])
 
         passed_xref = np.copy(xref[i,:-Num_Var])
         xref[i+1,:Num_Var] = xref[i,:Num_Var] + dt*f(xref[i,:Num_Var],u)
