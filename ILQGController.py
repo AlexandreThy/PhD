@@ -192,7 +192,7 @@ def step5(x0,l,L,Duration,Noise,alpha,mult_var,A,B,Num_steps,bestu,FF,Side,kdela
         xref[i+1,Num_Var:] = passed_xref
         
         if Noise: 
-            newx[i,4:6]+=np.random.normal(0,np.sqrt(Variance),2)
+            newx[i,4:4+len(u)]+=np.random.normal(0,np.sqrt(Variance),len(u))
             #newx[i+1]+= motor_noise #+ mult_noise@u
         y = H@(newx[i]-xref[i])
         if Noise : y+=measure_noise
