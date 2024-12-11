@@ -3,6 +3,10 @@ from matplotlib import pyplot as plt
 from math import *
 from scipy.linalg import expm
 
+from matplotlib.lines import Line2D
+import matplotlib as mpl
+from matplotlib.patches import FancyArrowPatch
+
 I1 = 0.025
 I2 = 0.045
 m2 = 1
@@ -160,3 +164,15 @@ def Cov_Matrix(M,K,N):
     Sigma[5,2] = Sigmav[1,0]
     Sigma[5,5] = Sigmav[1,1]
     return Sigma
+
+def ToCartesian(x):
+    if len(x.shape) == 1 : 
+        s = x[0]
+        e = x[1]
+    else : 
+        s = x[:,0]
+        e = x[:,1]
+    X = np.cos(s+e)*33+np.cos(s)*30
+    Y = np.sin(s+e)*33+np.sin(s)*30
+
+    return X,Y
