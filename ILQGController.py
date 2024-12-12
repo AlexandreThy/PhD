@@ -95,19 +95,19 @@ def fu(x,u):
                      [0,1/tau]])
 
 def l(x,u,r1):
-    return r1*(u[0]*u[0]+u[1]*u[1])
+    return r1*(u[0]*u[0]+u[1]*u[1])/2
 
 def lx(x,u):
     return np.zeros(6)
 
 def lu(x,u,r1):
-    return np.array([2*u[0]*r1,2*u[1]*r1])
+    return np.array([u[0]*r1,u[1]*r1])
 
 def lxx(x,u):
     return np.zeros((6,6))
 
 def luu(x,u,r1):
-    return np.array([[2*r1,0],[0,2*r1]])
+    return np.array([[r1,0],[0,r1]])
 
 def h(x,w1,w2,xtarg):
     return w1/2*((x[0]-xtarg[0])*(x[0]-xtarg[0])+(x[1]-xtarg[1])*(x[1]-xtarg[1])) + w2/2*(x[2]*x[2]+x[3]*x[3])

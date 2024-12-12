@@ -126,8 +126,9 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         else : 
             F = [0,0]
 
-        Omega_sens,motor_noise,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B)
+        _,_,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B)
         
+
         C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
 
         M = np.array([[a1+2*a2*cos(zhat[3]),a3+a2*cos(zhat[3])],[a3+a2*cos(zhat[3]),a3]])
@@ -136,11 +137,12 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
                          -a2*zhat[4]*zhat[4]*(2*zhat[1]+zhat[4])*cos(zhat[3]),2*zhat[1]*zhat[2]*a2*sin(zhat[3])+zhat[1]*zhat[1]*a2*cos(zhat[3])*zhat[4]])
 
         Mdot = np.array([[-2*a2*sin(zhat[3])*zhat[4],-a2*sin(zhat[3])*zhat[4]],[-a2*sin(zhat[3])*zhat[4],0]])
-       
-        # Compute the command through the FL technique
+        
         O = Cov_Matrix(M,Kfactor,Num_Var)
         Omega_sens = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1)))
         Omega_sens[:Num_Var,:Num_Var] = O
+        # Compute the command through the FL technique
+        
         v = -L[k].reshape(np.flip(B_basic.shape))@zhat[:Num_Var]
         u = 1/Kfactor*M@(v)+1/Kfactor*Mdot@(np.array([zhat[2],zhat[5]]))+M@(np.array([zhat[2],zhat[5]]))+C+Bdyn@np.array([zhat[1],zhat[4]])+1/Kfactor*Cdot+1/Kfactor*Bdyn@np.array([zhat[2],zhat[5]])
         if ShowJ : J+= u.T@R@u
@@ -240,7 +242,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
-    if ShowJ : return X,Y,J,x
+    if ShowJ : return X,Y,J,array_x
     return X,Y
 
 def Feedback_Linearization_MultNoise(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,Var = 1e-6,alpha = 1,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06,FF = False):
