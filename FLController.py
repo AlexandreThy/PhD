@@ -126,7 +126,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         else : 
             F = [0,0]
 
-        _,_,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B)
+        #_,_,Omega_measure,measure_noise = Compute_Noise(Num_Var,alpha,B)
         
 
         C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
@@ -138,7 +138,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
 
         Mdot = np.array([[-2*a2*sin(zhat[3])*zhat[4],-a2*sin(zhat[3])*zhat[4]],[-a2*sin(zhat[3])*zhat[4],0]])
         
-        O = Cov_Matrix(M,Kfactor,Num_Var)
+        O,Omega_measure = Cov_Matrix(M,Kfactor,Num_Var)
         Omega_sens = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1)))
         Omega_sens[:Num_Var,:Num_Var] = O
         # Compute the command through the FL technique
@@ -149,7 +149,9 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         # Delayed Observation of the Nonlinear system expressed in linear coordinates
         
         y[k] = (H@z).flatten()
-        if Activate_Noise : y[k]+=measure_noise
+        if Activate_Noise : 
+            measure_noise = np.random.normal(0,sqrt(1e-6),len(y[0]))
+            y[k]+=measure_noise
         
         # Kalman Filter Gains 
 
