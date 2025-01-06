@@ -6,8 +6,8 @@ from IPython.display import Video, display
 def Create_Arm_Mesh():
     upper_arm_length = 0.3  # Longueur du bras supérieur
     forearm_length = 0.33  # Longueur de l'avant-bras
-    arm_radius = 0.05  # Rayon du bras
-    joint_radius = 0.07
+    arm_radius = 0.04  # Rayon du bras
+    joint_radius = 0.06
 
     # Créer le cylindre pour le bras supérieur
     upper_arm = Cylinder(center=(upper_arm_length/2, 0, 0), direction=(1, 0, 0), 
@@ -38,9 +38,9 @@ def Create_Plotter(filename = "test.mp4",frame_rate=60):
     plotter = pv.Plotter()
     plotter.open_movie(filename=filename,framerate = frame_rate)
     plotter.camera_position = [
-    (-1,-1,1),  # Camera location (farther from the origin)
+    (-.75,-.75,1.5),  # Camera location (farther from the origin)
     (.3, 0, 0),  # Focal point (center of the scene)
-    (0, 0, 1),  # View up vector
+    (0, 0, 2),  # View up vector
     ]
     plotter.show_axes_all()
     return plotter
@@ -64,8 +64,8 @@ def Get_All_Cartesian(thetas,thetae,max_i = np.inf):
         x[i],y[i],z[i] = Cartesian_Point(thetas,thetae,i)
     return np.column_stack((x, y, z))
 
-def Video_Creation(plotter,arm_mesh,parts,Angles):
-    End_Pos = Cartesian_Point(Angles[0],Angles[1],-1)
+def Video_Creation(plotter,arm_mesh,parts,Angles,target):
+    End_Pos = [target[0],target[1],0]
     Start_Pos = Cartesian_Point(Angles[0],Angles[1],0)
     upper_arm_length = 0.3  # Longueur du bras supérieur
     rotation_center = [upper_arm_length, 0, 0]
@@ -80,7 +80,7 @@ def Video_Creation(plotter,arm_mesh,parts,Angles):
         for j in range(len(parts)):
             arm_mesh+=parts[j]
         cube = pv.Cube(center = End_Pos,
-                          x_length=.1,y_length=.1,z_length=.1).rotate_z(-90,point = [0,0,0])
+                          x_length=.06,y_length=.06,z_length=.06).rotate_z(-90,point = [0,0,0])
         plotter.clear() 
         points = Get_All_Cartesian(Angles[0],Angles[1],max_i=i)
         curve = pv.PolyData(points)
@@ -95,8 +95,8 @@ def Video_Creation(plotter,arm_mesh,parts,Angles):
         plotter.write_frame()
     plotter.close()
 
-def Produce_ArmVideo(filename,Angles):  
-    plotter= Create_Plotter(filename)
+def Produce_ArmVideo(filename,Angles,target,frame_rate = 60):  
+    plotter= Create_Plotter(filename,frame_rate=frame_rate)
     arm_mesh,parts = Create_Arm_Mesh()
-    Video_Creation(plotter,arm_mesh,parts,Angles)
+    Video_Creation(plotter,arm_mesh,parts,Angles,target)
     display(Video(filename=filename, html_attributes="controls muted autoplay",height=600,width=600))

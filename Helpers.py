@@ -153,20 +153,9 @@ def MultipleLabel():
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys())
 
-def Cov_Matrix(M,K,N):
-    K = 1
-    M = np.linalg.inv(M)
-    Sigmau = np.array([[1e-6,0],[0,1e-6]])
-    Sigmav = K*K*M@Sigmau@M.T
-    Sigma = np.zeros((N,N))
-    Sigma[2,2] = Sigmav[0,0]
-    Sigma[2,5] = Sigmav[0,1]
-    Sigma[5,2] = Sigmav[1,0]
-    Sigma[5,5] = Sigmav[1,1]
-    return Sigma
 
-def Cov_Matrix(M,K,N,Var = 1e-6):
-    K = 1
+def Cov_Matrix(M,N,Var = 1e-6):
+    K = 1/0.06
     M = np.linalg.inv(M)
     Sigmau = np.array([[Var,0],[0,Var]])
     Sigmav = K*K*M@Sigmau@M.T
