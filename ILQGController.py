@@ -281,6 +281,7 @@ def GetNoise(alpha,multvar,dt,N,kdelay):
     B = np.zeros((N*(kdelay+1),2))
     B[:N] = B_basic 
     return Compute_Multiplicative_Noise(N,alpha,B,multvar)
+
 def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1,Delay = 0,multvar = 1e-2,FF = False,Side = "Left",Variance = 1e-6):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
@@ -313,7 +314,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,alpha = 1,D
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
         if np.max(np.abs(oldx-X))<1e-3:
             x = step5(x0,l,L,Duration,Noise,alpha,multvar,A,B,K,u-u_incr,FF,Side,kdelay,Variance)
-            #x = step1(x0,u,Duration,Noise)
+            
             X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
             Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
             break

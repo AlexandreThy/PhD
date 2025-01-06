@@ -165,6 +165,21 @@ def Cov_Matrix(M,K,N):
     Sigma[5,5] = Sigmav[1,1]
     return Sigma
 
+def Cov_Matrix(M,K,N,Var = 1e-6):
+    K = 1
+    M = np.linalg.inv(M)
+    Sigmau = np.array([[Var,0],[0,Var]])
+    Sigmav = K*K*M@Sigmau@M.T
+    Sigma = np.zeros((N,N))
+    Sigmam = np.diag(np.ones(N)*Var)
+    for S in [Sigma,Sigmam]:
+        S[2,2] = Sigmav[0,0]
+        S[2,5] = Sigmav[0,1]
+        S[5,2] = Sigmav[1,0]
+        S[5,5] = Sigmav[1,1]
+    return Sigma,Sigmam
+
+
 def ToCartesian(x):
     if len(x.shape) == 1 : 
         s = x[0]
