@@ -1,7 +1,6 @@
 from Helpers import *
-from Controller import *
 
-def plotFL(Pert,FSpan,Noise):
+def plotFL(Pert,FSpan,Noise,Feedback_Linearization):
     """
     Pert (array of size 2 of float): torque perturbation applied
 
@@ -52,7 +51,7 @@ def plotFL(Pert,FSpan,Noise):
     plt.savefig("img/FL2.png",dpi = 300)
     plt.show()
     
-def plotSimpleMovements(Pert,FSpan,Noise,K = 4000):
+def plotSimpleMovements(Pert,FSpan,Noise,Feedback_Linearization,LQG,ILQG,K = 4000):
     fig,ax = plt.subplots()
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_visible(False)
@@ -117,7 +116,7 @@ def plotSimpleMovements(Pert,FSpan,Noise,K = 4000):
 
 
 
-def ExploreMovements(Pert,FSpan,Noise):
+def ExploreMovements(Pert,FSpan,Noise,LQG,Feedback_Linearization):
     fig,ax = plt.subplots()
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_visible(False)
@@ -183,7 +182,7 @@ def ExploreMovements(Pert,FSpan,Noise):
     plt.show()
 
 
-def NonlinearityImpact(MovementArray,DurationArray,Func,ylabel):
+def NonlinearityImpact(MovementArray,DurationArray,Func,ylabel,LQG,Feedback_Linearization):
     SIZE = len(DurationArray)
     COLORLQG = "#F89D36"
     COLORFL = "#8D99AE"
@@ -241,3 +240,60 @@ def NonlinearityImpact(MovementArray,DurationArray,Func,ylabel):
 
 
     plt.legend()
+
+def PlotTraj(X,Y,EnvironmentDynamics,kdelay,dt,starting_point,targets):
+        #plt.grid(linestyle='--')
+        #if FF : 
+            #plt.plot(np.linspace(-10,10,100),np.ones(100)*FFonset,linestyle = "--",alpha = .7,color = "grey")
+        plt.axis("equal")
+        
+
+        color = "cyan"
+        ls = "-"
+        lw = 3
+        if len(EnvironmentDynamics.keys()) >0 :
+            if EnvironmentDynamics["Side"] == "Right": 
+                ls = "--"
+                lw = 1
+                color = "red"
+            if EnvironmentDynamics["FF"] == False:
+                ls = "-"
+                lw = 1
+                color = "grey"
+        if kdelay > 0 and len(EnvironmentDynamics.keys()) >0 : 
+            if EnvironmentDynamics["FF"] ==False : plt.plot(X,Y,color = color,label = "FL("+str(int(kdelay*dt*1000))+ " ms delay)",linewidth = lw,linestyle = ls)
+            if EnvironmentDynamics["FF"] == True : plt.plot(X,Y,color = color,label = "FL("+str(int(kdelay*dt*1000))+ " ms delay)\n "+ str(EnvironmentDynamics["Side"])+" FF",linewidth = lw,linestyle = ls)
+        else : plt.plot(X,Y,color = "#48494B",label = "Feedback Linearization",linewidth = 1)
+        plt.xlabel("X [cm]")
+        plt.ylabel("Y [cm]")
+        #plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
+        MultipleLabel()
+        # Remove the right and top axes
+        
+
+
+def PlotReachinginAllDirections(Feedback_Linearization,ILQG,K=60,Duration = .6,L=20,start = [0,35],w1 = 1e7,w2 = 1e4,r1 = 1e-4,Noise = True):
+    plt.style.use('seaborn-darkgrid')  # Other options: 'ggplot', 'fivethirtyeight', 'bmh', etc
+    fig, ax = plt.subplots(figsize = (8,8))
+    NUMTARG = 16
+    TARG = []
+
+    theta = np.linspace(0,2*pi,NUMTARG,endpoint=False)
+    for i in range(NUMTARG):
+        TARG.append(start+np.array([L*cos(theta[i]),L*sin(theta[i])]))
+
+    for i in range(NUMTARG):
+        plt.scatter(TARG[i][0],TARG[i][1],color = "black",s = 300)
+        #plt.text(TARG[i][0]-.5,TARG[i][1]-.8,str(i+1),color = "red",size =  10)
+                #plt.plot(np.linspace(start[0],TARG[i][0]),np.linspace(start[1],TARG[i][1]),label = str(i+1))
+
+        targets = TARG[i]
+        xILQG,yILQG,_,_ = ILQG(Duration,w1,w2,r1,targets,K,start,Noise = Noise,plot = False)
+        X,Y = Feedback_Linearization(Duration,w1,w1,w2,w2,r1,r1,targets,start,Num_iter = K,Activate_Noise=Noise,Delay=0,plot = False)
+        plt.plot(xILQG,yILQG,label = "ILQG",color = (0.44,0.91,0.86))
+        plt.plot(X,Y,label = "FL",color = (0.51,0.25,0.7))
+        plt.axis("equal")
+
+        MultipleLabel()
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)

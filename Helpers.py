@@ -23,30 +23,7 @@ a2 = m2*l1*s2
 a3 = I2
 
 Bdyn = np.array([[0.5,0.025],[0.025,0.5]])
-def Old_Compute_Noise(NbreVar,Var,kdelay):
-    Omega_sens = np.zeros((NbreVar*(kdelay+1),NbreVar*(kdelay+1)))
-    Om = np.diag(np.ones(NbreVar)*Var)
-    Omega_sens[:NbreVar,:NbreVar] = Om
-    motor_noise = np.zeros(NbreVar*(kdelay+1))
-    mn = np.random.normal(0,np.sqrt(Var),NbreVar).T
-    motor_noise[:NbreVar] = mn
-    
-    Omega_measure = np.diag(np.ones(NbreVar)*Var)
-    measure_noise = np.random.normal(0,np.sqrt(Var),NbreVar).T
 
-    return Omega_sens,motor_noise.T,Omega_measure,measure_noise
-
-def Compute_Noise(NbreVar,alpha,B):
-    #B = B[:NbreVar]
-    Omega_sens = alpha*B@B.T
-    #Ok que si omegasens est diag
-    motor_noise = np.zeros(Omega_sens.shape[0])
-    for i in range(Omega_sens.shape[0]):
-        motor_noise[i] = np.random.normal(0,np.sqrt(Omega_sens[i,i]))
-    Omega_measure = np.diag(np.ones(NbreVar)*1e-6)
-    measure_noise = np.random.normal(0,np.sqrt(1e-6),NbreVar).T
-
-    return Omega_sens,motor_noise.T,Omega_measure,measure_noise
 def Compute_Multiplicative_Noise(NbreVar,alpha,B,mult_var):
     #B = B[:NbreVar]
     Omega_sens = alpha*B@B.T
@@ -168,14 +145,36 @@ def Cov_Matrix(M,N,Var = 1e-6):
         S[5,5] = Sigmav[1,1]
     return Sigma,Sigmam
 
+def NoiseAndCovMatrix(M,N,kdelay,Var = 1e-6):
 
-def ToCartesian(x):
+    K = 1/0.06
+    M = np.linalg.inv(M)
+    Sigmau = np.array([[Var,0],[0,Var]])
+    Sigmav = K*K*M@Sigmau@M.T
+    SigmaMotor = np.zeros((N*(kdelay+1),N*(kdelay+1)))
+    Sigma = np.zeros((N,N))
+    SigmaSense = np.diag(np.ones(N)*Var)
+    for S in [Sigma,SigmaSense]:
+        S[2,2] = Sigmav[0,0]
+        S[2,5] = Sigmav[0,1]
+        S[5,2] = Sigmav[1,0]
+        S[5,5] = Sigmav[1,1]
+    SigmaMotor[:N,:N] = Sigma
+
+    motornoise,sensorynoise = np.zeros(2),np.zeros(N)
+    for i in range(N):
+        sensorynoise[i] = np.random.normal(0,np.sqrt(SigmaSense[i,i]))
+    motornoise = np.random.normal(0,np.sqrt(Var),2)
+    return SigmaMotor,SigmaSense,motornoise,sensorynoise
+
+def ToCartesian(x,at3 = False):
+    elbowindex = 3 if at3 else 1
     if len(x.shape) == 1 : 
         s = x[0]
-        e = x[1]
+        e = x[elbowindex]
     else : 
         s = x[:,0]
-        e = x[:,1]
+        e = x[:,elbowindex]
     X = np.cos(s+e)*33+np.cos(s)*30
     Y = np.sin(s+e)*33+np.sin(s)*30
 
