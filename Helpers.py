@@ -6,6 +6,7 @@ from scipy.linalg import expm
 from matplotlib.lines import Line2D
 import matplotlib as mpl
 from matplotlib.patches import FancyArrowPatch
+import matplotlib.image as mpimg
 
 I1 = 0.025
 I2 = 0.045
@@ -124,12 +125,11 @@ def Compute_f_new_version(theta,omega,acc,factor):
     F2 = (gs*gamma-fs*nu)/(gs*fe-ge*fs) - acc[1]
     return np.array([F1,F2])
 
-def MultipleLabel():
+def MultipleLabel(title = "Controllers"):
         
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys())
-
+    plt.legend(by_label.values(), by_label.keys(),fontsize = 16,title = title,title_fontsize = 15,frameon = True,shadow = True,fancybox = True,loc = "upper right")
 
 def Cov_Matrix(M,N,Var = 1e-6):
     K = 1/0.06
@@ -145,7 +145,7 @@ def Cov_Matrix(M,N,Var = 1e-6):
         S[5,5] = Sigmav[1,1]
     return Sigma,Sigmam
 
-def NoiseAndCovMatrix(M,N,kdelay,Var = 1e-6):
+def NoiseAndCovMatrix(M=np.identity(2),N=6,kdelay=0,Var = 1e-6,Linear = False):
 
     K = 1/0.06
     M = np.linalg.inv(M)
@@ -165,6 +165,7 @@ def NoiseAndCovMatrix(M,N,kdelay,Var = 1e-6):
     for i in range(N):
         sensorynoise[i] = np.random.normal(0,np.sqrt(SigmaSense[i,i]))
     motornoise = np.random.normal(0,np.sqrt(Var),2)
+    if Linear : return np.diag(np.ones(N)*Var),np.diag(np.ones(N)*Var),motornoise,np.random.normal(0,np.sqrt(Var),N)
     return SigmaMotor,SigmaSense,motornoise,sensorynoise
 
 def ToCartesian(x,at3 = False):
@@ -179,3 +180,69 @@ def ToCartesian(x,at3 = False):
     Y = np.sin(s+e)*33+np.sin(s)*30
 
     return X,Y
+
+def get_Gravity_Matrix(x,g = 9.81,alpha = 0,additional_mass = 0):
+    """
+    return the gravity matrices terms
+    """
+    Ms = 52
+    Ls = 1.57
+    m1 = Ms*0.028
+    m2 = Ms*0.022
+    l1 = Ls*0.186
+    l2 = Ls*(0.146)
+    lc1 = l1*0.436
+    lc2 = l2*0.682
+    G = np.array([g*(m1*lc1*np.cos(x[0]+alpha)+m2*(lc2*np.cos(x[0]+alpha+x[3])+l1*np.cos(x[0]+alpha))+additional_mass*(l2*np.cos(x[0]+alpha+x[3])+l1*np.cos(x[0]+alpha))),
+                    g*(m2+additional_mass*l2/lc2)*lc2*np.cos(x[0]+x[3]+alpha)])
+    Gdot = np.array([g*(-m1*lc1*np.sin(x[0]+alpha)*x[1]+m2*(-lc2*np.sin(x[0]+alpha+x[3])*(x[1]+x[4])-l1*np.sin(x[0]+alpha)*x[1])+additional_mass*(-l2*np.sin(x[0]+alpha+x[3])*(x[1]+x[4])-l1*np.sin(x[0]+alpha)*x[1])),
+                    -g*(m2+l2/lc2*additional_mass)*lc2*np.sin(x[0]+alpha+x[3])*(x[1]+x[4])])
+    return G,Gdot
+
+def M1(te,ObjectMass=0,Ms = 52,Ls = 1.57):
+    m1 = Ms*0.028
+    m2 = Ms*0.022
+    l1 = Ls*0.186
+    l2 = Ls*(0.146)
+    lc1 = l1*0.436
+    lc2 = l2*0.682
+    I1 = m1*(l1*0.322)**2
+    I2 = m2*(l2*0.468)**2
+    return np.array([[m1*lc1*lc1+I1+I2+m2*(lc2*lc2+l1*l1+2*l1*lc2*cos(te))+ObjectMass*(l1*l1+2*l1*l2*cos(te)+l2*l2),
+                      I2+m2*(lc2*lc2+l1*lc2*cos(te))+ObjectMass*(l1*l2*cos(te)+l2*l2)],
+                      [I2+m2*(lc2*lc2+l1*lc2*cos(te))+ObjectMass*(l1*l2*cos(te)+l2*l2),
+                       m2*lc2*lc2+I2+ObjectMass*l2*l2]])
+
+def dM1(te,oe,ObjectMass=0,Ms=52,Ls=1.57):
+    m2 = Ms*0.022
+    l1 = Ls*0.186
+    l2 = Ls*(0.146)
+    lc2 = l2*0.682
+    return np.array([[m2*(-2*l1*lc2*sin(te)*oe)+ObjectMass*(-2*l1*l2*sin(te)*oe),
+                      m2*(-l1*lc2*sin(te)*oe)+ObjectMass*(-l1*l2*sin(te)*oe)],
+                      [m2*(-l1*lc2*sin(te)*oe)+ObjectMass*(-l1*l2*sin(te)*oe),
+                       0]])
+
+
+def C1(te,os,oe,ObjectMass = 0,Ms=52,Ls=1.57):
+    
+    m2 = Ms*0.022
+    l1 = Ls*0.186
+    l2 = Ls*(0.146)
+    lc2 = l2*0.682
+    c = m2*l1*lc2*sin(te)+ObjectMass*l1*l2*sin(te)
+    C=np.array([[-2*oe*c,-oe*c],[os*c,0]])
+    return C@np.array([os,oe])
+
+def dC1(te,os,oe,accs,acce,ObjectMass=0,Ms=52,Ls=1.57):
+    
+    m2 = Ms*0.022
+    l1 = Ls*0.186
+    l2 = Ls*(0.146)
+    lc2 = l2*0.682
+    c = m2*l1*lc2*sin(te)+ObjectMass*l1*l2*sin(te)
+    dc = m2*l1*lc2*cos(te)*oe+ObjectMass*l1*l2*cos(te)*oe
+    C=np.array([[-2*oe*c,-oe*c],[os*c,0]])
+    Cdot = np.array([[-2*(oe*dc+acce*c),-(oe*dc+acce*c)],[(os*dc+accs*c),0]])
+    return C@np.array([accs,acce])+Cdot@np.array([os,oe])
+
