@@ -263,7 +263,7 @@ def PlotTraj(X,Y,EnvironmentDynamics,kdelay,dt,starting_point,targets):
         if kdelay > 0 and len(EnvironmentDynamics.keys()) >0 : 
             if EnvironmentDynamics["FF"] ==False : plt.plot(X,Y,color = color,label = "FL("+str(int(kdelay*dt*1000))+ " ms delay)",linewidth = lw,linestyle = ls)
             if EnvironmentDynamics["FF"] == True : plt.plot(X,Y,color = color,label = "FL("+str(int(kdelay*dt*1000))+ " ms delay)\n "+ str(EnvironmentDynamics["Side"])+" FF",linewidth = lw,linestyle = ls)
-        else : plt.plot(X,Y,color = "#48494B",label = "Feedback Linearization",linewidth = 1)
+        else : plt.plot(X,Y,color = "#48494B",label = "Feedback\nLinearization",linewidth = 1)
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         #plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
