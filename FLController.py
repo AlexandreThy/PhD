@@ -200,7 +200,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         
 
     if ShowJ : 
-        J+= z.T@Q@z
+        J+= z[:8].T@Q@z[:8]
 
     #Change of coordinates from angular to cartesian 
     
