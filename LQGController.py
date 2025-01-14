@@ -256,6 +256,23 @@ def LQG_OnNonlinSystem(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e
             plt.plot(X2,Y2,color = "black",label = "Estimation",linewidth = .8,linestyle ="--",alpha = .5)
     return X,Y,array_u
 
+def Linearization(dt,x):
+    ts,os,taus,te,oe,taue= x[:6]
+    K = 1/0.06
+    C = np.array([-x[4]*(2*x[1]+x[4])*a2*np.sin(x[3]),x[1]*x[1]*a2*np.sin(x[3])])
+    dCdte = np.array([-x[4]*(2*x[1]+x[4])*a2*np.cos(x[3]),x[1]*x[1]*a2*np.cos(x[3])])
+    dCdos = np.array([-x[4]*2*a2*np.cos(x[3]),2*x[1]*a2*np.cos(x[3])])
+    dCdoe = np.array([(-2*x[1]-2*x[4])*a2*np.cos(x[3]),0])
+    
+    DetM = a1*a3-a3*a3-a2*a2*cos(te)*cos(te)
+    Minv = np.array([[a3,-a3-a2*cos(te)],
+              [-a3-a2*cos(te),a1+2*a2*cos(te)]])/DetM
+    dM = np.array([[-2*a2*sin(te),-a2*sin(te)],[-a2*sin(te),0]])
+    vel = np.array([np.zeros(2),(-Minv@(dCdos+Bdyn@np.array([1,0]))),Minv@np.array([1,0]),-Minv@(dM@Minv@(np.array([taus,taue]-C-Bdyn@np.array([os,oe])))-dCdoe),-Minv@(dCdoe+Bdyn@np.array([0,1])),Minv@np.array([0,1]),np.zeros(2),np.zeros(2)])
+    A = np.array([[0,1,0,0,0,0,0,0],vel[:,0],[0,0,-K,0,0,0,0,0],[0,0,0,0,1,0,0,0],vel[:,1],[0,0,0,0,0,-K,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]])
+    A = np.identity(8)+dt*A
+    
+    return A
 
 def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300,Activate_Noise = False,plotEstimation = False):
 
@@ -284,9 +301,7 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
     
     #Define Dynamic Matrices  
 
-    A_basic = np.array([[1,dt,0,0,0,0,0,0],[0,1+dt*(-0.5*a1+0.025*a3)/((a1-a3)*a3),dt*a1/((a1-a3)*a3),0,dt*(-0.025*a1+0.5*a3)/((a1-a3)*a3),dt/(a3-a1),0,0],
-     [0,0,1-dt/tau,0,0,0,0,0],[0,0,0,1,dt,0,0,0],[0,dt*0.475/(a1-a3),-dt/(a1-a3),0,1-dt*0.475/(a1-a3),dt/(a1-a3),0,0],
-     [0,0,0,0,0,1-dt/tau,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
+    
 
     B_basic = np.transpose([[0,0,dt/tau,0,0,0,0,0],[0,0,0,0,0,dt/tau,0,0]])
 
@@ -298,7 +313,7 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
     H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
 
     A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
-    A[:Num_Var,:Num_Var] = A_basic
+    
     A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
     B = np.zeros(((kdelay+1)*Num_Var,2))
     B[:Num_Var] = B_basic
@@ -326,7 +341,7 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
     F = [0,0]
     omega = np.zeros(2)
     for k in range(Num_iter-1):
-
+        A[:Num_Var,:Num_Var] = Linearization(dt,x)
         S = Q
         for l in range(Num_iter-1):
             L = np.linalg.inv(R+B.T@S@B)@B.T@S@A

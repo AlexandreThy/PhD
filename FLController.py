@@ -117,6 +117,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     x = np.zeros(Num_Var-2)
     x[0],x[1] = x0[0],x0[3]
     new_x = np.copy(x)
+    array_x[0] = x
 
     #Incorporation of delay 
 
@@ -215,7 +216,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     if plot : 
         PlottingFunction(X,Y,AdditionalDynamics,Delay,dt,starting_point,targets)
 
-    if ShowJ : return X,Y,J,array_x[1:]
+    if ShowJ : return X,Y,J,array_x
     if Showu : return X,Y,array_u
     return X,Y
 

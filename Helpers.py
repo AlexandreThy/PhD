@@ -165,7 +165,7 @@ def NoiseAndCovMatrix(M=np.identity(2),N=6,kdelay=0,Var = 1e-6,Linear = False):
     for i in range(N):
         sensorynoise[i] = np.random.normal(0,np.sqrt(SigmaSense[i,i]))
     motornoise = np.random.normal(0,np.sqrt(Var),2)
-    if Linear : return np.diag(np.ones(N)*Var),np.diag(np.ones(N)*Var),motornoise,np.random.normal(0,np.sqrt(Var),N)
+    if Linear : return np.diag(np.ones(N*(kdelay+1))*Var),np.diag(np.ones(N)*Var),motornoise,np.random.normal(0,np.sqrt(Var),N)
     return SigmaMotor,SigmaSense,motornoise,sensorynoise
 
 def ToCartesian(x,at3 = False):
