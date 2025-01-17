@@ -125,11 +125,11 @@ def Compute_f_new_version(theta,omega,acc,factor):
     F2 = (gs*gamma-fs*nu)/(gs*fe-ge*fs) - acc[1]
     return np.array([F1,F2])
 
-def MultipleLabel(title = "Controllers"):
+def MultipleLabel(title = "Controllers",side = "right"):
         
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys(),fontsize = 16,title = title,title_fontsize = 15,frameon = True,shadow = True,fancybox = True,loc = "upper right")
+    plt.legend(by_label.values(), by_label.keys(),fontsize = 16,title = title,title_fontsize = 15,frameon = True,shadow = True,fancybox = True,loc = "upper "+side)
 
 def Cov_Matrix(M,N,Var = 1e-6):
     K = 1/0.06

@@ -2,7 +2,7 @@ from Helpers import *
 from Environment import *
 from plot import *
 
-def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,PlottingFunction=PlotTraj ,Activate_Noise = False,Num_iter = 300,Showu=False, ShowJ = False, ShowEstimate = False,Delay = .06,AdditionalDynamics = {}):
+def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,PlottingFunction=PlotTraj ,Activate_Noise = False,Num_iter = 300,Showu=False, ShowJ = False, ShowEstimate = False,Delay = .06,AdditionalDynamics = {},Stabilization_Time = 0):
     
     """
     Duration (float) : Duration of the movement
@@ -48,7 +48,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
 
     dt = Duration/Num_iter 
     kdelay = int(Delay/dt)
-
+    stab = int(Stabilization_Time/dt)
     obj1,obj2 = newton(newtonf,newtondf,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(newtonf,newtondf,1e-8,1000,starting_point[0],starting_point[1])
 
@@ -93,7 +93,8 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
     for k in range(Num_iter-1):
         L = np.linalg.inv(R+B_basic.T@S@B_basic)@B_basic.T@S@A_basic
         array_L[Num_iter-2-k] = L
-        S = A_basic.T@S@(A_basic-B_basic@L)
+        Qk = Q if k<stab else np.zeros(Q.shape)
+        S = Qk+A_basic.T@S@(A_basic-B_basic@L)
         array_S[Num_iter-2-k] = S
         
     #Initialize matrices 
