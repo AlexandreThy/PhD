@@ -125,6 +125,16 @@ def Compute_f_new_version(theta,omega,acc,factor):
     F2 = (gs*gamma-fs*nu)/(gs*fe-ge*fs) - acc[1]
     return np.array([F1,F2])
 
+def Compute_constant_force(theta,omega,acc,factor):
+    fs,fe,gs,ge,fss,fse,fee,gss,gse,gee = pre_Compute(theta,omega)
+    xddot = factor + fss*omega[0]*omega[0] + 2*fse*omega[0]*omega[1] + fee * omega[1] * omega[1] + fs*acc[0] + fe*acc[1]
+    yddot = gss*omega[0]*omega[0] + 2*gse*omega[0]*omega[1] + gee * omega[1] * omega[1] + gs*acc[0] + ge*acc[1]
+    gamma = xddot - fss*omega[0]*omega[0] - 2*fse*omega[0]*omega[1] - fee * omega[1] * omega[1]
+    nu = yddot - gss*omega[0]*omega[0] - 2*gse*omega[0]*omega[1] - gee * omega[1] * omega[1]
+    F1 = (fe*nu-ge*gamma)/(fe*gs-ge*fs) - acc[0]
+    F2 = (gs*gamma-fs*nu)/(gs*fe-ge*fs) - acc[1]
+    return np.array([F1,F2])
+
 def MultipleLabel(title = "Controllers",side = "right"):
         
     handles, labels = plt.gca().get_legend_handles_labels()
