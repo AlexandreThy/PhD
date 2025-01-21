@@ -94,27 +94,19 @@ def fu(x,u):
                      [1/tau,0],
                      [0,1/tau]])
 
-def l(x,u,r1,xtarg=0,w1=0,w2=0,stab=False):
+def l(x,u,r1,xtarg=0,w1=0,w2=0):
     totalcost = 0
-    if stab : totalcost += w1/2*((x[0]-xtarg[0])*(x[0]-xtarg[0])+(x[1]-xtarg[1])*(x[1]-xtarg[1])) + w2/2*(x[2]*x[2]+x[3]*x[3])
     return totalcost + r1*(u[0]*u[0]+u[1]*u[1])/2
 
-def lx(x,u,xtarg=0,w1=0,w2=0,stab=False):
+def lx(x,u,xtarg=0,w1=0,w2=0):
     totalcost = np.zeros(6)
-    if stab : totalcost += np.array([w1*(x[0]-xtarg[0]),w1*(x[1]-xtarg[1]),w2*x[2],w2*x[3],0,0])
     return totalcost
 
 def lu(x,u,r1):
     return np.array([u[0]*r1,u[1]*r1])
 
-def lxx(w1=0,w2=0,stab = False):
+def lxx(w1=0,w2=0):
     totalcost =np.zeros((6,6))
-    if stab : totalcost+= np.array([[w1,0,0,0,0,0],
-                     [0,w1,0,0,0,0],
-                     [0,0,w2,0,0,0],
-                     [0,0,0,w2,0,0],
-                     [0,0,0,0,0,0],
-                     [0,0,0,0,0,0]])
     return totalcost
 
 def luu(x,u,r1):
@@ -211,7 +203,7 @@ def step5(x0,l,L,Duration,Noise,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
         
     return newx
 
-def step2(x,u,Duration,w1,w2,r1,xtarg,stab_iter = 0):
+def step2(x,u,Duration,w1,w2,r1,xtarg):
     n = len(x[0])
     m = len(u[0])
     K = np.shape(u)[0]+1
@@ -224,13 +216,12 @@ def step2(x,u,Duration,w1,w2,r1,xtarg,stab_iter = 0):
     Q = np.zeros((K,n,n))
     R = np.zeros((K-1,m,m))
     for i in range(K-1):
-        stab = False if i<K-1-stab_iter else True
         A[i] = np.identity(n)+dt*fx(x[i],u[i])
         B[i] = dt*fu(x[i],u[i])
-        q[i] = dt*l(x[i],u[i],r1,xtarg,w1,w2,stab)
-        qbold[i] = dt*lx(x[i],u[i],xtarg,w1,w2,stab)
+        q[i] = dt*l(x[i],u[i],r1,xtarg,w1,w2)
+        qbold[i] = dt*lx(x[i],u[i],xtarg,w1,w2)
         r[i] = dt*lu(x[i],u[i],r1)
-        Q[i] = dt*lxx(w1,w2,stab)
+        Q[i] = dt*lxx(w1,w2)
         R[i] = dt*luu(x[i],u[i],r1)
 
     q[K-1] = h(x[K-1],w1,w2,xtarg)
@@ -294,7 +285,7 @@ def GetNoise(alpha,multvar,dt,N,kdelay):
     B[:N] = B_basic 
     return Compute_Multiplicative_Noise(N,alpha,B,multvar)
 
-def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6,Stabilization_Time = 0):
+def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
@@ -307,7 +298,6 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,F
     u = np.zeros((K-1,m))
     dt = Duration/K
     kdelay = int(Delay/dt)
-    stab = int(Stabilization_Time/dt)
     newcbold = np.zeros((K,m,n))
     C = np.zeros((K,m,n,m))
     for i in range(K):
@@ -329,7 +319,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,F
             Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
             break
 
-        A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,np.array([obj1,obj2]),stab)
+        A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,np.array([obj1,obj2]))
         l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
         u_incr = step4(l,L,K,A,B)
         u += u_incr

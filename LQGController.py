@@ -28,9 +28,7 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
     
     #Define Dynamic Matrices  
 
-    A_basic = np.array([[1,dt,0,0,0,0,0,0],[0,1+dt*(-0.5*a1+0.025*a3)/((a1-a3)*a3),dt*a1/((a1-a3)*a3),0,dt*(-0.025*a1+0.5*a3)/((a1-a3)*a3),dt/(a3-a1),0,0],
-     [0,0,1-dt/tau,0,0,0,0,0],[0,0,0,1,dt,0,0,0],[0,dt*0.475/(a1-a3),-dt/(a1-a3),0,1-dt*0.475/(a1-a3),dt/(a1-a3),0,0],
-     [0,0,0,0,0,1-dt/tau,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
+    A_basic = Linearization(dt,[pi/4,0,0,pi/2,0,0])
 
     B_basic = np.transpose([[0,0,dt/tau,0,0,0,0,0],[0,0,0,0,0,dt/tau,0,0]])
 
@@ -123,7 +121,7 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
             Y2 = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
             plt.plot(X2,Y2,color = "black",label = "Estimation",linewidth = .8,linestyle ="--",alpha = .5)
     if Showu: return X,Y,array_u
-    return X,Y,J
+    return X,Y,J,x_nonlin
 
 
 def LQG_OnNonlinSystem(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300,Activate_Noise = False,plotEstimation = False):
@@ -274,15 +272,15 @@ def Linearization(dt,x):
     
     return A
 
-def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300,Activate_Noise = False,plotEstimation = False):
+def BestLQG(Duration = .6,w1 = 1e7,w2 = 1e7,w3 = 1e3,w4 = 1e3,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,FFonset= 0,Num_iter = 300,Activate_Noise = False,plotEstimation = False,MultipleLinearization = False,Stabilization_Time = 0):
 
 
     
     dt = Duration/Num_iter
     kdelay = int(Delay/dt)
-
-    obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1]) #Defini les targets
-    st1,st2 = newton(newtonfunc,newtondfunc,1e-8,1000,starting_point[0],starting_point[1])
+    stab = int(Stabilization_Time/dt)
+    obj1,obj2 = newton(newtonf,newtondf,1e-8,1000,targets[0],targets[1]) #Defini les targets
+    st1,st2 = newton(newtonf,newtondf,1e-8,1000,starting_point[0],starting_point[1])
 
     xstart = np.array([st1,0,0,st2,0,0,obj1,0,obj2,0])
     x0 = np.array([st1,0,0,st2,0,0,obj1,obj2])
@@ -341,12 +339,16 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
     F = [0,0]
     omega = np.zeros(2)
     for k in range(Num_iter-1):
-        A[:Num_Var,:Num_Var] = Linearization(dt,x)
+        linpoint = x[:8] if MultipleLinearization else [pi/2,0,0,pi/4,0,0,0,0]
+        A[:Num_Var,:Num_Var] = Linearization(dt,linpoint)
+        if k==0:
+            AKalman = np.copy(A)
         S = Q
         for l in range(Num_iter-1):
             L = np.linalg.inv(R+B.T@S@B)@B.T@S@A
             array_L[Num_iter-2-l] = L
-            S = A.T@S@(A-B@L)
+            Qk = Q if l<stab else np.zeros(Q.shape)
+            S = Qk+A.T@S@(A-B@L)
             array_S[Num_iter-2-l] = S
             
         #print(array_L[0])
@@ -358,9 +360,9 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
         M = np.array([[a1+2*a2*cos(x[3]),a3+a2*cos(x[3])],[a3+a2*cos(x[3]),a3]])
         #acc = np.linalg.solve(M,(np.array([x[2],x[5]])-Bdyn@np.array([x[1],x[4]])-C))+F
         acc = (np.array([array_x[k][2],array_x[k][5]])-np.array([array_x[k-1][2],array_x[k-1][5]]))/dt
-        if (np.sin(x[0]+x[3])*33+np.sin(x[0])*30 > 35) and (FF == True):
+        if (np.sin(x[0]+x[3])*33+np.sin(x[0])*30 > FFonset) and (FF == True):
 
-            F = Compute_f_new_version(np.array([x[0],x[3]]),np.array([x[1],x[4]]),acc,1)
+            F = Compute_f_new_version(np.array([x[0],x[3]]),np.array([x[1],x[4]]),acc,.3)
             if Side == "Left": F*=-1
 
         else : 
@@ -368,17 +370,19 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
         Omega_sens,Omega_measure,motor_noise,measure_noise = NoiseAndCovMatrix(M,Num_Var,kdelay,Linear=True)
         y[k] = (H@x).flatten()
         if Activate_Noise == True : y[k]+=measure_noise
-        K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
-        sigma = Omega_sens + (A - K@H)@sigma@A.T
+        K = AKalman@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
+        sigma = Omega_sens + (AKalman - K@H)@sigma@AKalman.T
         u = - L[k].reshape(np.flip(B.shape))@xhat
         array_u[k] = u
         J+= u.T@R@u
         xhat = A@xhat + B@u + K@(y[k]-H@xhat)
-
+        Kfactor = 1/0.06
         omega += dt*np.linalg.solve(M,np.array([x[2],x[5]])-C-Bdyn@omega)+dt*F
-        x = np.concatenate((np.array([x[0]+dt*x[1],omega[0],x[2],x[3]+dt*x[4],omega[1],x[5],x[6],x[7]]),x[:-Num_Var]))+B@u
+        x = np.concatenate((np.array([x[0]+dt*x[1],omega[0],x[2]+dt*Kfactor*(u[0]-x[2]),x[3]+dt*x[4],omega[1],x[5]+dt*Kfactor*(u[1]-x[5]),x[6],x[7]]),x[:-Num_Var]))
 
-        if Activate_Noise : x[:6]+=motor_noise[:6]
+        if Activate_Noise : 
+            x[2]+=motor_noise[0]
+            x[5]+=motor_noise[1]
         array_xhat[k+1] = xhat[:Num_Var].flatten()
         array_x[k+1] = x[:Num_Var].flatten()
 
@@ -388,7 +392,7 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
     J+= x.T@Q@x
     x0 = xstart
     
-    x_nonlin = array_x.T[:,1:][:,::1]
+    x_nonlin = array_x.T[:,:][:,::1]
     X = np.cos(x_nonlin[0]+x_nonlin[3])*33+np.cos(x_nonlin[0])*30
     Y = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
 
@@ -401,4 +405,4 @@ def BestLQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-
             X2 = np.cos(x_nonlin[0]+x_nonlin[3])*33+np.cos(x_nonlin[0])*30
             Y2 = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
             plt.plot(X2,Y2,color = "black",label = "Estimation",linewidth = .8,linestyle ="--",alpha = .5)
-    return X,Y,array_u
+    return X,Y,array_u,x_nonlin

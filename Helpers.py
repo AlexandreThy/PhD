@@ -8,6 +8,9 @@ import matplotlib as mpl
 from matplotlib.patches import FancyArrowPatch
 import matplotlib.image as mpimg
 
+from matplotlib.colors import ListedColormap, Normalize
+from matplotlib.cm import ScalarMappable
+
 I1 = 0.025
 I2 = 0.045
 m2 = 1
