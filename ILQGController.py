@@ -256,6 +256,7 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R):
         gbold = r[k] + B[k].T@sbold[k+1]+temp1
         G = B[k].T@S[k+1]@A[k]
         H = R[k] + B[k].T@S[k+1]@B[k]+temp2
+        print( B[k].T@S[k+1]@B[k])
         Hinv = np.linalg.inv(H)
 
 
@@ -338,73 +339,6 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,F
         plt.scatter([Xtg],[Ytg],color = "black")
     return X,Y,u,x
 
-def SingleArmLQG(Duration,w1,w2,r1,targ,K,Noise_Variance = 1e-12):
-
-    Num_iter = K
-    dt = Duration/Num_iter
-    x0 = np.array([pi/2,0,targ])
-    
-    Num_Var = 3
-    
-    #Define Weight Matrices
-
-    R = np.array([r1])
-    Q = np.array([[w1,0,-w1],[0,w2,0],[-w1,0,w1]])
-    
-    
-    #Define Dynamic Matrices  
-    g = 9.81
-    L = .5
-    A = np.identity(3)+dt*np.array([[0,1,0],[-g/L,0,0],[0,0,0]])
-
-    B = np.transpose([[0],[dt],[0]]).reshape((Num_Var,1))
-    
-    S = Q
-
-    
-    array_L = np.zeros((Num_iter-1,1,Num_Var))   
-    array_S = np.zeros((Num_iter,Num_Var,Num_Var)) 
-    array_S[-1] = Q
-    for k in range(Num_iter-1):
-        L = np.linalg.inv(R+B.T@S@B)@B.T@S@A
-        array_L[Num_iter-2-k] = L
-        S = A.T@S@(A-B@L)
-        array_S[Num_iter-2-k] = S
-        
-    #print(array_L[0])
-    #Feedback
-    L= array_L
-        
-    array_u = np.zeros((Num_iter-1,1))
-    array_x_nonlin = np.zeros((Num_iter,Num_Var)) 
-    array_x_nonlin[0] = x0
-    x = np.copy(x0)
-
-    x_nonlin = np.copy(x0)
-    new_x_nonlin = np.copy(x0)
-
-    g = 9.81
-    ArmLength = .5
-    for k in range(Num_iter-1):
-        
-        
-        x = np.copy(x_nonlin)     
-
-        u = -L[k].reshape(np.flip(B.shape))@x
-        
-        array_u[k] = u[0]
-        new_x_nonlin[0] += dt*x_nonlin[1]
-        new_x_nonlin[1] += dt*u[0]-dt*g/ArmLength*sin(x_nonlin[0])
-        new_x_nonlin[2] = x_nonlin[2]
-        #new_x_nonlin = A@x_nonlin + B@u
-            
-        array_x_nonlin[k+1] = new_x_nonlin.flatten()
-        x_nonlin = new_x_nonlin   
-
-#Plot
-
-    return array_x_nonlin,array_u
-
 def fnewton(var,X,Y):
     u,v = var
     return np.array([33*np.cos(u+v)+30*np.cos(u)-X,33*np.sin(u+v)+30*np.sin(u)-Y])
@@ -412,20 +346,3 @@ def fnewton(var,X,Y):
 def dfnewton(var):
     u,v = var
     return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
-
-def ILQG_SingleArm(Duration,w1,w2,r1,xtarg,K,x0=np.array([pi/2,0]),m=1):
-    n = len(x0)
-    u = np.zeros((K-1,m))
-    C = np.zeros((K,n,m))
-    cbold = np.zeros((K,n))
-    u_incr = [1]
-
-    #while np.max(u_incr) > 1e-12: 
-    for _ in range(200):    
-        x = step1(x0,u,Duration)
-        A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,xtarg)
-        l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
-        u_incr = step4(l,L,K,A,B)
-        u += u_incr
-    x = step1(x0,u,Duration)
-    return x,u

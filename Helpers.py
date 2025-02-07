@@ -22,7 +22,7 @@ tau = 0.06
 
 #SHOULDER PUIS ELBOW
 
-a1 = I1 + I2 + m2*l2*l2
+a1 = I1 + I2 + m2*l1*l1
 a2 = m2*l1*s2
 a3 = I2
 

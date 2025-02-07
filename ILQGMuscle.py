@@ -1,5 +1,5 @@
 from Helpers import *
-
+Bdyn = np.zeros((2,2))
 
 def f(x,u):
     C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
@@ -11,7 +11,7 @@ def f(x,u):
     lmlo = [0.09076,-0.02793,0.05672,0.00436,0.14294,-0.01343]
     r = [-0.03491,0.03491,-0.02182,0.02182,-0.05498,0.05498]
     for i in range(6):
-        T[i] = (810.8+1621.6*u[i])*(-lmlo[i]+r[i]*u[i]-(A@x[:2])[i])+(54.1+108.1*u[i])*(A@x[2:4])[i]
+        T[i] = (810.8+1621.6*u[i])*(-lmlo[i]+r[i]*u[i]+(A@x[:2])[i])+(54.1+108.1*u[i])*(A@x[2:4])[i]
     torque = (-A.T@T).reshape(2)
     theta = Minv@(torque-Bdyn@x[2:4]-C)
     return np.array([[x[2],x[3],theta[0],theta[1]]])
@@ -21,10 +21,10 @@ def dthetas(x,u):
     Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
     
     A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
-    T = np.zeros(6)
+    T = np.zeros((6,6))
     for i in range(6):
-        T[i] = (810.8+1621.6*u[i])*((A@np.array([1,0]))[i])
-    return Minv@(A.T@T)
+        T[i,i] = (810.8+1621.6*u[i])
+    return Minv@(-A.T@T@A@np.array([1,0]))
 def computetorque(x,u):
         
     A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
@@ -32,7 +32,7 @@ def computetorque(x,u):
     lmlo = [0.09076,-0.02793,0.05672,0.00436,0.14294,-0.01343]
     r = [-0.03491,0.03491,-0.02182,0.02182,-0.05498,0.05498]
     for i in range(6):
-        T[i] = (810.8+1621.6*u[i])*(-lmlo[i]+r[i]*u[i]-(A@x[:2])[i])+(54.1+108.1*u[i])*(A@x[2:4])[i]
+        T[i] = (810.8+1621.6*u[i])*(-lmlo[i]+r[i]*u[i]+(A@x[:2])[i])+(54.1+108.1*u[i])*(A@x[2:4])[i]
     return (-A.T@T).reshape(2)
 def dthetae(x,u):
     C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
@@ -47,12 +47,12 @@ def dthetae(x,u):
     lmlo = [0.09076,-0.02793,0.05672,0.00436,0.14294,-0.01343]
     r = [-0.03491,0.03491,-0.02182,0.02182,-0.05498,0.05498]
     for i in range(6):
-        T[i] = (810.8+1621.6*u[i])*(-lmlo[i]+r[i]*u[i]-(A@x[:2])[i])+(54.1+108.1*u[i])*(A@x[2:4])[i]
+        T[i] = (810.8+1621.6*u[i])*(-lmlo[i]+r[i]*u[i]+(A@x[:2])[i])+(54.1+108.1*u[i])*(A@x[2:4])[i]
     torque = (-A.T@T).reshape(2)
-    T = np.zeros(6)
+    T = np.zeros((6,6))
     for i in range(6):
-        T[i] = (810.8+1621.6*u[i])*((A@np.array([0,1]))[i])
-    torquedot = A.T@T
+        T[i,i] = (810.8+1621.6*u[i])
+    torquedot = -A.T@T@A@np.array([0,1])
     return dMinv@(torque-Bdyn@x[2:4]-C)+Minv@(torquedot-Cdot)
 
 def domegas(x,u):
@@ -60,10 +60,10 @@ def domegas(x,u):
     Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
     Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
     A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
-    T = np.zeros(6)
+    T = np.zeros((6,6))
     for i in range(6):
-        T[i] =(54.1+108.1*u[i])*(A@np.array([1,0]))[i]
-    torquedot = (-A.T@T).reshape(2)
+        T[i,i] =(54.1+108.1*u[i])
+    torquedot = (-A.T@T@A@np.array([1,0])).reshape(2)
     return Minv@(torquedot-Cdot-Bdyn@np.array([1,0]))
 
 
@@ -72,24 +72,24 @@ def domegae(x,u):
     Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
     Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
     A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
-    T = np.zeros(6)
+    T = np.zeros((6,6))
     for i in range(6):
-        T[i] =(54.1+108.1*u[i])*(A@np.array([0,1]))[i]
-    torquedot = (-A.T@T).reshape(2)
+        T[i,i] =(54.1+108.1*u[i])
+    torquedot = (-A.T@T@A@np.array([0,1])).reshape(2)
     return Minv@(torquedot-Cdot-Bdyn@np.array([0,1]))
 
-def du(x,u,i):
+def du(x,u):
 
     Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
     Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
     
     A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
-    T = np.zeros(6)
+    T = np.zeros((6,6))
     lmlo = [0.09076,-0.02793,0.05672,0.00436,0.14294,-0.01343]
     r = [-0.03491,0.03491,-0.02182,0.02182,-0.05498,0.05498]
-    T[i] = (1621.6*(-lmlo[i]+r[i]*u[i]-(A@x[:2])[i])+(810.8+1621.6*u[i])*r[i])+(108.1)*(A@x[2:4])[i]
-    torque = (-A.T@T).reshape(2)
-    return  Minv@(torque)
+    for i in range(6):
+        T[i,i] = (1621.6*(-lmlo[i]+r[i]*u[i]-(A@x[:2])[i])+(810.8+1621.6*u[i])*r[i])+(108.1)*(A@x[2:4])[i]
+    return  Minv@(-A.T@T)
 
 
 
@@ -104,13 +104,11 @@ def fx(x,u):
                      [dts[1],dte[1],dos[1],doe[1]]])
 
 def fu(x,u):
-    duarr = np.zeros((6,2))
-    for i in range(6):
-        duarr[i] = du(x,u,i)
+    duarr = du(x,u)
     return np.array([[0,0,0,0,0,0],
                      [0,0,0,0,0,0],
-                     duarr[:,0],
-                     duarr[:,1]])
+                     duarr[0].reshape(6),
+                     duarr[1].reshape(6)])
 
 def l(x,u,r1,xtarg=0,w1=0,w2=0):
     
@@ -182,7 +180,7 @@ def step5(x0,l,L,Duration,Noise,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
         Extended_A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
         Extended_A[:Num_Var,:Num_Var] = A[i]
         Extended_A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
-        Extended_B = np.zeros(((kdelay+1)*Num_Var,B.shape[1]))
+        Extended_B = np.zeros(((kdelay+1)*Num_Var,B.shape[2]))
         Extended_B[:Num_Var] = B[i]
         deltau = l[i]+L[i]@xhat[i,:Num_Var]
         u = bestu[i] + deltau
@@ -273,8 +271,6 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R):
         gbold = r[k] + B[k].T@sbold[k+1]+temp1
         G = B[k].T@S[k+1]@A[k]
         H = R[k] + B[k].T@S[k+1]@B[k]+temp2
-
-        print("\n Iteration \n",R[k],"\n",B[k].T@S[k+1]@B[k],"\n",H)
         Hinv = np.linalg.inv(H)
 
 
