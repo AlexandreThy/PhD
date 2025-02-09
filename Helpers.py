@@ -26,7 +26,7 @@ a1 = I1 + I2 + m2*l1*l1
 a2 = m2*l1*s2
 a3 = I2
 
-Bdyn = np.array([[0.5,0.025],[0.025,0.5]])
+Bdyn = np.array([[0.05,0.025],[0.025,0.05]])
 
 def Compute_Multiplicative_Noise(NbreVar,alpha,B,mult_var):
     #B = B[:NbreVar]
