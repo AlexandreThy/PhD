@@ -256,7 +256,6 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R):
         gbold = r[k] + B[k].T@sbold[k+1]+temp1
         G = B[k].T@S[k+1]@A[k]
         H = R[k] + B[k].T@S[k+1]@B[k]+temp2
-        print( B[k].T@S[k+1]@B[k])
         Hinv = np.linalg.inv(H)
 
 
@@ -333,7 +332,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,F
     if plot :
         plt.grid(linestyle='--')
         plt.axis("equal")
-        plt.plot(X,Y,linewidth = .8,color = "blue",label = "ILQG")
+        plt.plot(X,Y,linewidth = 1.4,color = "blue",label = "new values")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([Xtg],[Ytg],color = "black")
