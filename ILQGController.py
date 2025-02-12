@@ -256,7 +256,6 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R):
         gbold = r[k] + B[k].T@sbold[k+1]+temp1
         G = B[k].T@S[k+1]@A[k]
         H = R[k] + B[k].T@S[k+1]@B[k]+temp2
-        print( B[k].T@S[k+1]@B[k])
         Hinv = np.linalg.inv(H)
 
 
