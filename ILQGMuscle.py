@@ -36,11 +36,11 @@ def dthetas(x,u):
     l = lrest-A@x[:2]
     v = -A@x[2:4]
     Vsh = .3
-    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([1,x[1]])/lrest)/.5)
+    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([1,0])/lrest)/.5)
     fv = Vsh*(vmax+v)/(Vsh*vmax-v)
     
-    dTdos = a*dfl*fv*Fmax
-    return Minv@(-A.T@dTdos)
+    dTdts = a*dfl*fv*Fmax
+    return Minv@(-A.T@dTdts)
 
 def dthetae(x,u):
     C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
@@ -61,22 +61,30 @@ def dthetae(x,u):
     fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
     fv = Vsh*(vmax+v)/(Vsh*vmax-v)
     T = a*fl*fv*Fmax
-    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([x[0],1])/lrest)/.5)
-    dTdoe = a*dfl*fv*Fmax
+    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([0,1])/lrest)/.5)
+    dTdte = a*dfl*fv*Fmax
     
     torque = -A.T@T
-    torquedot = -A.T@dTdoe
+    torquedot = -A.T@dTdte
     return dMinv@(torque-Bdyn@x[2:4]-C)+Minv@(torquedot-Cdot)
 
 def domegas(x,u):
     Cdot = np.array([-x[3]*2*a2*np.sin(x[1]),2*x[2]*a2*np.sin(x[1])])
     Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
     Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    a = x[4:]
     A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
-    T = np.zeros(6)
-    for i in range(6):
-        T[i] =(54.1+108.1*u[i])*(A@np.array([1,0]))[i]
-    torquedot = (-A.T@T).reshape(2)
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@np.array([1,0])
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    dfv = (Vsh*((Vsh+1)*vmax))/(Vsh*vmax-v)**2
+    dTdos = a*fl*dfv*Fmax
+    
+    torquedot = -A.T@dTdos
     return Minv@(torquedot-Cdot-Bdyn@np.array([1,0]))
 
 
@@ -84,13 +92,40 @@ def domegae(x,u):
     Cdot = np.array([-2*(x[2]+x[3])*a2*np.sin(x[1]),0])
     Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
     Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    a = x[4:]
     A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
-    T = np.zeros(6)
-    for i in range(6):
-        T[i] =(54.1+108.1*u[i])*(A@np.array([0,1]))[i]
-    torquedot = (-A.T@T).reshape(2)
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@np.array([0,1])
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    dfv = (Vsh*((Vsh+1)*vmax))/(Vsh*vmax-v)**2
+    dTdoe = a*fl*dfv*Fmax
+    
+    torquedot = -A.T@dTdoe
     return Minv@(torquedot-Cdot-Bdyn@np.array([0,1]))
 
+def dai(x,i):
+
+    Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
+    Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    fv = Vsh*(vmax+v)/(Vsh*vmax-v)
+    a = np.zeros(6)
+    a[i] = 1
+    T = a*fl*fv*Fmax
+    
+    torquedot = -A.T@T
+    return Minv@(torquedot)
 
 
 def fx(x,u):
@@ -100,8 +135,8 @@ def fx(x,u):
     doe = domegae(x,u)
     return np.array([[0,0,1,0,0,0,0,0,0,0],
                      [0,0,0,1,0,0,0,0,0,0],
-                     [dts[0],dte[0],dos[0],doe[0],0,0,0,0,0,0],
-                     [dts[1],dte[1],dos[1],doe[1],0,0,0,0,0,0],
+                     [dts[0],dte[0],dos[0],doe[0],dai(x,0)[0],dai(x,1)[0],dai(x,2)[0],dai(x,3)[0],dai(x,4)[0],dai(x,5)[0]],
+                     [dts[1],dte[1],dos[1],doe[1],dai(x,0)[1],dai(x,1)[1],dai(x,2)[1],dai(x,3)[1],dai(x,4)[1],dai(x,5)[1]],
                      [0,0,0,0,-1/0.06,0,0,0,0,0],
                      [0,0,0,0,0,-1/0.06,0,0,0,0],
                      [0,0,0,0,0,0,-1/0.06,0,0,0],
@@ -114,12 +149,12 @@ def fu(x,u):
                      [0,0,0,0,0,0],
                      [0,0,0,0,0,0],
                      [0,0,0,0,0,0],
-                     [1,0,0,0,0,0],
-                     [0,1,0,0,0,0],
-                     [0,0,1,0,0,0],
-                     [0,0,0,1,0,0],
-                     [0,0,0,0,1,0],
-                     [0,0,0,0,0,1]])
+                     [1/0.06,0,0,0,0,0],
+                     [0,1/0.06,0,0,0,0],
+                     [0,0,1/0.06,0,0,0],
+                     [0,0,0,1/0.06,0,0],
+                     [0,0,0,0,1/0.06,0],
+                     [0,0,0,0,0,1/0.06]])
 
 def l(x,u,r1,xtarg=0,w1=0,w2=0):
     
@@ -144,13 +179,15 @@ def h(x,w1,w2,xtarg):
     return w1/2*((x[0]-xtarg[0])*(x[0]-xtarg[0])+(x[1]-xtarg[1])*(x[1]-xtarg[1])) + w2/2*(x[2]*x[2]+x[3]*x[3])
 
 def hx(x,w1,w2,xtarg):
-    return np.array([w1*(x[0]-xtarg[0]),w1*(x[1]-xtarg[1]),w2*x[2],w2*x[3]])
+    return np.array([w1*(x[0]-xtarg[0]),w1*(x[1]-xtarg[1]),w2*x[2],w2*x[3],0,0,0,0,0,0])
 
 def hxx(x,w1,w2):
-    return np.array([[w1,0,0,0],
+    Q = np.zeros((10,10))
+    Q[:4,:4]= np.array([[w1,0,0,0],
                      [0,w1,0,0],
                      [0,0,w2,0],
                      [0,0,0,w2]])
+    return Q
 def Kalman(Omega_measure,Omega_sens,A,sigma,H):
     K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
     sigma = Omega_sens + (A - K@H)@sigma@A.T
@@ -169,7 +206,20 @@ def Compute_acc(x,u,F):
     C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
         
     M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
-    torque = computetorque(x,u)
+    a = x[4:]
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    fv = Vsh*(vmax+v)/(Vsh*vmax-v)
+    
+    T = a*fl*fv*Fmax
+    
+    torque = (-A.T@T).reshape(2)
     return np.linalg.solve(M,(torque-Bdyn@(x[2:4])-C))+F
 
 def step5(x0,l,L,Duration,Noise,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
@@ -193,7 +243,7 @@ def step5(x0,l,L,Duration,Noise,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
         Extended_A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
         Extended_A[:Num_Var,:Num_Var] = A[i]
         Extended_A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
-        Extended_B = np.zeros(((kdelay+1)*Num_Var,B.shape[1]))
+        Extended_B = np.zeros(((kdelay+1)*Num_Var,B.shape[2]))
         Extended_B[:Num_Var] = B[i]
         deltau = l[i]+L[i]@xhat[i,:Num_Var]
         u = bestu[i] + deltau
@@ -285,7 +335,6 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R):
         G = B[k].T@S[k+1]@A[k]
         H = R[k] + B[k].T@S[k+1]@B[k]+temp2
 
-        print("\n Iteration \n",R[k],"\n",B[k].T@S[k+1]@B[k],"\n",H)
         Hinv = np.linalg.inv(H)
 
 
@@ -325,11 +374,11 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
-    x0 = np.array([st1,st2,0,0])
+    x0 = np.array([st1,st2,0,0,0,0,0,0,0,0])
     
     m = 6
-    n = 4
-    O=np.ones((4,4))*Variance
+    n = 10
+    O=np.ones((n,n))*Variance
     u = np.zeros((K-1,m))
     dt = Duration/K
     kdelay = int(Delay/dt)
@@ -344,7 +393,7 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
     oldx = np.ones(K)*100
     # Create an array of 50 colors from the colormap
 
-    for _ in range(50):     
+    for _ in range(30):     
         x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
@@ -358,12 +407,13 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
         A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,np.array([obj1,obj2]))
         l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
         u_incr = step4(l,L,K,A,B)
+        print(u_incr)
         u += u_incr
         oldx = np.copy(X)
         
     Xtg = targets[0]
     Ytg = targets[1]
-
+    print(X,Y)
         #Plotting
     if plot :
         plt.grid(linestyle='--')
