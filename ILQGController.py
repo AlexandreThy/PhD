@@ -207,7 +207,7 @@ def step2(x,u,Duration,w1,w2,r1,xtarg):
     n = len(x[0])
     m = len(u[0])
     K = np.shape(u)[0]+1
-    dt = Duration/(K-1)
+    dt = Duration/(K)
     A = np.zeros((K-1,n,n))
     B = np.zeros((K-1,n,m))
     q = np.zeros(K)

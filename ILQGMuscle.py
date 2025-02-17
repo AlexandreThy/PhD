@@ -17,7 +17,7 @@ def f(x,u):
     v = -A@x[2:4]
     Vsh = .3
     fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
-    fv = Vsh*(vmax+v)/(Vsh*vmax-v)
+    fv = (vmax-v)/(vmax+.3*v)
     
     T = a*fl*fv*Fmax
     
@@ -37,7 +37,7 @@ def dthetas(x,u):
     v = -A@x[2:4]
     Vsh = .3
     dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([1,0])/lrest)/.5)
-    fv = Vsh*(vmax+v)/(Vsh*vmax-v)
+    fv =  (vmax-v)/(vmax+.3*v)
     
     dTdts = a*dfl*fv*Fmax
     return Minv@(-A.T@dTdts)
@@ -47,7 +47,7 @@ def dthetae(x,u):
     Cdot = np.array([-x[3]*(2*x[2]+x[3])*a2*np.cos(x[1])*x[3],x[2]*x[2]*a2*np.cos(x[1])*x[3]])
     Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
     Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
-    Mdot = np.array([[-2*a2*sin(x[1])*x[3],-a2*sin(x[1])*x[3]],[-a2*sin(x[1])*x[3],0]])
+    Mdot = np.array([[-2*a2*np.sin(x[1])*x[3],-a2*np.sin(x[1])*x[3]],[-a2*np.sin(x[1])*x[3],0]])
     dMinv = -Minv@Mdot@Minv
     
     a = x[4:]
@@ -59,7 +59,7 @@ def dthetae(x,u):
     v = -A@x[2:4]
     Vsh = .3
     fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
-    fv = Vsh*(vmax+v)/(Vsh*vmax-v)
+    fv =  (vmax-v)/(vmax+.3*v)
     T = a*fl*fv*Fmax
     dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([0,1])/lrest)/.5)
     dTdte = a*dfl*fv*Fmax
@@ -78,10 +78,11 @@ def domegas(x,u):
     Fmax = np.array([1142, 260, 987, 624, 430, 798])
     vmax = 6.28*lrest
     l = lrest-A@x[:2]
-    v = -A@np.array([1,0])
+    v = -A@x[2:4]
     Vsh = .3
+    dv = -A@np.array([1,0])
     fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
-    dfv = (Vsh*((Vsh+1)*vmax))/(Vsh*vmax-v)**2
+    dfv =(-dv*(vmax+.3*v)-(vmax-v)*.3*dv)/(vmax+.3*v)**2
     dTdos = a*fl*dfv*Fmax
     
     torquedot = -A.T@dTdos
@@ -98,10 +99,11 @@ def domegae(x,u):
     Fmax = np.array([1142, 260, 987, 624, 430, 798])
     vmax = 6.28*lrest
     l = lrest-A@x[:2]
-    v = -A@np.array([0,1])
+    v = -A@x[2:4]
     Vsh = .3
+    dv = -A@np.array([0,1])
     fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
-    dfv = (Vsh*((Vsh+1)*vmax))/(Vsh*vmax-v)**2
+    dfv =(-dv*(vmax+.3*v)-(vmax-v)*.3*dv)/(vmax+.3*v)**2
     dTdoe = a*fl*dfv*Fmax
     
     torquedot = -A.T@dTdoe
@@ -119,11 +121,10 @@ def dai(x,i):
     v = -A@x[2:4]
     Vsh = .3
     fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
-    fv = Vsh*(vmax+v)/(Vsh*vmax-v)
+    fv =  (vmax-v)/(vmax+.3*v)
     a = np.zeros(6)
     a[i] = 1
     T = a*fl*fv*Fmax
-    
     torquedot = -A.T@T
     return Minv@(torquedot)
 
@@ -285,7 +286,7 @@ def step2(x,u,Duration,w1,w2,r1,xtarg):
     n = len(x[0])
     m = len(u[0])
     K = np.shape(u)[0]+1
-    dt = Duration/(K-1)
+    dt = Duration/(K)
     A = np.zeros((K-1,n,n))
     B = np.zeros((K-1,n,m))
     q = np.zeros(K)
@@ -295,6 +296,7 @@ def step2(x,u,Duration,w1,w2,r1,xtarg):
     R = np.zeros((K-1,m,m))
     for i in range(K-1):
         A[i] = np.identity(n)+dt*fx(x[i],u[i])
+        print(dt*fx(x[i],u[i]))
         B[i] = dt*fu(x[i],u[i])
         q[i] = dt*l(x[i],u[i],r1,xtarg,w1,w2)
         qbold[i] = dt*lx(x[i],u[i],xtarg,w1,w2)
@@ -393,11 +395,11 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
     oldx = np.ones(K)*100
     # Create an array of 50 colors from the colormap
 
-    for _ in range(30):     
+    for _ in range(50):     
         x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
-        if np.max(np.abs(oldx-X))<1e-3:
+        if np.max(np.abs(oldx-X))<1e-4:
             x = step5(x0,l,L,Duration,Noise,A,B,K,u-u_incr,FF,Side,kdelay,Variance)
             
             X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
