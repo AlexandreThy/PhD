@@ -36,7 +36,7 @@ def dthetas(x,u):
     l = lrest-A@x[:2]
     v = -A@x[2:4]
     Vsh = .3
-    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([1,0])/lrest)/.5)
+    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*(-2*l+2*lrest)/(.5*lrest)**2*(-A@np.array([1,0]))
     fv =  (vmax-v)/(vmax+.3*v)
     
     dTdts = a*dfl*fv*Fmax
@@ -61,7 +61,7 @@ def dthetae(x,u):
     fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
     fv =  (vmax-v)/(vmax+.3*v)
     T = a*fl*fv*Fmax
-    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*-2*(((l-lrest)/lrest)/.5)*((-A@np.array([0,1])/lrest)/.5)
+    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*(-2*l+2*lrest)/(.5*lrest)**2*(-A@np.array([0,1]))
     dTdte = a*dfl*fv*Fmax
     
     torque = -A.T@T
@@ -296,7 +296,6 @@ def step2(x,u,Duration,w1,w2,r1,xtarg):
     R = np.zeros((K-1,m,m))
     for i in range(K-1):
         A[i] = np.identity(n)+dt*fx(x[i],u[i])
-        print(dt*fx(x[i],u[i]))
         B[i] = dt*fu(x[i],u[i])
         q[i] = dt*l(x[i],u[i],r1,xtarg,w1,w2)
         qbold[i] = dt*lx(x[i],u[i],xtarg,w1,w2)
@@ -309,7 +308,7 @@ def step2(x,u,Duration,w1,w2,r1,xtarg):
     Q[K-1] = hxx(x[K-1],w1,w2)
     return A,B,q,qbold,r,Q,R
 
-def step3(A,B,C,cbold,q,qbold,r,Q,R):
+def step3(A,B,C,cbold,q,qbold,r,Q,R,p):
     # C should be nxm 
     # c should be nx1
 
@@ -336,10 +335,21 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R):
         gbold = r[k] + B[k].T@sbold[k+1]+temp1
         G = B[k].T@S[k+1]@A[k]
         H = R[k] + B[k].T@S[k+1]@B[k]+temp2
+        
+        eigenvalues, eigenvectors = np.linalg.eig(H)
 
-        Hinv = np.linalg.inv(H)
 
+#
+#
+# Verify decomposition: A = V Λ V⁻¹
+        V = np.diag(eigenvalues)  # Create diagonal matrix
+        eps = 1e-2
 
+        for i in range(V.shape[0]):
+            if V[i,i]<( eps): V[i,i] = eps
+            V[i,i] = 1/V[i,i]
+        Hinv = eigenvectors @ V @ np.linalg.inv(eigenvectors)
+   
         S[k] = Q[k] + A[k].T@S[k+1]@A[k]-G.T@Hinv@G
         sbold[k] = qbold[k]+A[k].T@sbold[k+1]-G.T@Hinv@gbold
         s[k] = q[k] + s[k+1] + 0.5*temp3 - .5*gbold.T@Hinv@gbold
@@ -372,7 +382,9 @@ def fnewton(var,X,Y):
 def dfnewton(var):
     u,v = var
     return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
-def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start = [0,30],plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6):
+
+from NMPC import *
+def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start = [0,30],plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6,mpc = False):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
@@ -381,8 +393,10 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
     m = 6
     n = 10
     O=np.ones((n,n))*Variance
-    u = np.zeros((K-1,m))
     dt = Duration/K
+    u = np.zeros((K-1,m))
+    #u = np.random.uniform(-.02,.02,(K-1,m))
+    if mpc : u = MPC42(Duration,start,targets,w1,w2,r1*np.ones(6),K,dt,K,plot = False).T
     kdelay = int(Delay/dt)
     newcbold = np.zeros((K,n,n))
     C = np.zeros((K,n,n,m))
@@ -391,15 +405,19 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
             newcbold[i,j] = np.diag(O)
 
     cbold = newcbold
-    u_incr = 0
+    u_incr = [1000,1000]
     oldx = np.ones(K)*100
+    oldy = np.ones(K)*100
     # Create an array of 50 colors from the colormap
-
-    for _ in range(50):     
+    P = 100
+    for p in range(P):     
+        print("### Iteration ",p," ###")
         x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
-        if np.max(np.abs(oldx-X))<1e-4:
+        plt.plot(X,Y,color = get_colors_from_colormap(P,cmap_name="viridis")[p],linewidth = .3)
+        if np.max(np.abs(u_incr))<1e-4*5:
+            print("### A Solution has been found ###")
             x = step5(x0,l,L,Duration,Noise,A,B,K,u-u_incr,FF,Side,kdelay,Variance)
             
             X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
@@ -407,11 +425,11 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
             break
 
         A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,np.array([obj1,obj2]))
-        l,L = step3(A,B,C,cbold,q,qbold,r,Q,R)
+        l,L = step3(A,B,C,cbold,q,qbold,r,Q,R,p)
         u_incr = step4(l,L,K,A,B)
-        print(u_incr)
         u += u_incr
         oldx = np.copy(X)
+        oldy = np.copy(Y)
         
     Xtg = targets[0]
     Ytg = targets[1]
@@ -420,7 +438,7 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
     if plot :
         plt.grid(linestyle='--')
         plt.axis("equal")
-        plt.plot(X,Y,linewidth = .8,color = "blue",label = "ILQG")
+        plt.plot(X,Y,linewidth = .8,color = "#36f386",label = "ILQG") if mpc  else plt.plot(X,Y,linewidth = .8,color = "#3698f3",label = "ILQG")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([Xtg],[Ytg],color = "black")

@@ -7,7 +7,8 @@ from matplotlib.lines import Line2D
 import matplotlib as mpl
 from matplotlib.patches import FancyArrowPatch
 import matplotlib.image as mpimg
-
+import matplotlib.cm as cm
+import casadi as ca
 from matplotlib.colors import ListedColormap, Normalize
 from matplotlib.cm import ScalarMappable
 
@@ -259,3 +260,17 @@ def dC1(te,os,oe,accs,acce,ObjectMass=0,Ms=52,Ls=1.57):
     Cdot = np.array([[-2*(oe*dc+acce*c),-(oe*dc+acce*c)],[(os*dc+accs*c),0]])
     return C@np.array([accs,acce])+Cdot@np.array([os,oe])
 
+def get_colors_from_colormap(N, cmap_name):
+    """
+    Generates an array of N colors from the given colormap.
+    
+    Parameters:
+        N (int): Number of colors to extract.
+        colormap_name (str): Name of the Matplotlib colormap.
+    
+    Returns:
+        List of N RGB tuples.
+    """
+    colormap = cm.get_cmap(cmap_name, N)  # Get colormap with N discrete levels
+    colors = [colormap(i) for i in range(N)]  # Extract N colors
+    return colors
