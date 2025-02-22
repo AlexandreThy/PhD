@@ -43,7 +43,7 @@ def complex_derivative_4(x):
     C1prime = -x[3]*(2*x[2]+x[3])*a2*np.cos(x[1])
     C2 = x[2]*x[2]*a2*np.sin(x[1])
     C2prime = x[2]*x[2]*a2*np.cos(x[1])
-    Sol = ((a2*sin(x[1]))*D+(a2*cos(x[1])+a3)*Dprime)/(D*D)*(F1-C1)+(-a2*cos(x[1])-a3)/D*(-C1prime)+(-2*a2*sin(x[1])*D-(2*a2*cos(x[1])+a1)*Dprime)/(D*D)*(F2-C2)+(2*a2*cos(x[1])+a2)/D*(-C2prime)
+    Sol = ((a2*sin(x[1]))*D+(a2*cos(x[1])+a3)*Dprime)/(D*D)*(F1-C1)+(-a2*cos(x[1])-a3)/D*(-C1prime)+(-2*a2*sin(x[1])*D-(2*a2*cos(x[1])+a1)*Dprime)/(D*D)*(F2-C2)+(2*a2*cos(x[1])+a1)/D*(-C2prime)
     return Sol
 
 def complex_derivative_5(x):
