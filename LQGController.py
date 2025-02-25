@@ -125,21 +125,18 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
 
 
 def Linearization(dt,x):
-    ts,os,taus,te,oe,taue= x[:6]
     K = 1/0.06
     C = np.array([-x[4]*(2*x[1]+x[4])*a2*np.sin(x[3]),x[1]*x[1]*a2*np.sin(x[3])])
     dCdte = np.array([-x[4]*(2*x[1]+x[4])*a2*np.cos(x[3]),x[1]*x[1]*a2*np.cos(x[3])])
-    dCdos = np.array([-x[4]*2*a2*np.cos(x[3]),2*x[1]*a2*np.cos(x[3])])
-    dCdoe = np.array([(-2*x[1]-2*x[4])*a2*np.cos(x[3]),0])
+    dCdos = np.array([-x[4]*2*a2*np.sin(x[3]),2*x[1]*a2*np.sin(x[3])])
+    dCdoe = np.array([(-2*x[1]-2*x[4])*a2*np.sin(x[3]),0])
     
-    DetM = a1*a3-a3*a3-a2*a2*cos(te)*cos(te)
-    Minv = np.array([[a3,-a3-a2*cos(te)],
-              [-a3-a2*cos(te),a1+2*a2*cos(te)]])/DetM
-    dM = np.array([[-2*a2*sin(te),-a2*sin(te)],[-a2*sin(te),0]])
-    vel = np.array([np.zeros(2),(-Minv@(dCdos+Bdyn@np.array([1,0]))),Minv@np.array([1,0]),-Minv@(dM@Minv@(np.array([taus,taue]-C-Bdyn@np.array([os,oe])))-dCdoe),-Minv@(dCdoe+Bdyn@np.array([0,1])),Minv@np.array([0,1]),np.zeros(2),np.zeros(2)])
+    M = np.array([[a1+2*a2*cos(x[3]),a3+a2*cos(x[3])],[a3+a2*cos(x[3]),a3]])
+    Minv = np.linalg.inv(M)
+    dM = np.array([[-2*a2*sin(x[3]),-a2*sin(x[3])],[-a2*sin(x[3]),0]])
+    vel = np.array([np.zeros(2),(-Minv@(dCdos+Bdyn@np.array([1,0]))),Minv@np.array([1,0]),-Minv@(dM@Minv@(np.array([x[2],x[5]]-C-Bdyn@np.array([x[1],x[4]])))+dCdte),-Minv@(dCdoe+Bdyn@np.array([0,1])),Minv@np.array([0,1]),np.zeros(2),np.zeros(2)])
     A = np.array([[0,1,0,0,0,0,0,0],vel[:,0],[0,0,-K,0,0,0,0,0],[0,0,0,0,1,0,0,0],vel[:,1],[0,0,0,0,0,-K,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]])
     A = np.identity(8)+dt*A
-    
     return A
 
 def BestLQG(Duration = .6,w1 = 1e7,w2 = 1e7,w3 = 1e3,w4 = 1e3,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,FFonset= 0,Num_iter = 300,Activate_Noise = False,plotEstimation = False,MultipleLinearization = False,Stabilization_Time = 0):
@@ -209,7 +206,7 @@ def BestLQG(Duration = .6,w1 = 1e7,w2 = 1e7,w3 = 1e3,w4 = 1e3,r1 = 1e-5,r2 = 1e-
     F = [0,0]
     omega = np.zeros(2)
     for k in range(Num_iter-1):
-        linpoint = [x[0],0,0,x[3],0,0,0,0] if MultipleLinearization else [pi/2,0,0,pi/4,0,0,0,0]
+        linpoint = x if MultipleLinearization else [pi/2,0,0,pi/4,0,0,0,0]
         A[:Num_Var,:Num_Var] = Linearization(dt,linpoint)
         if k==0:
             AKalman = np.copy(A)
