@@ -308,7 +308,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,F
     oldx = np.ones(K)*100
     # Create an array of 50 colors from the colormap
 
-    for _ in range(1):     
+    for _ in range(100):     
         x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
