@@ -95,17 +95,21 @@ def optimizationofmpcproblem42(dt,Horizon,w1,w2,r,end,estimate_now):
     sol = opti.solve()
     return sol,U,f
 
-def MPC42(Duration,start,end,w1,w2,r,Horizon = 20,dt = 0.005,stepupdate = 5,plot = True):
+def MPC42(Duration,start,end,w1 = 1e4,w2 = 1,r = 1e-4,Horizon = 0,n_steps = K,stepupdate = 0,plotTraj = True,plotVel = False):
 
 
     
 
     # Simulation
+    r = np.ones(6)*r
     end_angular= newton(newtonf,newtondf,1e-8,1000,end[0],end[1]) #Defini les targets
     start = newton(newtonf,newtondf,1e-8,1000,start[0],start[1])
     Duration
-    n_steps = int(Duration / dt)
+    dt = Duration / n_steps
+    if Horizon == 0: Horizon = n_steps
+    if stepupdate == 0: stepupdate = n_steps
     states = np.zeros((10, n_steps))
+
     controls = np.zeros((6, n_steps-1))
     state_now = np.array([start[0], start[1],0,0,0,0,0,0,0,0])    # Slightly off-balance initial condition
     states[:,0] = state_now
@@ -121,7 +125,7 @@ def MPC42(Duration,start,end,w1,w2,r,Horizon = 20,dt = 0.005,stepupdate = 5,plot
         state_now = state_now + dt * f(state_now, u_opt).full().flatten()
         states[:, t+1] = state_now
 
-    if plot :
+    if plotVel :
 
         plt.subplot(2, 1, 1)
         plt.plot(np.linspace(0, Duration, n_steps), states[2, :], label="Shoulder ",color = "#007399")
@@ -131,12 +135,14 @@ def MPC42(Duration,start,end,w1,w2,r,Horizon = 20,dt = 0.005,stepupdate = 5,plot
         plt.xlabel("Time (s)")
         plt.ylabel("Force (N)")
         plt.subplot(2, 1, 2)
+    if plotTraj :
+        
         s = states[0]
         e = states[1]
         X = np.cos(s+e)*33+np.cos(s)*30
         Y = np.sin(s+e)*33+np.sin(s)*30
-        plt.plot(X,Y,color = "#007399")
-        plt.grid()
+        plt.plot(X,Y,color = "#007399",label = "NMPC 6 Muscles")
+        #plt.grid()
         plt.axis("equal")
         plt.scatter([end[0]],[end[1]],color = "red")
-    return controls
+    return states

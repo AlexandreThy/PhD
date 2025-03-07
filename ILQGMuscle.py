@@ -308,7 +308,7 @@ def step2(x,u,Duration,w1,w2,r1,xtarg):
     Q[K-1] = hxx(x[K-1],w1,w2)
     return A,B,q,qbold,r,Q,R
 
-def step3(A,B,C,cbold,q,qbold,r,Q,R,p):
+def step3(A,B,C,cbold,q,qbold,r,Q,R,eps):
     # C should be nxm 
     # c should be nx1
 
@@ -343,7 +343,6 @@ def step3(A,B,C,cbold,q,qbold,r,Q,R,p):
 #
 # Verify decomposition: A = V Λ V⁻¹
         V = np.diag(eigenvalues)  # Create diagonal matrix
-        eps = 1e-2
 
         for i in range(V.shape[0]):
             if V[i,i]<( eps): V[i,i] = eps
@@ -384,7 +383,7 @@ def dfnewton(var):
     return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
 
 from NMPC import *
-def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start = [0,30],plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6,mpc = False):
+def ILQGMuscle(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start = [0,30],plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6,mpc = False,eps = 1e-3*1.4,plot_all_iterations = False):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
@@ -411,11 +410,13 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
     # Create an array of 50 colors from the colormap
     P = 100
     for p in range(P):     
-        print("### Iteration ",p," ###")
+        
         x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
-        plt.plot(X,Y,color = get_colors_from_colormap(P,cmap_name="viridis")[p],linewidth = .3)
+        if plot_all_iterations : 
+            print("### Iteration ",p," ###")
+            plt.plot(X,Y,color = get_colors_from_colormap(P,cmap_name="viridis")[p],linewidth = .3)
         if np.max(np.abs(u_incr))<1e-4*5:
             print("### A Solution has been found ###")
             x = step5(x0,l,L,Duration,Noise,A,B,K,u-u_incr,FF,Side,kdelay,Variance)
@@ -425,20 +426,17 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start =
             break
 
         A,B,q,qbold,r,Q,R = step2(x,u,Duration,w1,w2,r1,np.array([obj1,obj2]))
-        l,L = step3(A,B,C,cbold,q,qbold,r,Q,R,p)
+        l,L = step3(A,B,C,cbold,q,qbold,r,Q,R,eps)
         u_incr = step4(l,L,K,A,B)
         u += u_incr
-        oldx = np.copy(X)
-        oldy = np.copy(Y)
         
     Xtg = targets[0]
     Ytg = targets[1]
-    print(X,Y)
         #Plotting
     if plot :
         plt.grid(linestyle='--')
         plt.axis("equal")
-        plt.plot(X,Y,linewidth = .8,color = "#36f386",label = "ILQG") if mpc  else plt.plot(X,Y,linewidth = .8,color = "#3698f3",label = "ILQG")
+        plt.plot(X,Y,linewidth = .8,color = "#36f386",label = "ILQG") if mpc  else plt.plot(X,Y,linewidth = .8,color = "#3698f3",label = "ILQG 6Muscles")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([Xtg],[Ytg],color = "black")

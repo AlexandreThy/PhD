@@ -285,7 +285,7 @@ def GetNoise(alpha,multvar,dt,N,kdelay):
     B[:N] = B_basic 
     return Compute_Multiplicative_Noise(N,alpha,B,multvar)
 
-def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6):
+def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-4,targets = [0,50],K = 60,start = [0,30],plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6):
     obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
     st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
 
@@ -308,7 +308,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,F
     oldx = np.ones(K)*100
     # Create an array of 50 colors from the colormap
 
-    for _ in range(1):     
+    for _ in range(100):     
         x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
@@ -332,7 +332,7 @@ def ILQG(Duration,w1,w2,r1,targets,K,start,plot = True,Noise = False,Delay = 0,F
     if plot :
         plt.grid(linestyle='--')
         plt.axis("equal")
-        plt.plot(X,Y,linewidth = 1.4,color = "blue",label = "new values")
+        plt.plot(X,Y,linewidth = 1.4,color = "blue",label = "ILQG")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([Xtg],[Ytg],color = "black")
