@@ -123,12 +123,17 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
     if Showu: return X,Y,array_u
     return X,Y,J,x_nonlin
 
+def Linearization_Compact(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
+    TimeConstant = 1 / 0.06  # Torque dynamics coefficient
 
+<<<<<<< HEAD
 
 
 def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
     TimeConstant = 1 / 0.06  # Torque dynamics coefficient
 
+=======
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
     # Extract state variables according to the given order
     theta1, dtheta1, tau1, theta2, dtheta2, tau2 = x[:6]
 
@@ -138,6 +143,7 @@ def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
         dtheta1**2 * a2 * np.sin(theta2)
     ])
     
+<<<<<<< HEAD
     # Partial derivatives of C
     dCdte = np.array([
         -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.cos(theta2),
@@ -152,6 +158,8 @@ def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
         0
     ])
     
+=======
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
     # Inertia matrix
     M = np.array([
         [a1 + 2 * a2 * np.cos(theta2), a3 + a2 * np.cos(theta2)],
@@ -160,22 +168,59 @@ def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
     
     Minv = np.linalg.inv(M)
     
+<<<<<<< HEAD
     # Derivative of inertia matrix
     dM = np.array([
         [-2 * a2 * np.sin(theta2), -a2 * np.sin(theta2)],
         [-a2 * np.sin(theta2), 0]
     ])
+=======
+    
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
     
     # Compute acceleration dependencies
     dtheta = np.array([dtheta1, dtheta2])
     tau = np.array([tau1, tau2])
 
+<<<<<<< HEAD
     d_accel_dtheta1 = -Minv @ (dCdos + Bdyn @ np.array([1, 0]))
     d_accel_tau = Minv @ np.array([1, 0])
     d_accel_theta2 = -Minv @ (dM @ Minv @ (tau - C - Bdyn @ dtheta)) - Minv @ dCdte
     d_accel_dtheta2 = -Minv @ (dCdoe + Bdyn @ np.array([0, 1]))
     d_accel_tau2 = Minv @ np.array([0, 1])
 
+=======
+
+    d_accel_tau = Minv @ np.array([1, 0])
+    d_accel_tau2 = Minv @ np.array([0, 1])
+
+    dC = np.zeros((2,4))
+
+    dC[:,1] = np.array([
+        -dtheta2 * 2 * a2 * np.sin(theta2),
+        2 * dtheta1 * a2 * np.sin(theta2)
+    ])
+
+    dC[:,2] = np.array([
+        -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.cos(theta2),
+        dtheta1**2 * a2 * np.cos(theta2)
+    ])
+
+    dC[:,3] = np.array([
+        (-2 * dtheta1 - 2 * dtheta2) * a2 * np.sin(theta2),
+        0
+    ])
+
+    dM = np.zeros((2,2,4))
+    dM[:,:,2] = np.array([
+        [-2 * a2 * np.sin(theta2), -a2 * np.sin(theta2)],
+        [-a2 * np.sin(theta2), 0]])
+    
+    ddtheta = np.zeros((2,4))
+    ddtheta[0,1] = 1
+    ddtheta[1,3] = 1
+
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
     # Construct the Jacobian matrix
     A = np.zeros((8,8))
 
@@ -184,6 +229,7 @@ def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
     A[3, 4] = 1  # d(theta2)/d(dtheta2)
 
     # Acceleration contributions
+<<<<<<< HEAD
     A[1, 1] = d_accel_dtheta1[0]  # d(dtheta1)/d(dtheta1)
     A[1, 3] = d_accel_theta2[0]
     A[1, 4] = d_accel_dtheta2[0]  # d(dtheta1)/d(dtheta2)
@@ -193,6 +239,16 @@ def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
     A[4, 1] = d_accel_dtheta1[1]  # d(dtheta2)/d(dtheta1)
     A[4, 3] = d_accel_theta2[1]
     A[4, 4] = d_accel_dtheta2[1]  # d(dtheta2)/d(dtheta2)
+=======
+    for j,i in enumerate([0,1,3,4]):
+        A[[1,4],i] = -Minv @ (dM[:,:,j] @ Minv @ (tau- C - Bdyn @ dtheta)) - Minv @ (dC[:,j]+Bdyn@ddtheta[:,j])
+
+
+
+    A[1, 2] = d_accel_tau[0]  # d(dtheta1)/d(tau1)
+    A[1, 5] = d_accel_tau2[0]  # d(dtheta1)/d(tau2)
+
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
     A[4, 2] = d_accel_tau[1]  # d(dtheta2)/d(tau1)
     A[4, 5] = d_accel_tau2[1]  # d(dtheta2)/d(tau2)
 
@@ -203,8 +259,12 @@ def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
 
     A = np.identity(8)+dt*A
     return A
+<<<<<<< HEAD
 
 def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],plot = True,Delay = 0,Num_iter = 60,Activate_Noise = False,plotEstimation = False):
+=======
+def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],plot = True,Delay = 0,Num_iter = 60,Activate_Noise = False,plotEstimation = False,NeglectTorque = True):
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
 
 
     
@@ -250,9 +310,17 @@ def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,ta
     
     for k in range(Num_iter-1):
         Bdyn = np.array([[.05,.025],[.025,.05]])
+<<<<<<< HEAD
         xcopy = np.copy(x)
         xcopy[[1,2,4,5]] = [0,0,0,0]
         A[:Num_Var,:Num_Var] = Linearization(dt,xcopy,Bdyn)
+=======
+        if NeglectTorque : 
+            x_with_neglected_torque = np.copy(x)
+            x_with_neglected_torque[[1,2,4,5]] = [0,0,0,0]
+            A[:Num_Var,:Num_Var] = Linearization_Compact(dt,x_with_neglected_torque,Bdyn)
+        else : A[:Num_Var,:Num_Var] = Linearization_Compact(dt,x,Bdyn)
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
         S = Q  
         for _ in range(Num_iter-1-k):
             L = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
@@ -269,11 +337,17 @@ def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,ta
         y[k] = (H @ x).flatten()
         if Activate_Noise == True : y[k] += measure_noise
 
+<<<<<<< HEAD
         sigma = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1))) 
         for _ in range(Num_iter-1):
         
             K = A @ sigma @ H.T @ np.linalg.inv( H @ sigma @ H.T + Omega_measure)
             sigma = Omega_sens + (A - K @ H) @ sigma @ A.T
+=======
+        
+        K = A @ sigma @ H.T @ np.linalg.inv( H @ sigma @ H.T + Omega_measure)
+        sigma = Omega_sens + (A - K @ H) @ sigma @ A.T
+>>>>>>> bd36323c598cd3b974fa152333109c8b825a4a22
         
         xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
         #print(xhat[:8])
