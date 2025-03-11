@@ -123,11 +123,6 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
     if Showu: return X,Y,array_u
     return X,Y,J,x_nonlin
 
-def Linearization_Compact(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
-    TimeConstant = 1 / 0.06  # Torque dynamics coefficient
-
-
-
 def Linearization(dt, x,Bdyn = np.array([[0.05,0.025],[0.025,0.05]])):
     TimeConstant = 1 / 0.06  # Torque dynamics coefficient
 
