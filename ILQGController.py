@@ -1,4 +1,4 @@
-from Helpers import *
+from Linearization import *
 
 def f(x,u):
     tau = 0.06
@@ -9,81 +9,16 @@ def f(x,u):
     torque = (u-x[4:6])/tau
     return np.array([[x[2],x[3],theta[0],theta[1],torque[0],torque[1]]])
 
-def complex_derivative_1(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    Dprime = 2*a2*a2*np.cos(x[1])*sin(x[1])
-    F1 = x[4]-Bdyn[0]@x[2:4]
-    F2 = x[5]-Bdyn[1]@x[2:4]
-    C1 = -x[3]*(2*x[2]+x[3])*a2*np.sin(x[1])
-    C1prime = -x[3]*(2*x[2]+x[3])*a2*np.cos(x[1])
-    C2 = x[2]*x[2]*a2*np.sin(x[1])
-    C2prime = x[2]*x[2]*a2*np.cos(x[1])
-    Sol = -a3*Dprime/(D*D)*F1-a3/(D*D)*(C1prime*D-C1*Dprime)-((F2-C2)/(D*D)*((-a2*sin(x[1]))*D-(a2*cos(x[1])+a3)*Dprime)-C2prime*(a2*cos(x[1])+a3)/D)
-    return Sol
-
-def complex_derivative_2(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    C1prime = -x[3]*2*a2*np.sin(x[1])
-    C2prime = x[2]*2*a2*np.sin(x[1])
-    Sol = -a3/D*(Bdyn[0,0]+C1prime)+(a2*cos(x[1])+a3)/D*(Bdyn[1,0]+C2prime)
-    return Sol
-
-def complex_derivative_3(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    C1prime =(-2*x[2]-2*x[3])*a2*np.sin(x[1])
-    Sol = -a3/D*(Bdyn[0,1]+C1prime)+(a2*cos(x[1])+a3)/D*(Bdyn[1,1])
-    return Sol
-
-def complex_derivative_4(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    Dprime = 2*a2*a2*np.cos(x[1])*sin(x[1])
-    F1 = x[4]-Bdyn[0]@x[2:4]
-    F2 = x[5]-Bdyn[1]@x[2:4]
-    C1 = -x[3]*(2*x[2]+x[3])*a2*np.sin(x[1])
-    C1prime = -x[3]*(2*x[2]+x[3])*a2*np.cos(x[1])
-    C2 = x[2]*x[2]*a2*np.sin(x[1])
-    C2prime = x[2]*x[2]*a2*np.cos(x[1])
-    Sol = ((a2*sin(x[1]))*D+(a2*cos(x[1])+a3)*Dprime)/(D*D)*(F1-C1)+(-a2*cos(x[1])-a3)/D*(-C1prime)+(-2*a2*sin(x[1])*D-(2*a2*cos(x[1])+a1)*Dprime)/(D*D)*(F2-C2)+(2*a2*cos(x[1])+a1)/D*(-C2prime)
-    return Sol
-
-def complex_derivative_5(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    C1prime = -x[3]*2*a2*np.sin(x[1])
-    C2prime = 2*x[2]*a2*np.sin(x[1])
-    Sol = (a2*cos(x[1])+a3)/D*(Bdyn[0,0]+C1prime)+(2*a2*cos(x[1])+a1)/D*(-Bdyn[1,0]-C2prime)
-    return Sol
-
-def complex_derivative_6(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    C1prime = (-2*x[2]-2*x[3])*a2*np.sin(x[1])
-    Sol = (a2*cos(x[1])+a3)/D*(Bdyn[0,1]+C1prime)+(2*a2*cos(x[1])+a1)/D*(-Bdyn[1,1])
-    return Sol
-
-def easy_derivative_1(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    Sol = a3/D
-    return Sol
-
-def easy_derivative_2(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    Sol = -(a2*cos(x[1])+a3)/D
-    return Sol
-
-def easy_derivative_3(x):
-    D = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
-    Sol = (2*a2*cos(x[1])+a1)/D
-    return Sol
-
-
-
 def fx(x,u):
-    tau = 0.06
-    return np.array([[0,0,1,0,0,0],
-                     [0,0,0,1,0,0],
-                     [0,complex_derivative_1(x),complex_derivative_2(x),complex_derivative_3(x),easy_derivative_1(x),easy_derivative_2(x)],
-                     [0,complex_derivative_4(x),complex_derivative_5(x),complex_derivative_6(x),easy_derivative_2(x),easy_derivative_3(x)],
-                     [0,0,0,0,-1/tau,0],
-                     [0,0,0,0,0,-1/tau]])
+    x = np.array([x[0],x[2],x[4],x[1],x[3],x[5]])
+    A = Linearization(0,x,N=6,Euler = False)
+    idx = [0,2,4,1,3,5]
+    M,N = A.shape
+    newA=np.zeros((M,N))
+    for i in range(M):
+        for j in range(N):
+            newA[idx[i],idx[j]] = A[i,j]
+    return newA
 
 def fu(x,u):
     tau = 0.06

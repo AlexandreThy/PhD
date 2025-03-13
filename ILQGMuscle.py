@@ -408,7 +408,7 @@ def ILQGMuscle(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,s
     oldx = np.ones(K)*100
     oldy = np.ones(K)*100
     # Create an array of 50 colors from the colormap
-    P = 100
+    P = 30
     for p in range(P):     
         
         x = step1(x0,u,Duration,False)
@@ -436,7 +436,7 @@ def ILQGMuscle(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,s
     if plot :
         plt.grid(linestyle='--')
         plt.axis("equal")
-        plt.plot(X,Y,linewidth = .8,color = "#36f386",label = "ILQG") if mpc  else plt.plot(X,Y,linewidth = .8,color = "#3698f3",label = "ILQG 6Muscles")
+        plt.plot(X,Y,linewidth = .8,color = "#36f386",label = "ILQG") if mpc  else plt.plot(X,Y,color = "#3698f3",label = "ILQG 6Muscles")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
         plt.scatter([Xtg],[Ytg],color = "black")

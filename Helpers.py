@@ -139,11 +139,11 @@ def Compute_constant_force(theta,omega,acc,factor):
     F2 = (gs*gamma-fs*nu)/(gs*fe-ge*fs) - acc[1]
     return np.array([F1,F2])
 
-def MultipleLabel(title = "Controllers",side = "right"):
+def MultipleLabel(title = "Controllers",side = "right",fontsize = 16,title_fontsize = 15):
         
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys(),fontsize = 16,title = title,title_fontsize = 15,frameon = True,shadow = True,fancybox = True,loc = "upper "+side)
+    plt.legend(by_label.values(), by_label.keys(),fontsize = fontsize,title = title,title_fontsize = title_fontsize,frameon = True,shadow = True,fancybox = True,loc = "upper "+side)
 
 def Cov_Matrix(M,N,Var = 1e-6):
     K = 1/0.06
@@ -277,3 +277,11 @@ def get_colors_from_colormap(N, cmap_name):
     colormap = cm.get_cmap(cmap_name, N)  # Get colormap with N discrete levels
     colors = [colormap(i) for i in range(N)]  # Extract N colors
     return colors
+
+def add_scale_cm(X,Y,L,fontsize = 10):
+    plt.plot(np.linspace(X,X+L,100),np.ones(100)*Y,color = "black")
+    plt.plot(np.ones(100)*X,np.linspace(Y,Y+L,100),color = "black")
+    plt.text(X+1,Y+1,str(L)+" cm",fontsize = fontsize)
+
+def delete_axis(ax,sides = ["left","right","bottom","top"] ):
+    for side in sides : ax.spines[side].set_visible(False)   
