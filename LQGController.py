@@ -124,7 +124,7 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
 
 
 
-def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],plot = True,Delay = 0,Num_iter = 60,Activate_Noise = False,plotEstimation = False):
+def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],plot = True,Delay = 0,Num_iter = 60,Activate_Noise = False,plotEstimation = False,ClassicLQG=False):
 
 
     
@@ -169,9 +169,11 @@ def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,ta
     omega = np.zeros(2)
     
     for k in range(Num_iter-1):
-        xcopy = np.copy(x)
-        xcopy[[1,2,4,5]] = [0,0,0,0]
-        A[:Num_Var,:Num_Var] = Linearization(dt,xcopy)
+        if ClassicLQG:A[:Num_Var,:Num_Var] = Linearization(dt,np.array([pi/4,0,0,pi/2,0,0]))
+        else:
+            xcopy = np.copy(x)
+            xcopy[[1,2,4,5]] = [0,0,0,0]
+            A[:Num_Var,:Num_Var] = Linearization(dt,xcopy)
         S = Q  
         for _ in range(Num_iter-1-k):
             L = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
@@ -224,7 +226,9 @@ def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,ta
     Y = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
 
     if plot:
-        plt.plot(X,Y,color = "green",label = "LQG",linewidth = .8)
+        color = "magenta" if ClassicLQG else "green"
+        label = "LQG" if ClassicLQG else "DLQG"
+        plt.plot(X,Y,color = color,label = label,linewidth = .8)
         plt.axis("equal")
         tg = np.array([obj1,obj2])
         plt.scatter(np.array([ToCartesian(tg)[0]]),np.array([ToCartesian(tg)[1]]),color = "black")
