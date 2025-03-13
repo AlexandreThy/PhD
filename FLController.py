@@ -218,7 +218,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
         PlottingFunction(X,Y,AdditionalDynamics,Delay,dt,starting_point,targets)
 
     if ShowJ : return X,Y,J,array_x
-    if Showu : return X,Y,array_u
+    if Showu : return X,Y,array_u,array_x
     return X,Y
 
 
