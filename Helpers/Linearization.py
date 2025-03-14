@@ -1,4 +1,4 @@
-from Helpers import *
+from Helpers.Helpers import *
 def Linearization(dt, x,N = 8,Euler = True):
     TimeConstant = 1 / 0.06  # Torque dynamics coefficient
 

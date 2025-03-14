@@ -1,4 +1,4 @@
-from Helpers import *
+from Helpers.Helpers import *
 
 def optimizationofmpcproblem42(dt,Horizon,w1,w2,r,end,estimate_now):
         # State variables: x (cart position), x_dot, theta (pendulum angle), theta_dot

@@ -1,4 +1,4 @@
-from Linearization import *
+from Helpers.Linearization import *
 
 def f(x,u):
     tau = 0.06
@@ -280,3 +280,443 @@ def fnewton(var,X,Y):
 def dfnewton(var):
     u,v = var
     return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
+def f_muscle(x,u):
+    
+    C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
+    Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
+    Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    
+    a = x[4:]
+    adot = (u-a)/.06
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    fv = (vmax-v)/(vmax+.3*v)
+    
+    T = a*fl*fv*Fmax
+    
+    torque = (-A.T@T).reshape(2)
+    theta = Minv@(torque-Bdyn@x[2:4]-C)
+    return np.array([[x[2],x[3],theta[0],theta[1],adot[0],adot[1],adot[2],adot[3],adot[4],adot[5]]])
+
+def dthetas(x,u):
+    a = x[4:]
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
+    Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*(-2*l+2*lrest)/(.5*lrest)**2*(-A@np.array([1,0]))
+    fv =  (vmax-v)/(vmax+.3*v)
+    
+    dTdts = a*dfl*fv*Fmax
+    return Minv@(-A.T@dTdts)
+
+def dthetae(x,u):
+    C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
+    Cdot = np.array([-x[3]*(2*x[2]+x[3])*a2*np.cos(x[1])*x[3],x[2]*x[2]*a2*np.cos(x[1])*x[3]])
+    Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
+    Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    Mdot = np.array([[-2*a2*np.sin(x[1])*x[3],-a2*np.sin(x[1])*x[3]],[-a2*np.sin(x[1])*x[3],0]])
+    dMinv = -Minv@Mdot@Minv
+    
+    a = x[4:]
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    fv =  (vmax-v)/(vmax+.3*v)
+    T = a*fl*fv*Fmax
+    dfl = np.exp(-(((l-lrest)/lrest)/.5)**2)*(-2*l+2*lrest)/(.5*lrest)**2*(-A@np.array([0,1]))
+    dTdte = a*dfl*fv*Fmax
+    
+    torque = -A.T@T
+    torquedot = -A.T@dTdte
+    return dMinv@(torque-Bdyn@x[2:4]-C)+Minv@(torquedot-Cdot)
+
+def domegas(x,u):
+    Cdot = np.array([-x[3]*2*a2*np.sin(x[1]),2*x[2]*a2*np.sin(x[1])])
+    Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
+    Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    a = x[4:]
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    dv = -A@np.array([1,0])
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    dfv =(-dv*(vmax+.3*v)-(vmax-v)*.3*dv)/(vmax+.3*v)**2
+    dTdos = a*fl*dfv*Fmax
+    
+    torquedot = -A.T@dTdos
+    return Minv@(torquedot-Cdot-Bdyn@np.array([1,0]))
+
+
+def domegae(x,u):
+    Cdot = np.array([-2*(x[2]+x[3])*a2*np.sin(x[1]),0])
+    Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
+    Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    a = x[4:]
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    dv = -A@np.array([0,1])
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    dfv =(-dv*(vmax+.3*v)-(vmax-v)*.3*dv)/(vmax+.3*v)**2
+    dTdoe = a*fl*dfv*Fmax
+    
+    torquedot = -A.T@dTdoe
+    return Minv@(torquedot-Cdot-Bdyn@np.array([0,1]))
+
+def dai(x,i):
+
+    Denominator = a3*(a1-a3)-a2*a2*np.cos(x[1])*np.cos(x[1])
+    Minv = np.array([[a3/Denominator,(-a2*np.cos(x[1])-a3)/Denominator],[(-a2*np.cos(x[1])-a3)/Denominator,(2*a2*np.cos(x[1])+a1)/Denominator]])
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    fv =  (vmax-v)/(vmax+.3*v)
+    a = np.zeros(6)
+    a[i] = 1
+    T = a*fl*fv*Fmax
+    torquedot = -A.T@T
+    return Minv@(torquedot)
+
+
+def fx_muscle(x,u):
+    dts = dthetas(x,u)
+    dte = dthetae(x,u)
+    dos = domegas(x,u)
+    doe = domegae(x,u)
+    return np.array([[0,0,1,0,0,0,0,0,0,0],
+                     [0,0,0,1,0,0,0,0,0,0],
+                     [dts[0],dte[0],dos[0],doe[0],dai(x,0)[0],dai(x,1)[0],dai(x,2)[0],dai(x,3)[0],dai(x,4)[0],dai(x,5)[0]],
+                     [dts[1],dte[1],dos[1],doe[1],dai(x,0)[1],dai(x,1)[1],dai(x,2)[1],dai(x,3)[1],dai(x,4)[1],dai(x,5)[1]],
+                     [0,0,0,0,-1/0.06,0,0,0,0,0],
+                     [0,0,0,0,0,-1/0.06,0,0,0,0],
+                     [0,0,0,0,0,0,-1/0.06,0,0,0],
+                      [0,0,0,0,0,0,0,-1/0.06,0,0],
+                      [0,0,0,0,0,0,0,0,-1/0.06,0],
+                      [0,0,0,0,0,0,0,0,0,-1/0.06]])
+
+def fu_muscle(x,u):
+    return np.array([[0,0,0,0,0,0],
+                     [0,0,0,0,0,0],
+                     [0,0,0,0,0,0],
+                     [0,0,0,0,0,0],
+                     [1/0.06,0,0,0,0,0],
+                     [0,1/0.06,0,0,0,0],
+                     [0,0,1/0.06,0,0,0],
+                     [0,0,0,1/0.06,0,0],
+                     [0,0,0,0,1/0.06,0],
+                     [0,0,0,0,0,1/0.06]])
+
+def l_muscle(x,u,r1,xtarg=0,w1=0,w2=0):
+    
+    return np.sum(r1*u**2/2)
+
+def lx_muscle(x,u,xtarg=0,w1=0,w2=0):
+    totalcost = np.zeros(len(x))
+    return totalcost
+
+def lu_muscle(u,r1):
+    
+    return u*r1
+
+def lxx_muscle(x):
+    totalcost =np.zeros((len(x),len(x)))
+    return totalcost
+
+def luu_muscle(x,u,r1):
+    return np.diag(np.ones(len(u))*r1)
+
+def h_muscle(x,w1,w2,xtarg):
+    return w1/2*((x[0]-xtarg[0])*(x[0]-xtarg[0])+(x[1]-xtarg[1])*(x[1]-xtarg[1])) + w2/2*(x[2]*x[2]+x[3]*x[3])
+
+def hx_muscle(x,w1,w2,xtarg):
+    return np.array([w1*(x[0]-xtarg[0]),w1*(x[1]-xtarg[1]),w2*x[2],w2*x[3],0,0,0,0,0,0])
+
+def hxx_muscle(x,w1,w2):
+    Q = np.zeros((10,10))
+    Q[:4,:4]= np.array([[w1,0,0,0],
+                     [0,w1,0,0],
+                     [0,0,w2,0],
+                     [0,0,0,w2]])
+    return Q
+def Kalman_muscle(Omega_measure,Omega_sens,A,sigma,H):
+    K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
+    sigma = Omega_sens + (A - K@H)@sigma@A.T
+    return K,sigma
+def step1_muscle(x0,u,Duration,Noise):
+    
+    K = np.shape(u)[0]+1
+    dt = Duration/(K-1)
+    newx = np.zeros((K,len(x0)))
+    newx[0] = np.copy(x0)
+    for i in range(K-1):
+        newx[i+1] = newx[i] + dt*f_muscle(newx[i],u[i])
+    return newx
+
+def Compute_acc_muscle(x,u,F):
+    C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
+        
+    M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
+    a = x[4:]
+    A = np.array([[0.04,0.04,0,0,0.028,0.028],[0,0,0.025,0.025,0.035,0.035]]).T
+    lrest = np.array([0.09, 0.04, 0.06, 0.1, 0.19, 0.14])
+    Fmax = np.array([1142, 260, 987, 624, 430, 798])
+    vmax = 6.28*lrest
+    l = lrest-A@x[:2]
+    v = -A@x[2:4]
+    Vsh = .3
+    fl = np.exp(-(((l-lrest)/lrest)/.5)**2)
+    fv = Vsh*(vmax+v)/(Vsh*vmax-v)
+    
+    T = a*fl*fv*Fmax
+    
+    torque = (-A.T@T).reshape(2)
+    return np.linalg.solve(M,(torque-Bdyn@(x[2:4])-C))+F
+
+def step5_muscle(x0,l,L,Duration,Noise,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
+    
+    dt = Duration/(Num_steps-1)
+    Num_Var = len(x0)
+    
+
+    x0 = np.tile(x0, kdelay + 1) 
+    xref = np.zeros((Num_steps,Num_Var*(kdelay + 1)))
+    xref[0] = np.copy(x0)
+    newx = np.zeros((Num_steps,Num_Var*(kdelay + 1)))
+    newx[0] = np.copy(x0)
+    xhat = np.zeros((Num_steps,Num_Var*(kdelay + 1)))
+    
+    H = np.zeros((Num_Var,(kdelay+1)*Num_Var))
+    H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
+
+    sigma = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1)))
+    for i in range(Num_steps-1):
+        Extended_A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
+        Extended_A[:Num_Var,:Num_Var] = A[i]
+        Extended_A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
+        Extended_B = np.zeros(((kdelay+1)*Num_Var,B.shape[2]))
+        Extended_B[:Num_Var] = B[i]
+        deltau = l[i]+L[i]@xhat[i,:Num_Var]
+        u = bestu[i] + deltau
+        if FF == True:
+            if i == 0 : acc = np.zeros(2)
+            else : acc = Compute_acc_muscle(newx[i],u,F)
+            F=Compute_f_new_version(newx[i,0:2],newx[i,2:4],acc,.3)
+            if Side == "Left": F*=-1
+            
+        else : 
+            F = np.array([0,0])
+
+        
+        Omega_sens=np.zeros((len(x0),len(x0)))
+        Omega_sens[3,3] = Variance
+        Omega_sens[2,2] = Variance
+        Omega_measure = np.diag(np.ones(len(x0)))*Variance
+        K,sigma = Kalman_muscle(Omega_measure,Omega_sens,Extended_A,sigma,H)
+
+        passed_newx = np.copy(newx[i,:-Num_Var])
+        newx[i+1,:Num_Var] = newx[i,:Num_Var] + dt*f_muscle(newx[i,:Num_Var],u)
+        newx[i+1,Num_Var:] = passed_newx
+        newx[i+1,2:4]+=dt*F
+
+        passed_xref = np.copy(xref[i,:-Num_Var])
+        xref[i+1,:Num_Var] = xref[i,:Num_Var] + dt*f_muscle(xref[i,:Num_Var],u)
+        xref[i+1,Num_Var:] = passed_xref
+        
+        if Noise: 
+            newx[i,2:4]+=np.random.normal(0,np.sqrt(Variance),2)
+            #newx[i+1]+= motor_noise #+ mult_noise@u
+        y = H@(newx[i]-xref[i])
+        if Noise : y+=np.random.normal(0,np.sqrt(Variance),len(y))
+        xhat[i+1] = Extended_A@xhat[i] + Extended_B@deltau + K@(y-H@xhat[i])
+        
+    return newx
+
+def step2_muscle(x,u,Duration,w1,w2,r1,xtarg):
+    n = len(x[0])
+    m = len(u[0])
+    K = np.shape(u)[0]+1
+    dt = Duration/(K)
+    A = np.zeros((K-1,n,n))
+    B = np.zeros((K-1,n,m))
+    q = np.zeros(K)
+    qbold = np.zeros((K,n))
+    r = np.zeros((K-1,m))
+    Q = np.zeros((K,n,n))
+    R = np.zeros((K-1,m,m))
+    for i in range(K-1):
+        A[i] = np.identity(n)+dt*fx_muscle(x[i],u[i])
+        B[i] = dt*fu_muscle(x[i],u[i])
+        q[i] = dt*l_muscle(x[i],u[i],r1,xtarg,w1,w2)
+        qbold[i] = dt*lx_muscle(x[i],u[i],xtarg,w1,w2)
+        r[i] = dt*lu_muscle(u[i],r1)
+        Q[i] = dt*lxx_muscle(x[i])
+        R[i] = dt*luu_muscle(x[i],u[i],r1)
+
+    q[K-1] = h_muscle(x[K-1],w1,w2,xtarg)
+    qbold[K-1] = hx_muscle(x[K-1],w1,w2,xtarg)
+    Q[K-1] = hxx_muscle(x[K-1],w1,w2)
+    return A,B,q,qbold,r,Q,R
+
+def step3_muscle(A,B,C,cbold,q,qbold,r,Q,R,eps):
+    # C should be nxm 
+    # c should be nx1
+
+    K = A.shape[0]+1
+    n,m = np.shape(B[0])
+    S = np.zeros((K,n,n))
+    s = np.zeros(K)
+    sbold = np.zeros((K,n))
+    l = np.zeros((K-1,m))
+    L = np.zeros((K-1,m,n))
+
+    S[-1] = Q[-1]
+    s[-1] = q[-1]
+    sbold[-1] = qbold[-1]
+
+    for k in np.arange(K-2,-1,-1):
+        temp1 = 0
+        temp2 = 0
+        temp3 = 0
+        for i in range(n):
+            temp1+=C[k,i,:,:].T@S[k+1]@cbold[k,i,:]
+            temp2+=C[k,i,:,:].T@S[k+1]@C[k,i,:,:]
+            temp3+=cbold[k,i,:].T@S[k+1]@cbold[k,i,:]
+        gbold = r[k] + B[k].T@sbold[k+1]+temp1
+        G = B[k].T@S[k+1]@A[k]
+        H = R[k] + B[k].T@S[k+1]@B[k]+temp2
+        
+        eigenvalues, eigenvectors = np.linalg.eig(H)
+
+
+#
+#
+# Verify decomposition: A = V Λ V⁻¹
+        V = np.diag(eigenvalues)  # Create diagonal matrix
+
+        for i in range(V.shape[0]):
+            if V[i,i]<( eps): V[i,i] = eps
+            V[i,i] = 1/V[i,i]
+        Hinv = eigenvectors @ V @ np.linalg.inv(eigenvectors)
+   
+        S[k] = Q[k] + A[k].T@S[k+1]@A[k]-G.T@Hinv@G
+        sbold[k] = qbold[k]+A[k].T@sbold[k+1]-G.T@Hinv@gbold
+        s[k] = q[k] + s[k+1] + 0.5*temp3 - .5*gbold.T@Hinv@gbold
+
+        l[k] = -Hinv@gbold
+        L[k] = -Hinv@G
+    
+    return l,L
+
+def step4_muscle(l,L,K,A,B):
+    m,n = L[0].shape
+    x = np.zeros(n)
+    u_incr = np.zeros((K-1,m))
+    for k in range(K-1):
+        u_incr[k] = l[k]+L[k]@x
+        x = A[k]@x+B[k]@u_incr[k]
+    return u_incr
+
+
+
+def GetNoise(alpha,multvar,dt,N,kdelay):
+    B_basic = np.array([[0,0],[0,0],[0,0],[0,0],[dt,0],[0,dt]])
+    B = np.zeros((N*(kdelay+1),2))
+    B[:N] = B_basic 
+    return Compute_Multiplicative_Noise(N,alpha,B,multvar)
+def fnewton(var,X,Y):
+    u,v = var
+    return np.array([33*np.cos(u+v)+30*np.cos(u)-X,33*np.sin(u+v)+30*np.sin(u)-Y])
+
+def dfnewton(var):
+    u,v = var
+    return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
+
+from Controllers.NMPC import *
+def ILQGMuscle(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-5,targets = [0,50],K = 60,start = [0,30],plot = True,Noise = False,Delay = 0,FF = False,Side = "Left",Variance = 1e-6,mpc = False,eps = 1e-3*1.4,plot_all_iterations = False):
+    obj1,obj2 = newton(fnewton,dfnewton,1e-8,1000,targets[0],targets[1]) #Defini les targets
+    st1,st2 = newton(fnewton,dfnewton,1e-8,1000,start[0],start[1])
+
+    x0 = np.array([st1,st2,0,0,0,0,0,0,0,0])
+    
+    m = 6
+    n = 10
+    O=np.ones((n,n))*Variance
+    dt = Duration/K
+    u = np.zeros((K-1,m))
+    #u = np.random.uniform(-.02,.02,(K-1,m))
+    if mpc : u = MPC42(Duration,start,targets,w1,w2,r1*np.ones(6),K,dt,K,plot = False).T
+    kdelay = int(Delay/dt)
+    newcbold = np.zeros((K,n,n))
+    C = np.zeros((K,n,n,m))
+    for i in range(K):
+        for j in range(n):
+            newcbold[i,j] = np.diag(O)
+
+    cbold = newcbold
+    u_incr = [1000,1000]
+    oldx = np.ones(K)*100
+    oldy = np.ones(K)*100
+    # Create an array of 50 colors from the colormap
+    P = 30
+    for p in range(P):     
+        
+        x = step1_muscle(x0,u,Duration,False)
+        X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
+        Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
+        if plot_all_iterations : 
+            print("### Iteration ",p," ###")
+            plt.plot(X,Y,color = get_colors_from_colormap(P,cmap_name="viridis")[p],linewidth = .3)
+        if np.max(np.abs(u_incr))<1e-4*5:
+            print("### A Solution has been found ###")
+            x = step5_muscle(x0,l,L,Duration,Noise,A,B,K,u-u_incr,FF,Side,kdelay,Variance)
+            
+            X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
+            Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30
+            break
+
+        A,B,q,qbold,r,Q,R = step2_muscle(x,u,Duration,w1,w2,r1,np.array([obj1,obj2]))
+        l,L = step3_muscle(A,B,C,cbold,q,qbold,r,Q,R,eps)
+        u_incr = step4_muscle(l,L,K,A,B)
+        u += u_incr
+        
+    Xtg = targets[0]
+    Ytg = targets[1]
+        #Plotting
+    if plot :
+        plt.grid(linestyle='--')
+        plt.axis("equal")
+        plt.plot(X,Y,linewidth = .8,color = "#36f386",label = "ILQG") if mpc  else plt.plot(X,Y,color = "#3698f3",label = "ILQG 6Muscles")
+        plt.xlabel("X [cm]")
+        plt.ylabel("Y [cm]")
+        plt.scatter([Xtg],[Ytg],color = "black")
+    return X,Y,u,x

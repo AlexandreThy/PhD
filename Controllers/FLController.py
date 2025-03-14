@@ -1,6 +1,6 @@
-from Helpers import *
-from Environment import *
-from plot import *
+from Helpers.Helpers import *
+from Helpers.Environment import *
+from Helpers.plot import *
 
 def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,PlottingFunction=PlotTraj ,Activate_Noise = False,Num_iter = 300,Showu=False, ShowJ = False, ShowEstimate = False,Delay = .06,AdditionalDynamics = {},Stabilization_Time = 0):
     

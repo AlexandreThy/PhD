@@ -1,4 +1,4 @@
-from Linearization import *
+from Helpers.Linearization import *
 
 def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,plotEstimation = False,Showu=False,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300,Activate_Noise = False):
 
