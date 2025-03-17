@@ -64,7 +64,7 @@ class joint2Ddyn:
         # the body is just a first order system
         # x_dot = -k*x + Wout*u
         # hence A = -k, B = Wout = np.array([1, -1])
-        self.Wout = np.random.uniform(0,1,(2,6))
+        self.Wout = np.random.uniform(0,1,(2,nodes_number))
  
         # define network parameters of a 2D network
         self.N = nodes_number
@@ -81,14 +81,13 @@ class joint2Ddyn:
         return
  
     @staticmethod
-    def sysdyn(x,gamma, u,v,dt,Wout,W):
+    def sysdyn(x,gamma, u,dt,Wout,W):
         M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
         C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
 
         x[0:2] += dt*x[2:4]
-        print(gamma,Wout,W)
-        x[2:4] += dt*(np.linalg.solve(M,(Wout@gamma-Bdyn@(x[2:4])-C)))
-        x[4:6]+=dt*v
+        x[2:4] += dt*x[4:6]
+        x[4:6] = np.linalg.solve(M,(Wout@gamma-Bdyn@(x[2:4])-C))
         gamma += dt*(np.tanh(W@gamma)+u)
         return np.concatenate((x,gamma))
     
@@ -134,9 +133,7 @@ def compute_nonlinear_command(L,x,Wout,W,gamma):
     # Compute the command through the FL technique
     v = -L@x
     gammadot = M@(v)+Mdot@(np.array([x[4],x[5]]))+Cdot+Bdyn@np.array([x[4],x[5]])
-    extended_gammadot = np.zeros(6)
-    gammadot
-    u = np.linalg.solve(Wout,gammadot)-np.tanh(W@gamma)
+    u = np.linalg.pinv(Wout)@gammadot-np.tanh(W@gamma)
     return u ,v   
 
 
@@ -161,12 +158,13 @@ def eightCondReach(params):
     all_states = np.zeros((num_steps, num_targconditions, num_states+2))
  
     # initialize the network readout command
-    all_readout = np.zeros((num_steps, num_targconditions, 6))
+    all_readout = np.zeros((num_steps, num_targconditions,2))
  
     # now simulate the system
     for i in range(num_targconditions):
         angles = np.linspace(0,2*pi,num_targconditions+1)[:-1]
-        st1,st2 = newton(newtonf,newtondf,1e-8,1000,10,30)
+        st1,st2 = newton(newtonf,newtondf,1e-8,1000,0,30)
+        print("Starting Position : ",st1,st2,np.array([33*np.cos(st1+st2)+30*np.cos(st1),33*np.sin(st1+st2)+30*np.sin(st1)]))
         tg1,tg2 = newton(newtonf,newtondf,1e-8,1000,10*cos(angles[i]),30+10*sin(angles[i]))
         all_states[0,i,:] = np.concatenate(([st1,st2,0,0,0,0,tg1,tg2],np.zeros(params['N'])))
         for j in range(num_steps-1):
@@ -175,7 +173,8 @@ def eightCondReach(params):
             u,v = compute_nonlinear_command(L[j],cur_state[:8],bodyins.Wout,bodyins.W,cur_state[8:])
  
             # get the next state
-            next_state = bodyins.sysdyn(cur_state[:8],cur_state[8:],u,v,dt,bodyins.Wout,bodyins.W)
+            next_state = bodyins.sysdyn(cur_state[:8],cur_state[8:],u,dt,bodyins.Wout,bodyins.W)
+            print("Position at time ",j*dt,": ",np.array([33*np.cos(next_state[0]+next_state[1])+30*np.cos(next_state[0]),33*np.sin(next_state[0]+next_state[1])+30*np.sin(next_state[0])]))
 
             # update the state vector
             all_states[j+1, i, :] = next_state 
@@ -216,7 +215,7 @@ def compute_pca_and_projection(neuron_states, time_window_analysis):
     test_neuron_states_reshaped = test_neuron_states.swapaxes(0, 1).reshape(test_neuron_states.shape[0]*test_neuron_states.shape[1], test_neuron_states.shape[2])
  
     # apply PCA on the train data
-    n_pcs = 6
+    n_pcs = 2
     pca = PCA(n_components=n_pcs)
     pca.fit(train_neuron_states_reshaped)
  
@@ -230,9 +229,8 @@ def compute_pca_and_projection(neuron_states, time_window_analysis):
  
 def runOnce(params):
     results = eightCondReach(params)
-    behavior = results['states'][:, :, 0]
-    network = results['states'][:, :, 6:]
-    target = results['states'][:, :, 4:6]
+    behavior = results['states'][:, :, :2]
+    network = results['states'][:, :, 8:]
  
     # also get control gains
     L = results['L']
@@ -267,9 +265,16 @@ if __name__ == '__main__':
     all_network_gains = np.array(all_network_gains)
     all_readout = np.array(all_readout)
     
+    for i in range(8): 
+        thetas = (behavior[:,i,0])
+        thetae = (behavior[:,i,1])
+        plt.plot(33*np.cos(thetas+thetae)+30*np.cos(thetas),33*np.sin(thetas+thetae)+30*np.sin(thetas))
+    plt.show()
+    
+    
     # perform PCA on each of the runs of network dynamics and extract the first two components and place them in all_pcs
     all_pcs = []
-    window = 20
+    window = 50
     for i in range(num_runs):
         pc_states, explained_variance_ratio = compute_pca_and_projection(all_network[i], [0, window])
         all_pcs.append(pc_states)
