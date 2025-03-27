@@ -286,6 +286,12 @@ def add_scale_cm(X,Y,L,fontsize = 10):
 def delete_axis(ax,sides = ["left","right","bottom","top"] ):
     for side in sides : ax.spines[side].set_visible(False)   
 
+def delete_ticks(ax):
+    ax.set_yticks([])
+    ax.set_xticks([])
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
 def Compute_Cost_function(r,w1,w2,u,xf,target,at3=False):
     if at3:
         return np.sum(u**2)*r+w1*(xf[0]-target[0])**2+w1*(xf[3]-target[1])**2+w2*(xf[1]**2+xf[4]**2)
