@@ -148,7 +148,7 @@ def MPC42(Duration,start,end,w1 = 1e4,w2 = 1,r = 1e-4,Horizon = 0,n_steps = K,st
     return states
 
 
-def optimizationofmpctodorov(dt,Horizon,w1,w2,r,end,estimate_now):
+def optimizationofmpctodorov(dt,Horizon,w1,w2,r,end,estimate_now,l0,M0,theta0):
         # State variables: x (cart position), x_dot, theta (pendulum angle), theta_dot
     theta = ca.SX.sym("theta",2,1)
     omega = ca.SX.sym("omega",2,1)
@@ -174,10 +174,7 @@ def optimizationofmpctodorov(dt,Horizon,w1,w2,r,end,estimate_now):
 
     
 
-    M = ca.DM([
-    [0.04, -0.04, 0, 0, 0.028, -0.028],
-    [0, 0, 0.025, -0.025, 0.035, -0.035]
-    ]).T  
+    M = ca.DM(M0)
 
     def Todorov_fl(l):
         return ca.exp(-((l**1.92 - 1) / 1.03)**2)
@@ -200,12 +197,12 @@ def optimizationofmpctodorov(dt,Horizon,w1,w2,r,end,estimate_now):
     def t(u,a):
         return ca.if_else(u > a, 0.066+u*(0.05-0.066), 0.066)
     
-    lrest = ca.SX([0.14, 0.04, 0.06, 0.1, 0.19, 0.14])
+    lrest = ca.SX(l0)
     Fmax = ca.SX([572.4,445.2,699.6,381.6,159,318])
     adot = (u-a)/0.066#t(u,a)
-    l = 1+M@theta/lrest
+    l = 1+M@(theta-theta0)/lrest
     v = M@omega/lrest
-    T = Fmax*Todorov_A(a)*(Todorov_fl(l)*Todorov_fv(v))
+    T = Fmax*a*(Todorov_fl(l)*Todorov_fv(v))
     tau = M.T@T
     Bdyn = ca.SX([[0.05, 0.025], [0.025, 0.05]])
     acc = Minv @ (tau-C-Bdyn@omega)
@@ -264,6 +261,15 @@ def optimizationofmpctodorov(dt,Horizon,w1,w2,r,end,estimate_now):
         print("Solver did not find a solution.")
     return sol,U,f
 
+def initial_muscle_length(theta):
+    ts,te = theta
+    a11,a22,a33,a4,a51,a52,a61,a62,b1,b2,b3,b4 = 0.055,0.055,0.03,0.03,0.04,0.045,0.04,0.045,0.08,0.08,0.12,0.12
+
+    l = np.array([np.sqrt(a11*a11+b1*b1+2*a11*b1*np.cos(ts)),
+                  np.sqrt(a22*a22+b2*b2-2*a22*b2*np.cos(ts)),
+                  np.sqrt(a33*a33+b3*b3+2*a33*b3*np.cos(te)),
+                  np.sqrt(a4*a4+b4*b4-2*a4*b4*np.cos(te)),
+                  np.sqrt(a51*a51+a52*a52+.3*.3+2*a51*.3*cos(ts)+2*a52*.3*cos(te)+2*a51*a52*cos(ts+te))])
 def MPCTodorov(Duration,start,end,w1 = 1e4,w2 = 1,r = 1e-4,Horizon = 0,n_steps = 60,stepupdate = 0,plotTraj = True,plotVel = False):
 
 
@@ -282,11 +288,11 @@ def MPCTodorov(Duration,start,end,w1 = 1e4,w2 = 1,r = 1e-4,Horizon = 0,n_steps =
     controls = np.zeros((6, n_steps-1))
     state_now = np.array([start[0], start[1],0,0,0,0,0,0,0,0])    # Slightly off-balance initial condition
     states[:,0] = state_now
-    ecart = -stepupdate
+    ecart = -stepupdate 
     for t in range(n_steps-1):
         if t%stepupdate ==0: 
             ecart +=stepupdate
-            sol,U,f = optimizationofmpctodorov(dt,Horizon-ecart,w1,w2,r,end_angular,state_now)
+            sol,U,f = optimizationofmpctodorov(dt,Horizon-ecart,w1,w2,r,end_angular,state_now,l0,M0,start)
     
         u_opt = sol.value(U[:, t-ecart])
         controls[:, t] = u_opt
