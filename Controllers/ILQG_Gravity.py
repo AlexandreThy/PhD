@@ -397,13 +397,13 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
     for _ in range(50):
         x = step1(x0, u, Duration, alpha) # Forward step computing the sequence of state trajectory given a sequence of input u
         X = np.cos( x[:, 0] + x[:, 1]) * 33 + np.cos( x[:, 0]) * 30
-        Y = np.sin( - x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
+        Y = np.sin( x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
         
         if np.max(np.abs(oldX - X)) < 1e-3 and np.max(np.abs(oldY- Y)) < 1e-3: #If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
 
             x = step5(x0, l, L, Duration, Noise, A, B, K, u-u_incr, kdelay, motornoise_variance, multnoise_variance, alpha)
             X = np.cos( x[:, 0] + x[:, 1]) * 33 + np.cos( x[:, 0]) * 30
-            Y = np.sin( - x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
+            Y = np.sin( x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
 
             break
         
