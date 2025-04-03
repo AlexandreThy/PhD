@@ -24,29 +24,32 @@ Bvisc = np.array([[0.05,0.025],[0.025,0.05]])
 
 #newton functions are used to implement a newton-raphson method that computes the joint angles given a desired cartesian position. 
 
-def newton(f,Df,epsilon,max_iter,X,Y,x0 = np.array([-0.8,1.5])):
-    xn = x0
-    for n in range(0,max_iter):
-        fxn = f(xn,X,Y)
-        if abs(np.max(np.abs(fxn))) < epsilon:
-            for k in range(2): 
-                if xn[k] > pi : xn[k]-=2*pi
-            return xn
-        Dfxn = Df(xn)
-        if np.max(np.abs(Dfxn)) < epsilon:
-            print('Zero derivative. No solution found.')
-            return None
-        xn = xn - np.linalg.inv(Dfxn)@fxn
-    print('Exceeded maximum iterations. No solution found.')
-    return None
+def compute_angles(x, y, l1 = 30, l2 = 33):
+    """
+    Computes h1 using the given equation.
 
-def fnewton(var,X,Y):
-    u,v = var
-    return np.array([33*np.cos(u+v)+30*np.cos(u)-X,33*np.sin(u+v)+30*np.sin(u)-Y])
+    Parameters:
+        x (float): x-coordinate of the end effector.
+        y (float): y-coordinate of the end effector.
+        l1 (float): Length of the first link.
+        l2 (float): Length of the second link.
 
-def dfnewton(var):
-    u,v = var
-    return np.array([[-33*np.sin(u+v)-30*np.sin(u),-33*np.sin(u+v)],[33*np.cos(u+v)+30*np.cos(u),33*np.cos(u+v)]])
+    Returns:
+        h1 (float): Computed angle in radians.
+    """
+
+
+    # Compute the second term: arccos formula
+    r_squared = x**2 + y**2
+
+
+    # Final h1 calculation
+    h1 = np.arctan2(y, x) - np.arccos((r_squared + l1**2 - l2**2) / (2 * l1 * np.sqrt(r_squared)))
+
+
+    # Compute h2
+    h2 = np.pi - np.arccos((l1**2 + l2**2 - r_squared) / (2 * l1 * l2))
+    return h1,h2
 
 def Linearization(x,alpha):
     """
@@ -285,7 +288,7 @@ def step4(l, L, K, A, B):
     
     return u_incr
 
-def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_variance, alpha):
+def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_variance, multnoise_variance, alpha):
     dt = Duration / (Num_steps - 1)
     Num_Var = len(x0)
     
@@ -327,7 +330,7 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
         xref[i + 1, Num_Var:] = passed_xref
         
         if Noise:
-            newx[i, 4:4 + len(u)] += np.random.normal(0, np.sqrt(motornoise_variance), len(u))
+            newx[i, 4:4 + len(u)] += np.random.normal(0, np.sqrt(motornoise_variance), len(u)) + np.random.normal(0, np.sqrt(multnoise_variance), len(u))*u
         
         y = H @ (newx[i] - xref[i])
         if Noise:
@@ -336,6 +339,13 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
         xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
     
     return newx
+
+def Compute_Cartesian_Speed(X,Y,dt):
+    V = np.zeros(X.shape)
+    Vx = np.diff(X) / dt
+    Vy = np.diff(Y) / dt
+    V[1:] =  np.sqrt(Vx*Vx+Vy*Vy)
+    return V
 
 def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30],K = 120,plot = True,Noise = False,delay = 0,alpha = 0,filename = "test.pdf"):
     """
@@ -357,8 +367,9 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
         - x : Vector state of the trajectory
     """
 
-    obj1, obj2 = newton(fnewton, dfnewton, 1e-8, 1000, targets[0], targets[1])
-    st1, st2 = newton(fnewton, dfnewton, 1e-8, 1000, start[0], start[1])
+    obj1, obj2 = compute_angles(targets[0],targets[1])
+    st1, st2 = compute_angles(start[0], start[1])
+    print(np.array([st1,st2,obj1,obj2])/pi*180)
     tau1,tau2 =np.array([g*(m1*s1*np.cos(st1+alpha)+m2*(s2*np.cos(st1+alpha+st2)+l1*np.cos(st1+alpha))),g*m2*s2*np.cos(st1+st2+alpha)])
 
     x0 = np.array([st1, st2, 0, 0, tau1, tau2]) #theta_shoulder,theta_elbow,omega_shoulder,omega_elbow,shoulder_torque,elbow_torque
@@ -371,29 +382,28 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
     cbold = np.zeros((K, m, n))
     C = np.zeros((K, m, n, m))
 
-    motornoise_variance = 1e-3*K/60 #Play with 1e-3 to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
-
-    O = np.zeros((6, 6))
-    O[5, 5] = motornoise_variance
-    O[4, 4] = motornoise_variance
+    motornoise_variance = 1e-4*4*K/60 #Play with 1e-3 to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
+    multnoise_variance = 1e-4*4*K/60
 
     for i in range(K):
         for j in range(m):
-            cbold[i, j] = np.diag(O)[j]
+            for k in range(4,6):
+                cbold[i, j, k] = motornoise_variance
+                C[i,j,k,j] = multnoise_variance
 
     oldX = np.ones(K) * np.inf
     oldY = np.ones(K) * np.inf
 
     for _ in range(50):
         x = step1(x0, u, Duration, alpha) # Forward step computing the sequence of state trajectory given a sequence of input u
-        X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
-        Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
+        X = np.cos( x[:, 0] + x[:, 1]) * 33 + np.cos( x[:, 0]) * 30
+        Y = np.sin( - x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
         
         if np.max(np.abs(oldX - X)) < 1e-3 and np.max(np.abs(oldY- Y)) < 1e-3: #If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
 
-            x = step5(x0, l, L, Duration, Noise, A, B, K, u-u_incr, kdelay, motornoise_variance, alpha)
-            X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
-            Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
+            x = step5(x0, l, L, Duration, Noise, A, B, K, u-u_incr, kdelay, motornoise_variance, multnoise_variance, alpha)
+            X = np.cos( x[:, 0] + x[:, 1]) * 33 + np.cos( x[:, 0]) * 30
+            Y = np.sin( - x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
 
             break
         
@@ -410,31 +420,40 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
     # Plotting
     if plot:
         fig, ax = plt.subplots()
-    
         ax.plot(X, Y, linewidth=1.4, color="blue")
         ax.scatter([Xtg], [Ytg], color="red",label = "target")
         ax.scatter([X[0]], [Y[0]], color="black",label = "start")
 
-        image = mpimg.imread("img/assis-sur-une-chaise.png")
-        ax.imshow(image, extent=[0, 10, -5, 5], zorder=1)
+        #image = mpimg.imread("img/assis-sur-une-chaise.png")
+        #ax.imshow(image, extent=[0, 10, -5, 5], zorder=1)
         plt.axis("equal")
         for side in ["left","right","bottom","top"] : ax.spines[side].set_visible(False)   
-        ax.set_yticks([-40,-30,-20,-10,0,10,20,30,40])
-        ax.set_yticklabels(["-40 cm","-30 cm","-20 cm","- 10 cm","0 cm","10 cm","20 cm","30 cm","40 cm"]) 
-        ax.set_xticks([0,10,20,30,40,50,60])
-        ax.set_xticklabels(["0 cm","10 cm","20 cm","30 cm","40 cm","50 cm","60 cm"])
+        #ax.set_yticks([-40,-30,-20,-10,0,10,20,30,40])
+        #ax.set_yticklabels(["-40 cm","-30 cm","-20 cm","- 10 cm","0 cm","10 cm","20 cm","30 cm","40 cm"]) 
+        #ax.set_xticks([0,10,20,30,40,50,60])
+        #ax.set_xticklabels(["0 cm","10 cm","20 cm","30 cm","40 cm","50 cm","60 cm"])
         ax.legend(frameon = True,shadow = True,fancybox = True)
         plt.savefig("img/"+filename,dpi = 200)
         plt.show()
+#
+        #fig, ax = plt.subplots()
+        #plt.plot(np.linspace(0,Duration,K),x[:,4], label = "Shoulder Torque",color = "#36f386")
+        #plt.plot(np.linspace(0,Duration,K),x[:,5], label = "Elbow Torque",color = "#36e5f3")
+        #for side in ["right","top"] : ax.spines[side].set_visible(False) 
+        #ax.set_ylabel("Torques [Nm]")
+        #ax.set_xlabel("Time [sec]")
+        #ax.legend(frameon = True,shadow = True,fancybox = True)
+        #plt.savefig("img/torqueplot"+filename,dpi = 200)
+        #plt.show()
 
+        V = Compute_Cartesian_Speed(X,Y,dt)
         fig, ax = plt.subplots()
-        plt.plot(np.linspace(0,Duration,K),x[:,4], label = "Shoulder Torque",color = "#36f386")
-        plt.plot(np.linspace(0,Duration,K),x[:,5], label = "Elbow Torque",color = "#36e5f3")
+        plt.plot(np.linspace(0,Duration,K),V, label = "Cartesian Velocity",color = "#36f386")
         for side in ["right","top"] : ax.spines[side].set_visible(False) 
-        ax.set_ylabel("Torques [Nm]")
+        ax.set_ylabel("Velocity [cm/sec]")
         ax.set_xlabel("Time [sec]")
         ax.legend(frameon = True,shadow = True,fancybox = True)
-        plt.savefig("img/torqueplot"+filename,dpi = 200)
+        plt.savefig("img/velplot"+filename,dpi = 200)
         plt.show()
 
     return X, Y, u, x
