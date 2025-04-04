@@ -145,7 +145,6 @@ def Linearization(x,alpha):
     return A
 
 def f(x, u, alpha):
-    tau = 0.06
     C = np.array([
         -x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]),
         x[2] ** 2 * a2 * np.sin(x[1])
@@ -162,7 +161,7 @@ def f(x, u, alpha):
     ])
     
     theta = Minv @ (x[4:6] - Bvisc @ x[2:4] - C - G)
-    torque = (u - x[4:6]) / tau
+    torque = (u - x[4:6]) / 0.06
     
     return np.array([[x[2], x[3], theta[0], theta[1], torque[0], torque[1]]])
 
@@ -288,7 +287,7 @@ def step4(l, L, K, A, B):
     
     return u_incr
 
-def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_variance, multnoise_variance, alpha):
+def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_variance, multnoise_variance, alpha, cbold, C):
     dt = Duration / (Num_steps - 1)
     Num_Var = len(x0)
     
@@ -303,8 +302,15 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
     H[:, (kdelay) * Num_Var:] = np.identity(Num_Var)
     
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-    
+    Omega_measure = np.diag(np.ones(6)) * 1e-6
+    sigmax = np.zeros((len(x0),len(x0)))
+    mx = np.zeros(len(x0))
+    temp1,temp2,temp3 = 0,0,0
+
+
     for i in range(Num_steps - 1):
+        
+        
         Extended_A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
         Extended_A[:Num_Var, :Num_Var] = A[i]
         Extended_A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
@@ -314,11 +320,17 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
         deltau = l[i] + L[i] @ xhat[i, :Num_Var]
         u = bestu[i] + deltau
         
+        
+        for j in range(len(u)):
+            temp1 += cbold[i, j, :] @ cbold[i, j, :].T
+            temp2 += C[i, j, :, :] @ (l[i]+L[i]@mx) @ cbold[i, j, :].T
+            temp3 += C[i, j, :, :] @ (l[i]@l[i].T + l[i]@mx.T@L[i].T+L[i]@mx@l[i].T + L[i]@sigmax @L[i].T) @ C[i, j, :, :].T
+        
         Omega_sens = np.zeros((len(x0), len(x0)))
         Omega_sens[5, 5] = motornoise_variance
         Omega_sens[4, 4] = motornoise_variance
-        Omega_measure = np.diag(np.ones(6)) * 1e-6
-        
+        mx = (Extended_A+Extended_B@L[i])@mx+Extended_B@l[i]
+        Omega_sens += temp1 + temp2 + temp3
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
         
         passed_newx = np.copy(newx[i, :-Num_Var])
@@ -337,7 +349,7 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
             y += np.random.normal(0, 1e-3, len(y))
         
         xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
-    
+        sigmax = (Extended_A+Extended_B@L[i])@sigmax@(Extended_A+Extended_B@L[i]).T+K @ H @ sigma @ Extended_A.T + ((Extended_A+Extended_B@L[i])@mx)@l[i].T@Extended_B.T + l[i]@Extended_B@((Extended_A+Extended_B@L[i])@mx).T + Extended_B@l[i]@l[i].T@Extended_B
     return newx
 
 def Compute_Cartesian_Speed(X,Y,dt):
@@ -369,8 +381,8 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
 
     obj1, obj2 = compute_angles(targets[0],targets[1])
     st1, st2 = compute_angles(start[0], start[1])
-    print(np.array([st1,st2,obj1,obj2])/pi*180)
-    tau1,tau2 =np.array([g*(m1*s1*np.cos(st1+alpha)+m2*(s2*np.cos(st1+alpha+st2)+l1*np.cos(st1+alpha))),g*m2*s2*np.cos(st1+st2+alpha)])
+
+    tau1,tau2 = np.array([g*(m1*s1*np.cos(st1+alpha)+m2*(s2*np.cos(st1+alpha+st2)+l1*np.cos(st1+alpha))),g*m2*s2*np.cos(st1+st2+alpha)])
 
     x0 = np.array([st1, st2, 0, 0, tau1, tau2]) #theta_shoulder,theta_elbow,omega_shoulder,omega_elbow,shoulder_torque,elbow_torque
 
@@ -393,15 +405,17 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
 
     oldX = np.ones(K) * np.inf
     oldY = np.ones(K) * np.inf
+    u_incr = np.ones(u.shape) * np.inf
 
-    for _ in range(50):
+    for _ in range(100):
         x = step1(x0, u, Duration, alpha) # Forward step computing the sequence of state trajectory given a sequence of input u
         X = np.cos( x[:, 0] + x[:, 1]) * 33 + np.cos( x[:, 0]) * 30
         Y = np.sin( x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
         
         if np.max(np.abs(oldX - X)) < 1e-3 and np.max(np.abs(oldY- Y)) < 1e-3: #If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
 
-            x = step5(x0, l, L, Duration, Noise, A, B, K, u-u_incr, kdelay, motornoise_variance, multnoise_variance, alpha)
+
+            x = step5(x0, l, L, Duration, Noise, A, B, K, u-u_incr, kdelay, motornoise_variance, multnoise_variance, alpha, cbold, C)
             X = np.cos( x[:, 0] + x[:, 1]) * 33 + np.cos( x[:, 0]) * 30
             Y = np.sin( x[:, 0] + x[:, 1]) * 33 + np.sin( x[:, 0]) * 30
 
