@@ -156,12 +156,16 @@ def compute_nonlinear_command(L, x, Wout, W, gamma):
     """
     M = np.array([[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])],
                   [a3 + a2 * cos(x[1]), a3]])
+    
+    Mdot = np.array([[- 2 * a2 * sin(x[1]) * x[3], - a2 * sin(x[1]) * x[3]],
+                  [- a2 * sin(x[1]) * x[3], 0]])
+    
     Cdot = np.array([-a2 * x[5] * (2 * x[2] + x[3]) * sin(x[1]) - a2 * x[3] * (2 * x[4] + x[5]) * sin(x[1])
                      - a2 * x[3] ** 2 * (2 * x[2] + x[3]) * cos(x[1]),
                      2 * x[2] * x[4] * a2 * sin(x[1]) + x[2] ** 2 * a2 * cos(x[1]) * x[3]])
 
     v = -L @ x
-    gammadot = M @ v + Cdot + Bdyn @ np.array([x[4], x[5]])
+    gammadot = M @ v + Cdot + Bdyn @ np.array([x[4], x[5]]) + Mdot @ np.array([x[4], x[5]])
     u = np.linalg.pinv(Wout) @ gammadot - np.tanh(W @ gamma)
     return u
 
@@ -241,8 +245,9 @@ for i in range(8):
     plt.plot(x, y, color=colors[i], linewidth=2)
     plt.scatter(x[-1], y[-1], color=colors[i], edgecolor='black', zorder=3)  # Start points
 
-plt.xlabel("X Position")
-plt.ylabel("Y Position")
+plt.xlabel("X [cm]")
+plt.ylabel("Y [cm]")
 plt.title("Feedback Linearization control \n of nonlinear network")
 plt.gca().set_aspect('equal', adjustable='box')
+plt.savefig("8TargNet.pdf",dpi = 200)
 plt.show()

@@ -393,7 +393,7 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
     C = np.zeros((K-1, m, n, m))
 
     motornoise_variance = 1e-6*K/60 #Play with 1e-3 to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
-    multnoise_variance = 1e-4*K/60
+    multnoise_variance = 0 #1e-4*K/60
 
     for i in range(K-1):
         for j in range(m):
