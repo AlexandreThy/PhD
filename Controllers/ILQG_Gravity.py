@@ -64,8 +64,6 @@ def Linearization(x,alpha):
 
     # Extract state variables
     theta1, theta2, dtheta1, dtheta2, tau1, tau2 = x[:6]
-    
-
     # Gravity force
     G = np.array([g*(m1*s1*np.cos(theta1+alpha)+m2*(s2*np.cos(theta1+theta2+alpha)+l1*np.cos(theta1+alpha))),
                     g*m2*s2*np.cos(theta1+theta2+alpha)])
@@ -324,7 +322,7 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
         for j in range(len(u)):
             temp1 += cbold[i, j, :] @ cbold[i, j, :].T
             temp2 += C[i, j, :, :] @ (l[i]+L[i]@mx) @ cbold[i, j, :].T
-            temp3 += C[i, j, :, :] @ (l[i]@l[i].T + l[i]@mx.T@L[i].T+L[i]@mx@l[i].T + L[i]@sigmax @L[i].T) @ C[i, j, :, :].T
+            temp3 += C[i, j, :, :] @ (l[i]@l[i].T + l[i]@(mx.T@L[i].T)+L[i]@mx@l[i].T + L[i]@sigmax @L[i].T) @ C[i, j, :, :].T
         
         Omega_sens = np.zeros((len(x0), len(x0)))
         Omega_sens[5, 5] = motornoise_variance
@@ -347,9 +345,9 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
         y = H @ (newx[i] - xref[i])
         if Noise:
             y += np.random.normal(0, 1e-3, len(y))
-        
+    
         xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
-        sigmax = (Extended_A+Extended_B@L[i])@sigmax@(Extended_A+Extended_B@L[i]).T+K @ H @ sigma @ Extended_A.T + ((Extended_A+Extended_B@L[i])@mx)@l[i].T@Extended_B.T + l[i]@Extended_B@((Extended_A+Extended_B@L[i])@mx).T + Extended_B@l[i]@l[i].T@Extended_B
+        sigmax = (Extended_A+Extended_B@L[i])@sigmax@(Extended_A+Extended_B@L[i]).T+K @ H @ sigma @ Extended_A.T + ((Extended_A+Extended_B@L[i])@mx)@(l[i].T@Extended_B.T) + Extended_B@l[i]@((Extended_A+Extended_B@L[i])@mx).T + (Extended_B@l[i])@(l[i].T@Extended_B.T)
     return newx
 
 def Compute_Cartesian_Speed(X,Y,dt):
@@ -391,13 +389,13 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
     dt = Duration / K
     kdelay = int(delay / dt)
 
-    cbold = np.zeros((K, m, n))
-    C = np.zeros((K, m, n, m))
+    cbold = np.zeros((K-1, m, n))
+    C = np.zeros((K-1, m, n, m))
 
-    motornoise_variance = 1e-4*4*K/60 #Play with 1e-3 to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
-    multnoise_variance = 1e-4*4*K/60
+    motornoise_variance = 1e-6*K/60 #Play with 1e-3 to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
+    multnoise_variance = 1e-4*K/60
 
-    for i in range(K):
+    for i in range(K-1):
         for j in range(m):
             for k in range(4,6):
                 cbold[i, j, k] = motornoise_variance
@@ -447,7 +445,7 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
         #ax.set_xticks([0,10,20,30,40,50,60])
         #ax.set_xticklabels(["0 cm","10 cm","20 cm","30 cm","40 cm","50 cm","60 cm"])
         ax.legend(frameon = True,shadow = True,fancybox = True)
-        plt.savefig("img/"+filename,dpi = 200)
+        #plt.savefig("img/"+filename,dpi = 200)
         plt.show()
 #
         #fig, ax = plt.subplots()
@@ -467,7 +465,7 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
         ax.set_ylabel("Velocity [cm/sec]")
         ax.set_xlabel("Time [sec]")
         ax.legend(frameon = True,shadow = True,fancybox = True)
-        plt.savefig("img/velplot"+filename,dpi = 200)
+        #plt.savefig("img/velplot"+filename,dpi = 200)
         plt.show()
 
     return X, Y, u, x

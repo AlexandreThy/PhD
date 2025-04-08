@@ -143,7 +143,7 @@ def MultipleLabel(title = "Controllers",side = "right",fontsize = 16,title_fonts
         
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys(),fontsize = fontsize,title = title,title_fontsize = title_fontsize,frameon = True,shadow = True,fancybox = True,loc = "upper "+side)
+    plt.legend(by_label.values(), by_label.keys(),fontsize = fontsize,title = title,title_fontsize = title_fontsize,frameon = True,shadow = True,fancybox = True,loc = side)
 
 def Cov_Matrix(M,N,Var = 1e-6):
     K = 1/0.06
