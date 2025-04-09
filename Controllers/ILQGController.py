@@ -117,7 +117,7 @@ def step5(x0,l,L,Duration,Noise,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
         Omega_sens=np.zeros((len(x0),len(x0)))
         Omega_sens[5,5] = Variance
         Omega_sens[4,4] = Variance
-        Omega_measure = np.diag(np.ones(6))*Variance
+        Omega_measure = np.diag(np.ones(6))*1e-6
         K,sigma = Kalman(Omega_measure,Omega_sens,Extended_A,sigma,H)
 
         passed_newx = np.copy(newx[i,:-Num_Var])
@@ -133,7 +133,7 @@ def step5(x0,l,L,Duration,Noise,A,B,Num_steps,bestu,FF,Side,kdelay,Variance):
             newx[i,4:4+len(u)]+=np.random.normal(0,np.sqrt(Variance),len(u))
             #newx[i+1]+= motor_noise #+ mult_noise@u
         y = H@(newx[i]-xref[i])
-        if Noise : y+=np.random.normal(0,np.sqrt(Variance),len(y))
+        if Noise : y+=np.random.normal(0,np.sqrt(1e-6),len(y))
         xhat[i+1] = Extended_A@xhat[i] + Extended_B@deltau + K@(y-H@xhat[i])
         
     return newx
@@ -233,17 +233,17 @@ def ILQG(Duration = .6,w1 = 1e4,w2 = 1,r1 = 1e-4,targets = [0,50],K = 60,start =
     u = np.zeros((K-1,m))
     dt = Duration/K
     kdelay = int(Delay/dt)
-    newcbold = np.zeros((K,m,n))
-    C = np.zeros((K,m,n,m))
-    for i in range(K):
+    cbold = np.zeros((K-1,m,n))
+    C = np.zeros((K-1,m,n,m))
+    for i in range(K-1):
         for j in range(m):
-            newcbold[i,j] = np.diag(O)[j]
-    cbold = newcbold
+            for k in range(4,6):
+                cbold[i, j, k] = Variance
     u_incr = [1]
     oldx = np.ones(K)*100
     # Create an array of 50 colors from the colormap
 
-    for _ in range(100):     
+    for _ in range(60):     
         x = step1(x0,u,Duration,False)
         X = np.cos(x[:,0]+x[:,1])*33+np.cos(x[:,0])*30
         Y = np.sin(x[:,0]+x[:,1])*33+np.sin(x[:,0])*30

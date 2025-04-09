@@ -1,4 +1,5 @@
 from Helpers.Linearization import *
+from Helpers.Environment import *
 
 def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],FF = False,Side = "Right",plot = True,Delay = 0,plotEstimation = False,Showu=False,newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300,Activate_Noise = False):
 
@@ -124,7 +125,7 @@ def LQG(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,ta
 
 
 
-def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],plot = True,Delay = 0,Num_iter = 60,Activate_Noise = False,plotEstimation = False,ClassicLQG=False):
+def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,20],plot = True,Delay = 0,Num_iter = 60,Activate_Noise = False,plotEstimation = False,ClassicLQG=False, AdditionalDynamics ={}):
 
 
     
@@ -167,11 +168,12 @@ def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,ta
     sigma = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1))) 
     J = 0
     omega = np.zeros(2)
-    
+    acc = np.zeros(2)
     for k in range(Num_iter-1):
+        F = EnvironmentDynamics(AdditionalDynamics,x,acc)
         if ClassicLQG:A[:Num_Var,:Num_Var] = Linearization(dt,np.array([pi/4,0,0,pi/2,0,0]))
         else:
-            xcopy = np.copy(x)
+            xcopy = np.copy(xhat)
             xcopy[[1,2,4,5]] = [0,0,0,0]
             A[:Num_Var,:Num_Var] = Linearization(dt,xcopy)
         S = Q  
@@ -198,8 +200,8 @@ def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,ta
         
         xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
         #print(xhat[:8])
-        
-        omega += dt * np.linalg.solve(M, ((x[[2, 5]]) - C - Bdyn @ omega))
+        acc = np.linalg.solve(M, ((x[[2, 5]]) - C - Bdyn @ omega)) + F
+        omega += dt * acc
         x_new = np.array([
             x[0] + dt * x[1],  omega[0],  x[2] + dt * TimeConstant * (u[0] - x[2]),
             x[3] + dt * x[4],  omega[1],  x[5] + dt * TimeConstant * (u[1] - x[5]),
@@ -232,9 +234,9 @@ def BestLQG(Duration = .6,w1 = 1e4,w2 = 1e4,w3 = 1,w4 = 1,r1 = 1e-5,r2 = 1e-5,ta
         plt.axis("equal")
         tg = np.array([obj1,obj2])
         plt.scatter(np.array([ToCartesian(tg)[0]]),np.array([ToCartesian(tg)[1]]),color = "black")
-        if plotEstimation :
-            x_nonlin = array_xhat.T[:,1:][:,::1]
-            X2 = np.cos(x_nonlin[0]+x_nonlin[3])*33+np.cos(x_nonlin[0])*30
-            Y2 = np.sin(x_nonlin[0]+x_nonlin[3])*33+np.sin(x_nonlin[0])*30
-            plt.plot(X2,Y2,color = "black",label = "Estimation",linewidth = .8,linestyle ="--",alpha = .5)
+    if plotEstimation :
+        x_nonlin2 = array_xhat.T[:,1:][:,::1]
+        X2 = np.cos(x_nonlin2[0]+x_nonlin2[3])*33+np.cos(x_nonlin2[0])*30
+        Y2 = np.sin(x_nonlin2[0]+x_nonlin2[3])*33+np.sin(x_nonlin2[0])*30
+        plt.plot(X2,Y2,color = "black",label = "Estimation",linewidth = .8,linestyle ="--",alpha = .5)
     return X,Y,u,x_nonlin
