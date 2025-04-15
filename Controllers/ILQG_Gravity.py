@@ -304,7 +304,7 @@ def step5(x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_
     sigmax = np.zeros((len(x0),len(x0)))
     mx = np.zeros(len(x0))
     temp1,temp2,temp3 = 0,0,0
-
+    ##
 
     for i in range(Num_steps - 1):
         
@@ -392,8 +392,8 @@ def ILQG(Duration = .5,w1 = 1e4,w2 = 1,r1 = 1e-3,targets = [0,50],start = [0,30]
     cbold = np.zeros((K-1, m, n))
     C = np.zeros((K-1, m, n, m))
 
-    motornoise_variance = 1e-6*K/60 #Play with 1e-3 to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
-    multnoise_variance = 0 #1e-4*K/60
+    motornoise_variance = 1e-4*K/60 #Play with it to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
+    multnoise_variance = 1e-6*K/60
 
     for i in range(K-1):
         for j in range(m):
