@@ -2,14 +2,34 @@ from Helpers.Helpers import *
 from Helpers.Environment import *
 from Helpers.plot import *
 
-def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,PlottingFunction=PlotTraj ,Activate_Noise = False,Num_iter = 300,Showu=False, ShowJ = False, ShowEstimate = False,Delay = .06,AdditionalDynamics = {},Stabilization_Time = 0):
-    
+
+def Feedback_Linearization(
+    Duration=0.6,
+    w1=1e8,
+    w2=1e8,
+    w3=1e4,
+    w4=1e4,
+    r1=1e-5,
+    r2=1e-5,
+    targets=[0, 55],
+    starting_point=[0, 30],
+    plot=True,
+    PlottingFunction=PlotTraj,
+    Activate_Noise=False,
+    Num_iter=300,
+    Showu=False,
+    ShowJ=False,
+    ShowEstimate=False,
+    Delay=0.06,
+    AdditionalDynamics={},
+    Stabilization_Time=0,
+):
     """
     Duration (float) : Duration of the movement
 
-    w1 (float) : Weight associated to the penalty on shoulder angle 
-    
-    w2 (float) : Weight associated to the penalty on elbow angle 
+    w1 (float) : Weight associated to the penalty on shoulder angle
+
+    w2 (float) : Weight associated to the penalty on elbow angle
 
     w3 (float) : Weight associated to the penalty on shoulder angular velocity
 
@@ -24,7 +44,7 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
 
     starting_point (array of float of size 2): X,Y Position of the starting point of the movement
         must be a biomechanically feasible starting point considering that the shoulder is at (0,0)
-    
+
     plot (boolean) : Allowing plot outputs of the hand trajectory for the experiment
 
     Activate_Noise (boolean) : Gaussian variance associated to the white noises in the model
@@ -37,199 +57,311 @@ def Feedback_Linearization(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 
 
     Delay (float) : Internal Delay of the system in seconds
 
-    AdditionalDynamics (dic) : Keywords describing supplementary environmental dynamics in the simulations 
+    AdditionalDynamics (dic) : Keywords describing supplementary environmental dynamics in the simulations
 
-        1) Velocity dependent ForceFields : 
+        1) Velocity dependent ForceFields :
 
-            - FF (Boolean) : Describing whether there is a forcefield or not 
-            - FFOnset (float) : Y threshold in cm after which the forcefield is activated 
+            - FF (Boolean) : Describing whether there is a forcefield or not
+            - FFOnset (float) : Y threshold in cm after which the forcefield is activated
             - Side (string: Left or Right ) : Describing on which side the lateral forcefield happen
     """
 
-    dt = Duration/Num_iter 
-    kdelay = int(Delay/dt)
-    stab = int(Stabilization_Time/dt)
-    obj1,obj2 = newton(newtonf,newtondf,1e-8,1000,targets[0],targets[1]) #Defini les targets
-    st1,st2 = newton(newtonf,newtondf,1e-8,1000,starting_point[0],starting_point[1])
+    dt = Duration / Num_iter
+    kdelay = int(Delay / dt)
+    stab = int(Stabilization_Time / dt)
+    obj1, obj2 = newton(
+        newtonf, newtondf, 1e-8, 1000, targets[0], targets[1]
+    )  # Defini les targets
+    st1, st2 = newton(
+        newtonf, newtondf, 1e-8, 1000, starting_point[0], starting_point[1]
+    )
 
-    x0 = np.array([st1,0,0,st2,0,0,obj1,obj2])
-    x0_with_delay = np.tile(x0, kdelay + 1) 
+    x0 = np.array([st1, 0, 0, st2, 0, 0, obj1, obj2])
+    x0_with_delay = np.tile(x0, kdelay + 1)
 
     Num_Var = 8
-    
-    #Define Weight Matrices of the cost function
-    R = np.array([[r1,0],[0,r2]])
-    Q = np.array([[w1,0,0,0,0,0,-w1,0],[0,w3,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],
-               [0,0,0,w2,0,0,0,-w2],[0,0,0,0,w4,0,0,0],[0,0,0,0,0,0,0,0],
-               [-w1,0,0,0,0,0,w1,0],[0,0,0,-w2,0,0,0,w2]])
 
-    
-    
-    #Define the Dynamic of the linear system 
+    # Define Weight Matrices of the cost function
+    R = np.array([[r1, 0], [0, r2]])
+    Q = np.array(
+        [
+            [w1, 0, 0, 0, 0, 0, -w1, 0],
+            [0, w3, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, w2, 0, 0, 0, -w2],
+            [0, 0, 0, 0, w4, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [-w1, 0, 0, 0, 0, 0, w1, 0],
+            [0, 0, 0, -w2, 0, 0, 0, w2],
+        ]
+    )
 
-    Kfactor = 1/0.06
+    # Define the Dynamic of the linear system
 
-    A_basic = np.array([[1,dt,0,0,0,0,0,0],[0,1,dt,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,1,dt,0,0,0],[0,0,0,0,1,dt,0,0],[0,0,0,0,0,1,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
-    B_basic = np.array([[0,0],[0,0],[dt,0],[0,0],[0,0],[0,dt],[0,0],[0,0]])
-    sigma = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1)))
+    Kfactor = 1 / 0.06
 
-    #Incorporation of delay 
+    A_basic = np.array(
+        [
+            [1, dt, 0, 0, 0, 0, 0, 0],
+            [0, 1, dt, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, dt, 0, 0, 0],
+            [0, 0, 0, 0, 1, dt, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
+        ]
+    )
+    B_basic = np.array(
+        [[0, 0], [0, 0], [dt, 0], [0, 0], [0, 0], [0, dt], [0, 0], [0, 0]]
+    )
+    sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
 
-    H = np.zeros((Num_Var,(kdelay+1)*Num_Var))
-    H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
+    # Incorporation of delay
 
-    A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
-    A[:Num_Var,:Num_Var] = A_basic
-    A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
-    B = np.zeros(((kdelay+1)*Num_Var,2))
+    H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
+    H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
+
+    A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
+    A[:Num_Var, :Num_Var] = A_basic
+    A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
+    B = np.zeros(((kdelay + 1) * Num_Var, 2))
     B[:Num_Var] = B_basic
 
-    #Compute the Feedback Gain of the Control law
+    # Compute the Feedback Gain of the Control law
     S = Q
 
-    array_L = np.zeros((Num_iter-1,2,Num_Var))   
-    array_S = np.zeros((Num_iter,Num_Var,Num_Var)) 
+    array_L = np.zeros((Num_iter - 1, 2, Num_Var))
+    array_S = np.zeros((Num_iter, Num_Var, Num_Var))
     array_S[-1] = S
-    for k in range(Num_iter-1):
-        L = np.linalg.inv(R+B_basic.T@S@B_basic)@B_basic.T@S@A_basic
-        array_L[Num_iter-2-k] = L
-        Qk = Q if k<stab else np.zeros(Q.shape)
-        S = Qk+A_basic.T@S@(A_basic-B_basic@L)
-        array_S[Num_iter-2-k] = S
-        
-    #Initialize matrices 
+    for k in range(Num_iter - 1):
+        L = np.linalg.inv(R + B_basic.T @ S @ B_basic) @ B_basic.T @ S @ A_basic
+        array_L[Num_iter - 2 - k] = L
+        Qk = Q if k < stab else np.zeros(Q.shape)
+        S = Qk + A_basic.T @ S @ (A_basic - B_basic @ L)
+        array_S[Num_iter - 2 - k] = S
+
+    # Initialize matrices
     L = array_L
 
+    # Initialize the arrays to stock the simulations
+    array_zhat = np.zeros((Num_iter, Num_Var))
+    array_x = np.zeros((Num_iter, Num_Var - 2))
+    array_z = np.zeros((Num_iter, Num_Var))
+    array_u = np.zeros((Num_iter - 1, 2))
+    y = np.zeros((Num_iter - 1, Num_Var))
 
-    #Initialize the arrays to stock the simulations 
-    array_zhat = np.zeros((Num_iter,Num_Var))
-    array_x = np.zeros((Num_iter,Num_Var-2)) 
-    array_z = np.zeros((Num_iter,Num_Var)) 
-    array_u = np.zeros((Num_iter-1,2))
-    y = np.zeros((Num_iter-1,Num_Var))
-
-    #Initialize the state vectors of the linear system
+    # Initialize the state vectors of the linear system
     array_zhat[0] = x0.flatten()
     array_z[0] = x0.flatten()
     zhat = np.copy(x0_with_delay)
-    z =  np.copy(x0_with_delay)
+    z = np.copy(x0_with_delay)
 
-    #Initialize the state vectors of the nonlinear system
-    x = np.zeros(Num_Var-2)
-    x[0],x[1] = x0[0],x0[3]
+    # Initialize the state vectors of the nonlinear system
+    x = np.zeros(Num_Var - 2)
+    x[0], x[1] = x0[0], x0[3]
     new_x = np.copy(x)
     array_x[0] = x
 
-    #Incorporation of delay 
+    # Incorporation of delay
 
-    #Perform the task
+    # Perform the task
     J = 0
     acc = np.zeros(2)
-    for k in range(Num_iter-1):
-        #Compute the matrices of the FL technique in function of the current estimate state 
-        
-        F = EnvironmentDynamics(AdditionalDynamics,x,acc)
+    for k in range(Num_iter - 1):
+        # Compute the matrices of the FL technique in function of the current estimate state
 
-        C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
+        F = EnvironmentDynamics(AdditionalDynamics, x, acc)
 
-        M = np.array([[a1+2*a2*cos(zhat[3]),a3+a2*cos(zhat[3])],[a3+a2*cos(zhat[3]),a3]])
+        C = np.array(
+            [
+                -zhat[4] * (2 * zhat[1] + zhat[4]) * a2 * np.sin(zhat[3]),
+                zhat[1] * zhat[1] * a2 * np.sin(zhat[3]),
+            ]
+        )
 
-        Cdot = np.array([-a2*zhat[5]*(2*zhat[1]+zhat[4])*sin(zhat[3])-a2*zhat[4]*(2*zhat[2]+zhat[5])*sin(zhat[3])
-                         -a2*zhat[4]*zhat[4]*(2*zhat[1]+zhat[4])*cos(zhat[3]),2*zhat[1]*zhat[2]*a2*sin(zhat[3])+zhat[1]*zhat[1]*a2*cos(zhat[3])*zhat[4]])
+        M = np.array(
+            [
+                [a1 + 2 * a2 * cos(zhat[3]), a3 + a2 * cos(zhat[3])],
+                [a3 + a2 * cos(zhat[3]), a3],
+            ]
+        )
 
-        Mdot = np.array([[-2*a2*sin(zhat[3])*zhat[4],-a2*sin(zhat[3])*zhat[4]],[-a2*sin(zhat[3])*zhat[4],0]])
-        
-        Omega_motor,Omega_measure,motornoise,sensorynoise = NoiseAndCovMatrix(M,Num_Var,kdelay,Var = 1e-3*2)
+        Cdot = np.array(
+            [
+                -a2 * zhat[5] * (2 * zhat[1] + zhat[4]) * sin(zhat[3])
+                - a2 * zhat[4] * (2 * zhat[2] + zhat[5]) * sin(zhat[3])
+                - a2 * zhat[4] * zhat[4] * (2 * zhat[1] + zhat[4]) * cos(zhat[3]),
+                2 * zhat[1] * zhat[2] * a2 * sin(zhat[3])
+                + zhat[1] * zhat[1] * a2 * cos(zhat[3]) * zhat[4],
+            ]
+        )
+
+        Mdot = np.array(
+            [
+                [-2 * a2 * sin(zhat[3]) * zhat[4], -a2 * sin(zhat[3]) * zhat[4]],
+                [-a2 * sin(zhat[3]) * zhat[4], 0],
+            ]
+        )
+
+        Omega_motor, Omega_measure, motornoise, sensorynoise = NoiseAndCovMatrix(
+            M, Num_Var, kdelay, Var=1e-3
+        )
 
         # Compute the command through the FL technique
-        
-        v = -L[k].reshape(np.flip(B_basic.shape))@zhat[:Num_Var]
-        u = 1/Kfactor*M@(v)+1/Kfactor*Mdot@(np.array([zhat[2],zhat[5]]))+M@(np.array([zhat[2],zhat[5]]))+C+Bdyn@np.array([zhat[1],zhat[4]])+1/Kfactor*Cdot+1/Kfactor*Bdyn@np.array([zhat[2],zhat[5]])
+
+        v = -L[k].reshape(np.flip(B_basic.shape)) @ zhat[:Num_Var]
+        u = (
+            1 / Kfactor * M @ (v)
+            + 1 / Kfactor * Mdot @ (np.array([zhat[2], zhat[5]]))
+            + M @ (np.array([zhat[2], zhat[5]]))
+            + C
+            + Bdyn @ np.array([zhat[1], zhat[4]])
+            + 1 / Kfactor * Cdot
+            + 1 / Kfactor * Bdyn @ np.array([zhat[2], zhat[5]])
+        )
         array_u[k] = u
-        if ShowJ : J+= u.T@R@u
+        if ShowJ:
+            J += u.T @ R @ u
 
         # Delayed Observation of the Nonlinear system expressed in linear coordinates
-        
-        y[k] = (H@z).flatten()
-        if Activate_Noise : 
 
-            y[k]+=sensorynoise
-        
-        # Kalman Filter Gains 
+        y[k] = (H @ z).flatten()
+        if Activate_Noise:
 
-        K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
-        sigma = Omega_motor + (A - K@H)@sigma@A.T
+            y[k] += sensorynoise
+
+        # Kalman Filter Gains
+
+        K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
+        sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
 
         # Compute the Estimation of the system in the linear system
-        
-        zhat = A@zhat + B@v + K@(y[k]-H@zhat)
-        
-        # Simulate the nonlinear plant 
-        
-        C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
-        
-        M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
 
-        
-        Cdot = np.array([-a2*acc[1]*(2*x[2]+x[3])*sin(x[1])-a2*x[3]*(2*acc[0]+acc[1])*sin(x[1])
-                         -a2*x[3]*x[3]*(2*x[2]+x[3])*cos(x[1]),2*x[2]*acc[0]*a2*sin(x[1])+x[2]*x[2]*a2*cos(x[1])*x[3]])
+        zhat = A @ zhat + B @ v + K @ (y[k] - H @ zhat)
 
-        Mdot = np.array([[-2*a2*sin(x[1])*x[3],-a2*sin(x[1])*x[3]],[-a2*sin(x[1])*x[3],0]])
-        
-        new_x[0:2] += dt*x[2:4]
-        new_x[2:4] += dt*(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))+F)
-        new_x[4:6] += dt*Kfactor*(u-x[4:6])
+        # Simulate the nonlinear plant
 
-        if Activate_Noise : 
+        C = np.array(
+            [
+                -x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]),
+                x[2] * x[2] * a2 * np.sin(x[1]),
+            ]
+        )
 
-            new_x[4:6]+=motornoise
-        
-        z = np.concatenate((np.array([new_x[0],new_x[2],acc[0],new_x[1],new_x[3],acc[1],z[6],z[7]]),z[:-Num_Var]))
-        
+        M = np.array(
+            [[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])], [a3 + a2 * cos(x[1]), a3]]
+        )
+
+        Cdot = np.array(
+            [
+                -a2 * acc[1] * (2 * x[2] + x[3]) * sin(x[1])
+                - a2 * x[3] * (2 * acc[0] + acc[1]) * sin(x[1])
+                - a2 * x[3] * x[3] * (2 * x[2] + x[3]) * cos(x[1]),
+                2 * x[2] * acc[0] * a2 * sin(x[1])
+                + x[2] * x[2] * a2 * cos(x[1]) * x[3],
+            ]
+        )
+
+        Mdot = np.array(
+            [
+                [-2 * a2 * sin(x[1]) * x[3], -a2 * sin(x[1]) * x[3]],
+                [-a2 * sin(x[1]) * x[3], 0],
+            ]
+        )
+
+        new_x[0:2] += dt * x[2:4]
+        new_x[2:4] += dt * (np.linalg.solve(M, (x[4:6] - Bdyn @ (x[2:4]) - C)) + F)
+        new_x[4:6] += dt * Kfactor * (u - x[4:6])
+
+        if Activate_Noise:
+
+            new_x[4:6] += motornoise
+
+        z = np.concatenate(
+            (
+                np.array(
+                    [new_x[0], new_x[2], acc[0], new_x[1], new_x[3], acc[1], z[6], z[7]]
+                ),
+                z[:-Num_Var],
+            )
+        )
+
         # Transform the new nonlinear state into the coordinates of the linear system
-        C = np.array([-z[4]*(2*z[1]+z[4])*a2*np.sin(z[3]),z[1]*z[1]*a2*np.sin(z[3])])
+        C = np.array(
+            [
+                -z[4] * (2 * z[1] + z[4]) * a2 * np.sin(z[3]),
+                z[1] * z[1] * a2 * np.sin(z[3]),
+            ]
+        )
 
-        M = np.array([[a1+2*a2*cos(z[3]),a3+a2*cos(z[3])],[a3+a2*cos(z[3]),a3]])
+        M = np.array(
+            [[a1 + 2 * a2 * cos(z[3]), a3 + a2 * cos(z[3])], [a3 + a2 * cos(z[3]), a3]]
+        )
 
-        acc = np.linalg.solve(M,(new_x[4:6]-Bdyn@(new_x[2:4])-C))+F
-        #Stock the true and estimated states
+        acc = np.linalg.solve(M, (new_x[4:6] - Bdyn @ (new_x[2:4]) - C)) + F
+        # Stock the true and estimated states
 
-        array_z[k+1] = z[:Num_Var].flatten()
-        array_zhat[k+1] = zhat[:Num_Var].flatten()
-        array_x[k+1] = new_x[:Num_Var-2].flatten()
-        
+        array_z[k + 1] = z[:Num_Var].flatten()
+        array_zhat[k + 1] = zhat[:Num_Var].flatten()
+        array_x[k + 1] = new_x[: Num_Var - 2].flatten()
+
         x = np.copy(new_x)
-        
 
-    if ShowJ : 
-        J+= z[:8].T@Q@z[:8]
+    if ShowJ:
+        J += z[:8].T @ Q @ z[:8]
 
-    #Change of coordinates from angular to cartesian 
-    
+    # Change of coordinates from angular to cartesian
 
     data = array_z
 
     if ShowEstimate:
         data = array_zhat
 
-    X,Y = ToCartesian(data,at3 = True)
+    X, Y = ToCartesian(data, at3=True)
 
-    if plot : 
-        PlottingFunction(X,Y,AdditionalDynamics,Delay,dt,starting_point,targets)
+    if plot:
+        PlottingFunction(X, Y, AdditionalDynamics, Delay, dt, starting_point, targets)
 
-    if ShowJ : return X,Y,J,array_x
-    if Showu : return X,Y,array_u,array_x
-    return X,Y
+    if ShowJ:
+        return X, Y, J, array_x
+    if Showu:
+        return X, Y, array_u, array_x
+    return X, Y
 
 
-def Feedback_Linearization_with_Gravity(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06,FF = False,ghat = 9.81,alpha = 0,alphahat = 0,ObjectMass = 0,EstimatedObjectMass = 0):
-    
+def Feedback_Linearization_with_Gravity(
+    Duration=0.6,
+    w1=1e8,
+    w2=1e8,
+    w3=1e4,
+    w4=1e4,
+    r1=1e-5,
+    r2=1e-5,
+    targets=[0, 55],
+    starting_point=[0, 30],
+    plot=True,
+    Activate_Noise=False,
+    Side="Left",
+    newtonfunc=newtonf,
+    newtondfunc=newtondf,
+    Num_iter=300,
+    ShowJ=False,
+    ShowEstimate=False,
+    Delay=0.06,
+    FF=False,
+    ghat=9.81,
+    alpha=0,
+    alphahat=0,
+    ObjectMass=0,
+    EstimatedObjectMass=0,
+):
     """
     Duration (float) : Duration of the movement
 
-    w1 (float) : Weight associated to the penalty on shoulder angle 
-    
-    w2 (float) : Weight associated to the penalty on elbow angle 
+    w1 (float) : Weight associated to the penalty on shoulder angle
+
+    w2 (float) : Weight associated to the penalty on elbow angle
 
     w3 (float) : Weight associated to the penalty on shoulder angular velocity
 
@@ -244,13 +376,13 @@ def Feedback_Linearization_with_Gravity(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4
 
     starting_point (array of float of size 2): X,Y Position of the starting point of the movement
         must be a biomechanically feasible starting point considering that the shoulder is at (0,0)
-    
+
     plot (boolean) : Allowing plot outputs of the hand trajectory for the experiment
 
     Noise_Variance (float) : Gaussian variance associated to the white noises in the model
 
     Side (String) : Side of the force field ("Left" or "Right")
-    
+
     newtonfunc([thetas,thetae],X,Y) : Function that computes the difference between the change of variable from the angular to cartesian system, and the targetted X,Y position
                                       It's a tool for the newton method to compute the desired joint angles that generate a precise X,Y position of the hand
 
@@ -261,217 +393,344 @@ def Feedback_Linearization_with_Gravity(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4
     ShowJ (boolean) : Computes and print the total cost function generated by the controller at the end of the movement
     """
 
-    dt = Duration/Num_iter 
-    kdelay = int(Delay/dt)
-    
-    #Defini les targets
-    st1,st2 = newton(newtonfunc,newtondfunc,1e-8,1000,starting_point[0],starting_point[1],x0=[-.8,.8])
-    obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1],x0=[-.3,.5]) 
-    if (abs(targets[0] - (np.cos(obj1+obj2)*33+np.cos(obj1)*30))>1) or (abs(targets[1] - np.sin(obj1+obj2)*33-np.sin(obj1)*30)>1):
+    dt = Duration / Num_iter
+    kdelay = int(Delay / dt)
+
+    # Defini les targets
+    st1, st2 = newton(
+        newtonfunc,
+        newtondfunc,
+        1e-8,
+        1000,
+        starting_point[0],
+        starting_point[1],
+        x0=[-0.8, 0.8],
+    )
+    obj1, obj2 = newton(
+        newtonfunc, newtondfunc, 1e-8, 1000, targets[0], targets[1], x0=[-0.3, 0.5]
+    )
+    if (abs(targets[0] - (np.cos(obj1 + obj2) * 33 + np.cos(obj1) * 30)) > 1) or (
+        abs(targets[1] - np.sin(obj1 + obj2) * 33 - np.sin(obj1) * 30) > 1
+    ):
         print("ERROR")
         return -1
-    
-    TAUINIT,_ = get_Gravity_Matrix(np.array([st1,0,0,st2,0,0]),alpha=alpha,additional_mass=EstimatedObjectMass)
-    G,_=get_Gravity_Matrix(np.array([st1,0,0,st2,0,0]),alpha = alpha,additional_mass=ObjectMass)
-    M = M1(st2,ObjectMass)
-    acc = np.linalg.solve(M,TAUINIT-G)
-    x0 = np.array([st1,0,acc[0],st2,0,acc[1],obj1,obj2])
-    x0_with_delay = np.tile(x0, kdelay + 1) 
+
+    TAUINIT, _ = get_Gravity_Matrix(
+        np.array([st1, 0, 0, st2, 0, 0]),
+        alpha=alpha,
+        additional_mass=EstimatedObjectMass,
+    )
+    G, _ = get_Gravity_Matrix(
+        np.array([st1, 0, 0, st2, 0, 0]), alpha=alpha, additional_mass=ObjectMass
+    )
+    M = M1(st2, ObjectMass)
+    acc = np.linalg.solve(M, TAUINIT - G)
+    x0 = np.array([st1, 0, acc[0], st2, 0, acc[1], obj1, obj2])
+    x0_with_delay = np.tile(x0, kdelay + 1)
 
     Num_Var = 8
-    
-    #Define Weight Matrices of the cost function
-    R = np.array([[r1,0],[0,r2]])
-    Q = np.array([[w1,0,0,0,0,0,-w1,0],[0,w3,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],
-               [0,0,0,w2,0,0,0,-w2],[0,0,0,0,w4,0,0,0],[0,0,0,0,0,0,0,0],
-               [0-w1,0,0,0,0,0,w1,0],[0,0,0,-w2,0,0,0,w2]])
 
-    
-    
-    #Define the Dynamic of the linear system 
+    # Define Weight Matrices of the cost function
+    R = np.array([[r1, 0], [0, r2]])
+    Q = np.array(
+        [
+            [w1, 0, 0, 0, 0, 0, -w1, 0],
+            [0, w3, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, w2, 0, 0, 0, -w2],
+            [0, 0, 0, 0, w4, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0 - w1, 0, 0, 0, 0, 0, w1, 0],
+            [0, 0, 0, -w2, 0, 0, 0, w2],
+        ]
+    )
 
-    Kfactor = 1/0.06
+    # Define the Dynamic of the linear system
 
-    A_basic = np.array([[1,dt,0,0,0,0,0,0],[0,1,dt,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,1,dt,0,0,0],[0,0,0,0,1,dt,0,0],[0,0,0,0,0,1,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
-    B_basic = np.array([[0,0],[0,0],[dt,0],[0,0],[0,0],[0,dt],[0,0],[0,0]])
-    sigma = np.zeros((Num_Var*(kdelay+1),Num_Var*(kdelay+1)))
-    #Incorporation of delay 
+    Kfactor = 1 / 0.06
 
-    H = np.zeros((Num_Var,(kdelay+1)*Num_Var))
-    H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
+    A_basic = np.array(
+        [
+            [1, dt, 0, 0, 0, 0, 0, 0],
+            [0, 1, dt, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, dt, 0, 0, 0],
+            [0, 0, 0, 0, 1, dt, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
+        ]
+    )
+    B_basic = np.array(
+        [[0, 0], [0, 0], [dt, 0], [0, 0], [0, 0], [0, dt], [0, 0], [0, 0]]
+    )
+    sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
+    # Incorporation of delay
 
-    A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
-    A[:Num_Var,:Num_Var] = A_basic
-    A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
-    B = np.zeros(((kdelay+1)*Num_Var,2))
+    H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
+    H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
+
+    A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
+    A[:Num_Var, :Num_Var] = A_basic
+    A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
+    B = np.zeros(((kdelay + 1) * Num_Var, 2))
     B[:Num_Var] = B_basic
 
-    #Compute the Feedback Gain of the Control law
+    # Compute the Feedback Gain of the Control law
     S = Q
 
-    array_L = np.zeros((Num_iter-1,2,Num_Var))   
-    array_S = np.zeros((Num_iter,Num_Var,Num_Var)) 
+    array_L = np.zeros((Num_iter - 1, 2, Num_Var))
+    array_S = np.zeros((Num_iter, Num_Var, Num_Var))
     array_S[-1] = S
-    for k in range(Num_iter-1):
-        L = np.linalg.inv(R+B_basic.T@S@B_basic)@B_basic.T@S@A_basic
-        array_L[Num_iter-2-k] = L
-        S = A_basic.T@S@(A_basic-B_basic@L)
-        array_S[Num_iter-2-k] = S
-        
-    #Initialize matrices 
+    for k in range(Num_iter - 1):
+        L = np.linalg.inv(R + B_basic.T @ S @ B_basic) @ B_basic.T @ S @ A_basic
+        array_L[Num_iter - 2 - k] = L
+        S = A_basic.T @ S @ (A_basic - B_basic @ L)
+        array_S[Num_iter - 2 - k] = S
+
+    # Initialize matrices
     L = array_L
 
+    # Initialize the arrays to stock the simulations
+    array_zhat = np.zeros((Num_iter, Num_Var))
+    array_x = np.zeros((Num_iter, Num_Var - 2))
+    array_z = np.zeros((Num_iter, Num_Var))
+    y = np.zeros((Num_iter - 1, Num_Var))
 
-    #Initialize the arrays to stock the simulations 
-    array_zhat = np.zeros((Num_iter,Num_Var))
-    array_x = np.zeros((Num_iter,Num_Var-2)) 
-    array_z = np.zeros((Num_iter,Num_Var)) 
-    y = np.zeros((Num_iter-1,Num_Var))
-
-    #Initialize the state vectors of the linear system
+    # Initialize the state vectors of the linear system
     array_zhat[0] = x0.flatten()
     array_z[0] = x0.flatten()
     zhat = np.copy(x0_with_delay)
-    z =  np.copy(x0_with_delay)
+    z = np.copy(x0_with_delay)
 
-    #Initialize the state vectors of the nonlinear system
-    x = np.zeros(Num_Var-2)
-    x[0],x[1] = x0[0],x0[3]
-        #M = np.array([[a1+2*a2*cos(z[3]),a3+a2*cos(z[3])],[a3+a2*cos(z[3]),a3]])
+    # Initialize the state vectors of the nonlinear system
+    x = np.zeros(Num_Var - 2)
+    x[0], x[1] = x0[0], x0[3]
+    # M = np.array([[a1+2*a2*cos(z[3]),a3+a2*cos(z[3])],[a3+a2*cos(z[3]),a3]])
 
-    x = np.array([x0[0],x0[3],x0[1],x0[4],TAUINIT[0],TAUINIT[1]])
+    x = np.array([x0[0], x0[3], x0[1], x0[4], TAUINIT[0], TAUINIT[1]])
     new_x = np.copy(x)
 
-    #Incorporation of delay 
+    # Incorporation of delay
 
-    #Perform the task
+    # Perform the task
     J = 0
     acc = np.zeros(2)
-    for k in range(Num_iter-1):
+    for k in range(Num_iter - 1):
 
-
-        Ghat,Ghatdot = get_Gravity_Matrix(z,g = ghat,alpha = alphahat,additional_mass=EstimatedObjectMass)
-        #C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
-        C = C1(zhat[3],zhat[1],zhat[4],ObjectMass=EstimatedObjectMass)
-        #M = np.array([[a1+2*a2*cos(zhat[3]),a3+a2*cos(zhat[3])],[a3+a2*cos(zhat[3]),a3]])
-        M = M1(zhat[3],ObjectMass=EstimatedObjectMass)
-        #Cdot = np.array([-a2*zhat[5]*(2*zhat[1]+zhat[4])*sin(zhat[3])-a2*zhat[4]*(2*zhat[2]+zhat[5])*sin(zhat[3])
+        Ghat, Ghatdot = get_Gravity_Matrix(
+            z, g=ghat, alpha=alphahat, additional_mass=EstimatedObjectMass
+        )
+        # C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
+        C = C1(zhat[3], zhat[1], zhat[4], ObjectMass=EstimatedObjectMass)
+        # M = np.array([[a1+2*a2*cos(zhat[3]),a3+a2*cos(zhat[3])],[a3+a2*cos(zhat[3]),a3]])
+        M = M1(zhat[3], ObjectMass=EstimatedObjectMass)
+        # Cdot = np.array([-a2*zhat[5]*(2*zhat[1]+zhat[4])*sin(zhat[3])-a2*zhat[4]*(2*zhat[2]+zhat[5])*sin(zhat[3])
         #                 -a2*zhat[4]*zhat[4]*(2*zhat[1]+zhat[4])*cos(zhat[3]),2*zhat[1]*zhat[2]*a2*sin(zhat[3])+zhat[1]*zhat[1]*a2*cos(zhat[3])*zhat[4]])
-        Cdot = dC1(zhat[3],zhat[1],zhat[4],zhat[2],zhat[5],ObjectMass=EstimatedObjectMass)
-        Mdot = dM1(zhat[3],zhat[4],ObjectMass=EstimatedObjectMass)
-        #Mdot = np.array([[-2*a2*sin(zhat[3])*zhat[4],-a2*sin(zhat[3])*zhat[4]],[-a2*sin(zhat[3])*zhat[4],0]])
-        Omega_motor,Omega_measure,motor_noise,measure_noise = NoiseAndCovMatrix(M,Num_Var,kdelay)
+        Cdot = dC1(
+            zhat[3], zhat[1], zhat[4], zhat[2], zhat[5], ObjectMass=EstimatedObjectMass
+        )
+        Mdot = dM1(zhat[3], zhat[4], ObjectMass=EstimatedObjectMass)
+        # Mdot = np.array([[-2*a2*sin(zhat[3])*zhat[4],-a2*sin(zhat[3])*zhat[4]],[-a2*sin(zhat[3])*zhat[4],0]])
+        Omega_motor, Omega_measure, motor_noise, measure_noise = NoiseAndCovMatrix(
+            M, Num_Var, kdelay
+        )
 
         # Compute the command through the FL technique
-        
-        v = -L[k].reshape(np.flip(B_basic.shape))@zhat[:Num_Var]
-        u = 1/Kfactor*(M@(v)+Mdot@(np.array([zhat[2],zhat[5]]))+Cdot+Ghatdot+Bdyn@np.array([zhat[2],zhat[5]]))+M@(np.array([zhat[2],zhat[5]]))+C+Ghat+Bdyn@np.array([zhat[1],zhat[4]])
-        if ShowJ : J+= u.T@R@u
+
+        v = -L[k].reshape(np.flip(B_basic.shape)) @ zhat[:Num_Var]
+        u = (
+            1
+            / Kfactor
+            * (
+                M @ (v)
+                + Mdot @ (np.array([zhat[2], zhat[5]]))
+                + Cdot
+                + Ghatdot
+                + Bdyn @ np.array([zhat[2], zhat[5]])
+            )
+            + M @ (np.array([zhat[2], zhat[5]]))
+            + C
+            + Ghat
+            + Bdyn @ np.array([zhat[1], zhat[4]])
+        )
+        if ShowJ:
+            J += u.T @ R @ u
         # Delayed Observation of the Nonlinear system expressed in linear coordinates
-        
-        y[k] = (H@z).flatten()
-        if Activate_Noise : y[k]+=measure_noise
-        
-        # Kalman Filter Gains 
-        K = A@sigma@H.T@np.linalg.inv(H@sigma@H.T+Omega_measure)
-        sigma = Omega_motor + (A - K@H)@sigma@A.T
+
+        y[k] = (H @ z).flatten()
+        if Activate_Noise:
+            y[k] += measure_noise
+
+        # Kalman Filter Gains
+        K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
+        sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
 
         # Compute the Estimation of the system in the linear system
-        
-        zhat = A@zhat + B@v+ K@(y[k]-H@zhat)
-        
-        # Simulate the nonlinear plant 
-        
-        #C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
-        C = C1(x[1],x[2],x[3],ObjectMass)
-        #M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
-        M = M1(x[1],ObjectMass)
-        
-        #Mdot = np.array([[-2*a2*sin(x[1])*x[3],-a2*sin(x[1])*x[3]],[-a2*sin(x[1])*x[3],0]])
-        Mdot = dM1(x[1],x[3],ObjectMass)
-        #print(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))-acc)
-        G,Gdot = get_Gravity_Matrix(z,alpha = alpha,additional_mass=ObjectMass)
-        new_x[0:2] += dt*x[2:4]
-        new_x[2:4] += dt*(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C-G)))
-        new_x[4:6] += dt*Kfactor*(u-x[4:6])
-        
-        if Activate_Noise : 
-            new_x[4:6]+=motor_noise
-        
-        z = np.concatenate((np.array([new_x[0],new_x[2],acc[0],new_x[1],new_x[3],acc[1],z[6],z[7]]),z[:-Num_Var]))
-        
+
+        zhat = A @ zhat + B @ v + K @ (y[k] - H @ zhat)
+
+        # Simulate the nonlinear plant
+
+        # C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
+        C = C1(x[1], x[2], x[3], ObjectMass)
+        # M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
+        M = M1(x[1], ObjectMass)
+
+        # Mdot = np.array([[-2*a2*sin(x[1])*x[3],-a2*sin(x[1])*x[3]],[-a2*sin(x[1])*x[3],0]])
+        Mdot = dM1(x[1], x[3], ObjectMass)
+        # print(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))-acc)
+        G, Gdot = get_Gravity_Matrix(z, alpha=alpha, additional_mass=ObjectMass)
+        new_x[0:2] += dt * x[2:4]
+        new_x[2:4] += dt * (np.linalg.solve(M, (x[4:6] - Bdyn @ (x[2:4]) - C - G)))
+        new_x[4:6] += dt * Kfactor * (u - x[4:6])
+
+        if Activate_Noise:
+            new_x[4:6] += motor_noise
+
+        z = np.concatenate(
+            (
+                np.array(
+                    [new_x[0], new_x[2], acc[0], new_x[1], new_x[3], acc[1], z[6], z[7]]
+                ),
+                z[:-Num_Var],
+            )
+        )
+
         # Transform the new nonlinear state into the coordinates of the linear system
-        #C = np.array([-z[4]*(2*z[1]+z[4])*a2*np.sin(z[3]),z[1]*z[1]*a2*np.sin(z[3])])
-        C = C1(z[3],z[1],z[4],ObjectMass)
-        M= M1(z[3],ObjectMass)
-        #M = np.array([[a1+2*a2*cos(z[3]),a3+a2*cos(z[3])],[a3+a2*cos(z[3]),a3]])
+        # C = np.array([-z[4]*(2*z[1]+z[4])*a2*np.sin(z[3]),z[1]*z[1]*a2*np.sin(z[3])])
+        C = C1(z[3], z[1], z[4], ObjectMass)
+        M = M1(z[3], ObjectMass)
+        # M = np.array([[a1+2*a2*cos(z[3]),a3+a2*cos(z[3])],[a3+a2*cos(z[3]),a3]])
 
-        G,_ =  get_Gravity_Matrix(z,alpha = alpha,additional_mass=ObjectMass)
-        acc = np.linalg.solve(M,(new_x[4:6]-Bdyn@(new_x[2:4])-C-G))
-        #Stock the true and estimated states
+        G, _ = get_Gravity_Matrix(z, alpha=alpha, additional_mass=ObjectMass)
+        acc = np.linalg.solve(M, (new_x[4:6] - Bdyn @ (new_x[2:4]) - C - G))
+        # Stock the true and estimated states
 
-        array_z[k+1] = z[:Num_Var].flatten()
-        array_zhat[k+1] = zhat[:Num_Var].flatten()
-        array_x[k+1] = new_x[:Num_Var-2].flatten()
-        
+        array_z[k + 1] = z[:Num_Var].flatten()
+        array_zhat[k + 1] = zhat[:Num_Var].flatten()
+        array_x[k + 1] = new_x[: Num_Var - 2].flatten()
+
         x = np.copy(new_x)
-        
 
-    if ShowJ : 
-        #J+= z.T@Q@z
-        #print("Total cost of FL: "+str(J)[:7])
+    if ShowJ:
+        # J+= z.T@Q@z
+        # print("Total cost of FL: "+str(J)[:7])
         pass
 
-    #Change of coordinates from angular to cartesian 
-    
+    # Change of coordinates from angular to cartesian
 
-    X = np.cos(array_z[:,0]+array_z[:,3])*33+np.cos(array_z[:,0])*30
-    Y = np.sin(array_z[:,0]+array_z[:,3])*33+np.sin(array_z[:,0])*30
+    X = np.cos(array_z[:, 0] + array_z[:, 3]) * 33 + np.cos(array_z[:, 0]) * 30
+    Y = np.sin(array_z[:, 0] + array_z[:, 3]) * 33 + np.sin(array_z[:, 0]) * 30
 
     if ShowEstimate:
-        X2 = np.cos(array_zhat[:,0]+array_zhat[:,3])*33+np.cos(array_zhat[:,0])*30
-        Y2 = np.sin(array_zhat[:,0]+array_zhat[:,3])*33+np.sin(array_zhat[:,0])*30
+        X2 = (
+            np.cos(array_zhat[:, 0] + array_zhat[:, 3]) * 33
+            + np.cos(array_zhat[:, 0]) * 30
+        )
+        Y2 = (
+            np.sin(array_zhat[:, 0] + array_zhat[:, 3]) * 33
+            + np.sin(array_zhat[:, 0]) * 30
+        )
 
-    #Plotting
-    if alphahat != alpha: color1 = plt.get_cmap('RdPu')((alphahat-alpha+pi/8)/(pi/8))
-    elif ghat !=9.81 : color1 = plt.get_cmap('RdPu')((ghat-6)/6)
-    else: color1 = "grey"
+    # Plotting
+    if alphahat != alpha:
+        color1 = plt.get_cmap("RdPu")((alphahat - alpha + pi / 8) / (pi / 8))
+    elif ghat != 9.81:
+        color1 = plt.get_cmap("RdPu")((ghat - 6) / 6)
+    else:
+        color1 = "grey"
 
-    if plot : 
-        
-        #plt.grid(linestyle='--')
-        
-        #if FF : 
-            #plt.plot(np.linspace(-10,10,100),np.ones(100)*FFonset,linestyle = "--",alpha = .7,color = "grey")
+    if plot:
+
+        # plt.grid(linestyle='--')
+
+        # if FF :
+        # plt.plot(np.linspace(-10,10,100),np.ones(100)*FFonset,linestyle = "--",alpha = .7,color = "grey")
         plt.axis("equal")
-        plt.ylim(starting_point[1]-3,targets[1]+3)
+        plt.ylim(starting_point[1] - 3, targets[1] + 3)
         ls = "-"
         lw = 2.5
-        if alphahat != alpha: plt.plot(X, Y, color=color1, label=r"FL( $\alpha = {:.2f}^\circ$)".format(alphahat / np.pi * 180), linewidth=lw, linestyle=ls)
-        elif ghat != 9.81: plt.plot(X, Y, color=color1, label=f"FL( g = {ghat:.2f} m/s²)", linewidth=lw, linestyle=ls)
-        else: plt.plot(X, Y, color=color1, label=f"FL(Baseline)", linewidth=lw, linestyle=ls)
-        
-        if ShowEstimate: 
-            plt.plot(X2,Y2,color ="black",label = "Estimation",linewidth = 1,linestyle = "--",alpha = .8)
+        if alphahat != alpha:
+            plt.plot(
+                X,
+                Y,
+                color=color1,
+                label=r"FL( $\alpha = {:.2f}^\circ$)".format(alphahat / np.pi * 180),
+                linewidth=lw,
+                linestyle=ls,
+            )
+        elif ghat != 9.81:
+            plt.plot(
+                X,
+                Y,
+                color=color1,
+                label=f"FL( g = {ghat:.2f} m/s²)",
+                linewidth=lw,
+                linestyle=ls,
+            )
+        else:
+            plt.plot(
+                X, Y, color=color1, label=f"FL(Baseline)", linewidth=lw, linestyle=ls
+            )
+
+        if ShowEstimate:
+            plt.plot(
+                X2,
+                Y2,
+                color="black",
+                label="Estimation",
+                linewidth=1,
+                linestyle="--",
+                alpha=0.8,
+            )
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
-        plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
-    if ShowJ : return X,Y,J,array_x
+        plt.scatter(
+            [starting_point[0], targets[0]],
+            [starting_point[1], targets[1]],
+            color="orange",
+            marker="s",
+            s=600,
+            alpha=0.3,
+        )
+    if ShowJ:
+        return X, Y, J, array_x
     ax = plt.gca()  # Get the current axis
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    return X,Y
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    return X, Y
 
 
-
-def Feedback_Linearization_MultNoise(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4 = 1e4,r1 = 1e-5,r2 = 1e-5,targets = [0,55],starting_point = [0,30],plot = True,Var = 1e-6,alpha = 1,Activate_Noise = False,Side = "Left",newtonfunc = newtonf,newtondfunc = newtondf,Num_iter = 300, ShowJ = False, ShowEstimate = False,Delay = .06,FF = False):
-    
+def Feedback_Linearization_MultNoise(
+    Duration=0.6,
+    w1=1e8,
+    w2=1e8,
+    w3=1e4,
+    w4=1e4,
+    r1=1e-5,
+    r2=1e-5,
+    targets=[0, 55],
+    starting_point=[0, 30],
+    plot=True,
+    Var=1e-6,
+    alpha=1,
+    Activate_Noise=False,
+    Side="Left",
+    newtonfunc=newtonf,
+    newtondfunc=newtondf,
+    Num_iter=300,
+    ShowJ=False,
+    ShowEstimate=False,
+    Delay=0.06,
+    FF=False,
+):
     """
     Duration (float) : Duration of the movement
 
-    w1 (float) : Weight associated to the penalty on shoulder angle 
-    
-    w2 (float) : Weight associated to the penalty on elbow angle 
+    w1 (float) : Weight associated to the penalty on shoulder angle
+
+    w2 (float) : Weight associated to the penalty on elbow angle
 
     w3 (float) : Weight associated to the penalty on shoulder angular velocity
 
@@ -486,13 +745,13 @@ def Feedback_Linearization_MultNoise(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4
 
     starting_point (array of float of size 2): X,Y Position of the starting point of the movement
         must be a biomechanically feasible starting point considering that the shoulder is at (0,0)
-    
+
     plot (boolean) : Allowing plot outputs of the hand trajectory for the experiment
 
     Noise_Variance (float) : Gaussian variance associated to the white noises in the model
 
     Side (String) : Side of the force field ("Left" or "Right")
-    
+
     newtonfunc([thetas,thetae],X,Y) : Function that computes the difference between the change of variable from the angular to cartesian system, and the targetted X,Y position
                                       It's a tool for the newton method to compute the desired joint angles that generate a precise X,Y position of the hand
 
@@ -503,190 +762,309 @@ def Feedback_Linearization_MultNoise(Duration = .6,w1 = 1e8,w2 = 1e8,w3 = 1e4,w4
     ShowJ (boolean) : Computes and print the total cost function generated by the controller at the end of the movement
     """
 
-    dt = Duration/Num_iter 
-    kdelay = int(Delay/dt)
+    dt = Duration / Num_iter
+    kdelay = int(Delay / dt)
 
-    obj1,obj2 = newton(newtonfunc,newtondfunc,1e-8,1000,targets[0],targets[1]) #Defini les targets
-    st1,st2 = newton(newtonfunc,newtondfunc,1e-8,1000,starting_point[0],starting_point[1])
+    obj1, obj2 = newton(
+        newtonfunc, newtondfunc, 1e-8, 1000, targets[0], targets[1]
+    )  # Defini les targets
+    st1, st2 = newton(
+        newtonfunc, newtondfunc, 1e-8, 1000, starting_point[0], starting_point[1]
+    )
 
-    x0 = np.array([st1,0,0,st2,0,0,obj1,obj2])
-    x0_with_delay = np.tile(x0, kdelay + 1) 
+    x0 = np.array([st1, 0, 0, st2, 0, 0, obj1, obj2])
+    x0_with_delay = np.tile(x0, kdelay + 1)
 
     Num_Var = 8
-    
-    #Define Weight Matrices of the cost function
-    R = np.array([[r1,0],[0,r2]])
-    Q = np.array([[w1,0,0,0,0,0,-w1,0],[0,w3,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],
-               [0,0,0,w2,0,0,0,-w2],[0,0,0,0,w4,0,0,0],[0,0,0,0,0,0,0,0],
-               [0-w1,0,0,0,0,0,w1,0],[0,0,0,-w2,0,0,0,w2]])
 
-    
-    
-    #Define the Dynamic of the linear system 
+    # Define Weight Matrices of the cost function
+    R = np.array([[r1, 0], [0, r2]])
+    Q = np.array(
+        [
+            [w1, 0, 0, 0, 0, 0, -w1, 0],
+            [0, w3, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, w2, 0, 0, 0, -w2],
+            [0, 0, 0, 0, w4, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0 - w1, 0, 0, 0, 0, 0, w1, 0],
+            [0, 0, 0, -w2, 0, 0, 0, w2],
+        ]
+    )
 
-    Kfactor = 1/0.06
+    # Define the Dynamic of the linear system
 
-    A_basic = np.array([[1,dt,0,0,0,0,0,0],[0,1,dt,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,1,dt,0,0,0],[0,0,0,0,1,dt,0,0],[0,0,0,0,0,1,0,0],[0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,1]])
-    B_basic = np.array([[0,0],[0,0],[dt,0],[0,0],[0,0],[0,dt],[0,0],[0,0]])
+    Kfactor = 1 / 0.06
 
-    #Incorporation of delay 
+    A_basic = np.array(
+        [
+            [1, dt, 0, 0, 0, 0, 0, 0],
+            [0, 1, dt, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, dt, 0, 0, 0],
+            [0, 0, 0, 0, 1, dt, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
+        ]
+    )
+    B_basic = np.array(
+        [[0, 0], [0, 0], [dt, 0], [0, 0], [0, 0], [0, dt], [0, 0], [0, 0]]
+    )
 
-    H = np.zeros((Num_Var,(kdelay+1)*Num_Var))
-    H[:,(kdelay)*Num_Var:]= np.identity(Num_Var)
+    # Incorporation of delay
 
-    A = np.zeros(((kdelay+1)*Num_Var,(kdelay+1)*Num_Var))
-    A[:Num_Var,:Num_Var] = A_basic
-    A[Num_Var:,:-Num_Var] = np.identity((kdelay)*Num_Var)
-    B = np.zeros(((kdelay+1)*Num_Var,2))
+    H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
+    H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
+
+    A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
+    A[:Num_Var, :Num_Var] = A_basic
+    A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
+    B = np.zeros(((kdelay + 1) * Num_Var, 2))
     B[:Num_Var] = B_basic
 
-    #Compute the Feedback Gain of the Control law
+    # Compute the Feedback Gain of the Control law
     Sx = np.zeros(A.shape)
-    Sx[:Num_Var,:Num_Var] = Q
+    Sx[:Num_Var, :Num_Var] = Q
     Se = np.zeros(A.shape)
 
-    
-    Omega_sens,motor_noise,Omega_measure,measure_noise,Cnoise,mult_noise = Compute_Multiplicative_Noise(Num_Var,alpha,B,Var)
+    Omega_sens, motor_noise, Omega_measure, measure_noise, Cnoise, mult_noise = (
+        Compute_Multiplicative_Noise(Num_Var, alpha, B, Var)
+    )
     Ccal = np.zeros(R.shape)
-    L = np.zeros((Num_iter-1,2,Num_Var*(kdelay+1)))
-    K = np.zeros((Num_iter-1,A.shape[0],Num_Var))
-    sigma = np.zeros((Num_iter,A.shape[0],A.shape[0]))
-    for k in range(Num_iter-1):
-        K[k] = A@sigma[k]@H.T@np.linalg.inv(H@sigma[k]@H.T+Omega_measure)
-        sigma[k+1] = Omega_sens + (A - K[k]@H)@sigma[k]@A.T
-    for k in range(Num_iter-1):
+    L = np.zeros((Num_iter - 1, 2, Num_Var * (kdelay + 1)))
+    K = np.zeros((Num_iter - 1, A.shape[0], Num_Var))
+    sigma = np.zeros((Num_iter, A.shape[0], A.shape[0]))
+    for k in range(Num_iter - 1):
+        K[k] = A @ sigma[k] @ H.T @ np.linalg.inv(H @ sigma[k] @ H.T + Omega_measure)
+        sigma[k + 1] = Omega_sens + (A - K[k] @ H) @ sigma[k] @ A.T
+    for k in range(Num_iter - 1):
         for i in range(B.shape[1]):
-            Ccal+=Cnoise[i].T@(Sx+Se)@Cnoise[i]
-        L[Num_iter-2-k] = np.linalg.inv(R+B.T@Sx@B+Ccal)@B.T@Sx@A
-        Sx = A.T@Sx@(A-B@L[Num_iter-2-k])
-        Se = A.T@Sx@B@L[Num_iter-2-k]+(A-K[Num_iter-2-k]@H).T@Se@(A-K[Num_iter-2-k]@H)
+            Ccal += Cnoise[i].T @ (Sx + Se) @ Cnoise[i]
+        L[Num_iter - 2 - k] = np.linalg.inv(R + B.T @ Sx @ B + Ccal) @ B.T @ Sx @ A
+        Sx = A.T @ Sx @ (A - B @ L[Num_iter - 2 - k])
+        Se = A.T @ Sx @ B @ L[Num_iter - 2 - k] + (
+            A - K[Num_iter - 2 - k] @ H
+        ).T @ Se @ (A - K[Num_iter - 2 - k] @ H)
 
-    
-    #Initialize the arrays to stock the simulations 
-    array_zhat = np.zeros((Num_iter,Num_Var))
-    array_x = np.zeros((Num_iter,Num_Var-2)) 
-    array_z = np.zeros((Num_iter,Num_Var)) 
-    y = np.zeros((Num_iter-1,Num_Var))
+    # Initialize the arrays to stock the simulations
+    array_zhat = np.zeros((Num_iter, Num_Var))
+    array_x = np.zeros((Num_iter, Num_Var - 2))
+    array_z = np.zeros((Num_iter, Num_Var))
+    y = np.zeros((Num_iter - 1, Num_Var))
 
-    #Initialize the state vectors of the linear system
+    # Initialize the state vectors of the linear system
     array_zhat[0] = x0.flatten()
     array_z[0] = x0.flatten()
     zhat = np.copy(x0_with_delay)
-    z =  np.copy(x0_with_delay)
+    z = np.copy(x0_with_delay)
 
-    #Initialize the state vectors of the nonlinear system
-    x = np.zeros(Num_Var-2)
-    x[0],x[1] = x0[0],x0[3]
+    # Initialize the state vectors of the nonlinear system
+    x = np.zeros(Num_Var - 2)
+    x[0], x[1] = x0[0], x0[3]
     new_x = np.copy(x)
 
-    #Incorporation of delay 
+    # Incorporation of delay
 
-    #Perform the task
+    # Perform the task
     J = 0
     acc = np.zeros(2)
-    for k in range(Num_iter-1):
-        #Compute the matrices of the FL technique in function of the current estimate state 
-        
-        if (np.sin(x[0]+x[1])*33+np.sin(x[0])*30 > 35) and (FF == True):
+    for k in range(Num_iter - 1):
+        # Compute the matrices of the FL technique in function of the current estimate state
 
-            F = Compute_f_new_version(x[0:2],x[2:4],acc,1)
-            if Side == "Left": F*=-1
+        if (np.sin(x[0] + x[1]) * 33 + np.sin(x[0]) * 30 > 35) and (FF == True):
 
-        else : 
-            F = [0,0]
+            F = Compute_f_new_version(x[0:2], x[2:4], acc, 1)
+            if Side == "Left":
+                F *= -1
 
-        
+        else:
+            F = [0, 0]
 
-        C = np.array([-zhat[4]*(2*zhat[1]+zhat[4])*a2*np.sin(zhat[3]),zhat[1]*zhat[1]*a2*np.sin(zhat[3])])
+        C = np.array(
+            [
+                -zhat[4] * (2 * zhat[1] + zhat[4]) * a2 * np.sin(zhat[3]),
+                zhat[1] * zhat[1] * a2 * np.sin(zhat[3]),
+            ]
+        )
 
-        M = np.array([[a1+2*a2*cos(zhat[3]),a3+a2*cos(zhat[3])],[a3+a2*cos(zhat[3]),a3]])
+        M = np.array(
+            [
+                [a1 + 2 * a2 * cos(zhat[3]), a3 + a2 * cos(zhat[3])],
+                [a3 + a2 * cos(zhat[3]), a3],
+            ]
+        )
 
-        Cdot = np.array([-a2*zhat[5]*(2*zhat[1]+zhat[4])*sin(zhat[3])-a2*zhat[4]*(2*zhat[2]+zhat[5])*sin(zhat[3])
-                         -a2*zhat[4]*zhat[4]*(2*zhat[1]+zhat[4])*cos(zhat[3]),2*zhat[1]*zhat[2]*a2*sin(zhat[3])+zhat[1]*zhat[1]*a2*cos(zhat[3])*zhat[4]])
+        Cdot = np.array(
+            [
+                -a2 * zhat[5] * (2 * zhat[1] + zhat[4]) * sin(zhat[3])
+                - a2 * zhat[4] * (2 * zhat[2] + zhat[5]) * sin(zhat[3])
+                - a2 * zhat[4] * zhat[4] * (2 * zhat[1] + zhat[4]) * cos(zhat[3]),
+                2 * zhat[1] * zhat[2] * a2 * sin(zhat[3])
+                + zhat[1] * zhat[1] * a2 * cos(zhat[3]) * zhat[4],
+            ]
+        )
 
-        Mdot = np.array([[-2*a2*sin(zhat[3])*zhat[4],-a2*sin(zhat[3])*zhat[4]],[-a2*sin(zhat[3])*zhat[4],0]])
-       
+        Mdot = np.array(
+            [
+                [-2 * a2 * sin(zhat[3]) * zhat[4], -a2 * sin(zhat[3]) * zhat[4]],
+                [-a2 * sin(zhat[3]) * zhat[4], 0],
+            ]
+        )
+
         # Compute the command through the FL technique
-        Omega_sens,motor_noise,Omega_measure,measure_noise,Cnoise,mult_noise = Compute_Multiplicative_Noise(Num_Var,alpha,B,Var)
-        
-        v = -L[k].reshape(np.flip(B.shape))@zhat
-        u = 1/Kfactor*M@(v)+1/Kfactor*Mdot@(np.array([zhat[2],zhat[5]]))+M@(np.array([zhat[2],zhat[5]]))+C+Bdyn@np.array([zhat[1],zhat[4]])+1/Kfactor*Cdot+1/Kfactor*Bdyn@np.array([zhat[2],zhat[5]])
-        if ShowJ : J+= u.T@R@u
-        # Delayed Observation of the Nonlinear system expressed in linear coordinates
-        
-        y[k] = (H@z).flatten()
-        if Activate_Noise : y[k]+=measure_noise
-        
-        # Kalman Filter Gains 
+        Omega_sens, motor_noise, Omega_measure, measure_noise, Cnoise, mult_noise = (
+            Compute_Multiplicative_Noise(Num_Var, alpha, B, Var)
+        )
 
-        
+        v = -L[k].reshape(np.flip(B.shape)) @ zhat
+        u = (
+            1 / Kfactor * M @ (v)
+            + 1 / Kfactor * Mdot @ (np.array([zhat[2], zhat[5]]))
+            + M @ (np.array([zhat[2], zhat[5]]))
+            + C
+            + Bdyn @ np.array([zhat[1], zhat[4]])
+            + 1 / Kfactor * Cdot
+            + 1 / Kfactor * Bdyn @ np.array([zhat[2], zhat[5]])
+        )
+        if ShowJ:
+            J += u.T @ R @ u
+        # Delayed Observation of the Nonlinear system expressed in linear coordinates
+
+        y[k] = (H @ z).flatten()
+        if Activate_Noise:
+            y[k] += measure_noise
+
+        # Kalman Filter Gains
 
         # Compute the Estimation of the system in the linear system
-        zhat = A@zhat + B@v + K[k]@(y[k]-H@zhat)
-        
-        # Simulate the nonlinear plant 
-        
-        C = np.array([-x[3]*(2*x[2]+x[3])*a2*np.sin(x[1]),x[2]*x[2]*a2*np.sin(x[1])])
-        
-        M = np.array([[a1+2*a2*cos(x[1]),a3+a2*cos(x[1])],[a3+a2*cos(x[1]),a3]])
+        zhat = A @ zhat + B @ v + K[k] @ (y[k] - H @ zhat)
 
-        
-        Cdot = np.array([-a2*acc[1]*(2*x[2]+x[3])*sin(x[1])-a2*x[3]*(2*acc[0]+acc[1])*sin(x[1])
-                         -a2*x[3]*x[3]*(2*x[2]+x[3])*cos(x[1]),2*x[2]*acc[0]*a2*sin(x[1])+x[2]*x[2]*a2*cos(x[1])*x[3]])
+        # Simulate the nonlinear plant
 
-        Mdot = np.array([[-2*a2*sin(x[1])*x[3],-a2*sin(x[1])*x[3]],[-a2*sin(x[1])*x[3],0]])
-        
-        #print(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))-acc)
-        new_x[0:2] += dt*x[2:4]
-        new_x[2:4] += dt*(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))+F)
-        new_x[4:6] += dt*Kfactor*(u-x[4:6])
+        C = np.array(
+            [
+                -x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]),
+                x[2] * x[2] * a2 * np.sin(x[1]),
+            ]
+        )
 
-        z = np.concatenate((np.array([new_x[0],new_x[2],acc[0],new_x[1],new_x[3],acc[1],z[6],z[7]]),z[:-Num_Var]))
+        M = np.array(
+            [[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])], [a3 + a2 * cos(x[1]), a3]]
+        )
 
-        if Activate_Noise : z+=motor_noise+mult_noise@v
-        
+        Cdot = np.array(
+            [
+                -a2 * acc[1] * (2 * x[2] + x[3]) * sin(x[1])
+                - a2 * x[3] * (2 * acc[0] + acc[1]) * sin(x[1])
+                - a2 * x[3] * x[3] * (2 * x[2] + x[3]) * cos(x[1]),
+                2 * x[2] * acc[0] * a2 * sin(x[1])
+                + x[2] * x[2] * a2 * cos(x[1]) * x[3],
+            ]
+        )
+
+        Mdot = np.array(
+            [
+                [-2 * a2 * sin(x[1]) * x[3], -a2 * sin(x[1]) * x[3]],
+                [-a2 * sin(x[1]) * x[3], 0],
+            ]
+        )
+
+        # print(np.linalg.solve(M,(x[4:6]-Bdyn@(x[2:4])-C))-acc)
+        new_x[0:2] += dt * x[2:4]
+        new_x[2:4] += dt * (np.linalg.solve(M, (x[4:6] - Bdyn @ (x[2:4]) - C)) + F)
+        new_x[4:6] += dt * Kfactor * (u - x[4:6])
+
+        z = np.concatenate(
+            (
+                np.array(
+                    [new_x[0], new_x[2], acc[0], new_x[1], new_x[3], acc[1], z[6], z[7]]
+                ),
+                z[:-Num_Var],
+            )
+        )
+
+        if Activate_Noise:
+            z += motor_noise + mult_noise @ v
+
         # Transform the new nonlinear state into the coordinates of the linear system
-        C = np.array([-z[4]*(2*z[1]+z[4])*a2*np.sin(z[3]),z[1]*z[1]*a2*np.sin(z[3])])
+        C = np.array(
+            [
+                -z[4] * (2 * z[1] + z[4]) * a2 * np.sin(z[3]),
+                z[1] * z[1] * a2 * np.sin(z[3]),
+            ]
+        )
 
-        M = np.array([[a1+2*a2*cos(z[3]),a3+a2*cos(z[3])],[a3+a2*cos(z[3]),a3]])
+        M = np.array(
+            [[a1 + 2 * a2 * cos(z[3]), a3 + a2 * cos(z[3])], [a3 + a2 * cos(z[3]), a3]]
+        )
 
-        acc = np.linalg.solve(M,(new_x[4:6]-Bdyn@(new_x[2:4])-C))+F
-        #Stock the true and estimated states
+        acc = np.linalg.solve(M, (new_x[4:6] - Bdyn @ (new_x[2:4]) - C)) + F
+        # Stock the true and estimated states
 
-        array_z[k+1] = z[:Num_Var].flatten()
-        array_zhat[k+1] = zhat[:Num_Var].flatten()
-        array_x[k+1] = new_x[:Num_Var-2].flatten()
-        
+        array_z[k + 1] = z[:Num_Var].flatten()
+        array_zhat[k + 1] = zhat[:Num_Var].flatten()
+        array_x[k + 1] = new_x[: Num_Var - 2].flatten()
+
         x = np.copy(new_x)
-        
 
-    if ShowJ : 
-        #J+= z.T@Q@z
-        print("Total cost of FL: "+str(J)[:7])
+    if ShowJ:
+        # J+= z.T@Q@z
+        print("Total cost of FL: " + str(J)[:7])
 
-    #Change of coordinates from angular to cartesian 
-    
+    # Change of coordinates from angular to cartesian
 
-    X = np.cos(array_z[:,0]+array_z[:,3])*33+np.cos(array_z[:,0])*30
-    Y = np.sin(array_z[:,0]+array_z[:,3])*33+np.sin(array_z[:,0])*30
+    X = np.cos(array_z[:, 0] + array_z[:, 3]) * 33 + np.cos(array_z[:, 0]) * 30
+    Y = np.sin(array_z[:, 0] + array_z[:, 3]) * 33 + np.sin(array_z[:, 0]) * 30
 
     if ShowEstimate:
-        X2 = np.cos(array_zhat[:,0]+array_zhat[:,3])*33+np.cos(array_zhat[:,0])*30
-        Y2 = np.sin(array_zhat[:,0]+array_zhat[:,3])*33+np.sin(array_zhat[:,0])*30
+        X2 = (
+            np.cos(array_zhat[:, 0] + array_zhat[:, 3]) * 33
+            + np.cos(array_zhat[:, 0]) * 30
+        )
+        Y2 = (
+            np.sin(array_zhat[:, 0] + array_zhat[:, 3]) * 33
+            + np.sin(array_zhat[:, 0]) * 30
+        )
 
-    #Plotting
-    color1 = plt.get_cmap('RdPu')(kdelay*10 / Num_iter)
+    # Plotting
+    color1 = plt.get_cmap("RdPu")(kdelay * 10 / Num_iter)
 
-    if plot : 
-        plt.grid(linestyle='--')
+    if plot:
+        plt.grid(linestyle="--")
         plt.axis("equal")
-        if Delay > 0 : plt.plot(X,Y,color = "cyan",label = "FL movement with "+str(int(kdelay*dt*1000))+ " \n ms delay",linewidth = 1)
-        else : plt.plot(X,Y,color = "#48494B",label = "Feedback Linearization",linewidth = 1)
-        if ShowEstimate: 
-            plt.plot(X2,Y2,color ="black",label = "Estimation",linewidth = 1,linestyle = "--",alpha = .8)
+        if Delay > 0:
+            plt.plot(
+                X,
+                Y,
+                color="cyan",
+                label="FL movement with "
+                + str(int(kdelay * dt * 1000))
+                + " \n ms delay",
+                linewidth=1,
+            )
+        else:
+            plt.plot(X, Y, color="#48494B", label="Feedback Linearization", linewidth=1)
+        if ShowEstimate:
+            plt.plot(
+                X2,
+                Y2,
+                color="black",
+                label="Estimation",
+                linewidth=1,
+                linestyle="--",
+                alpha=0.8,
+            )
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
-        plt.scatter([starting_point[0],targets[0]],[starting_point[1],targets[1]],color = "orange",marker = "s" , s = 600, alpha= .3)
-    if ShowJ : return X,Y,J,x
-    return array_z,dt
-
+        plt.scatter(
+            [starting_point[0], targets[0]],
+            [starting_point[1], targets[1]],
+            color="orange",
+            marker="s",
+            s=600,
+            alpha=0.3,
+        )
+    if ShowJ:
+        return X, Y, J, x
+    return array_z, dt
