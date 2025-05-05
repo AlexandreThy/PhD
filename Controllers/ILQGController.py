@@ -86,12 +86,6 @@ def hxx(x, w1, w2):
     )
 
 
-def Kalman(Omega_measure, Omega_sens, A, sigma, H):
-    K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
-    sigma = Omega_sens + (A - K @ H) @ sigma @ A.T
-    return K, sigma
-
-
 def step1(x0, u, Duration, Noise):
 
     K = np.shape(u)[0] + 1
@@ -116,7 +110,21 @@ def Compute_acc(x, F):
 
 
 def step5(
-    x0, l, L, Duration, Noise, A, B, Num_steps, bestu, FF, Side, kdelay, Variance
+    x0,
+    l,
+    L,
+    Duration,
+    Noise,
+    A,
+    B,
+    Num_steps,
+    bestu,
+    FF,
+    Side,
+    kdelay,
+    Variance,
+    cbold,
+    C,
 ):
 
     dt = Duration / (Num_steps - 1)
@@ -131,9 +139,12 @@ def step5(
 
     H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
     H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
+    sigmax = np.zeros((len(x0), len(x0)))
+    mx = np.zeros(len(x0))
 
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
     for i in range(Num_steps - 1):
+        temp1, temp2, temp3 = 0, 0, 0
         Extended_A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
         Extended_A[:Num_Var, :Num_Var] = A[i]
         Extended_A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
@@ -151,15 +162,33 @@ def step5(
 
         else:
             F = np.array([0, 0])
-
-        deltau = l[i] + L[i] @ xhat[i, :Num_Var]
+        exact_deviation = newx[i] - xref[i]
+        deltau = l[i] + L[i] @ exact_deviation
         u = bestu[i] + deltau
         Omega_sens = np.zeros((len(x0), len(x0)))
-        Omega_sens[5, 5] = Variance
-        Omega_sens[4, 4] = Variance
-        Omega_measure = np.diag(np.ones(6)) * 1e-10
-        K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
+        temp1, temp2, temp3 = (
+            np.zeros((Num_Var, Num_Var)),
+            np.zeros((Num_Var, Num_Var)),
+            np.zeros((Num_Var, Num_Var)),
+        )
+        for j in range(len(u)):
+            temp1 += np.outer(cbold[i, j, :], cbold[i, j, :])
+            temp2 += np.outer(C[i, j, :, :] @ (l[i] + L[i] @ mx), cbold[i, j, :])
+            temp3 += (
+                C[i, j, :, :]
+                @ (
+                    l[i] @ l[i].T
+                    + l[i] @ (mx.T @ L[i].T)
+                    + L[i] @ mx @ l[i].T
+                    + L[i] @ sigmax @ L[i].T
+                )
+                @ C[i, j, :, :].T
+            )
 
+        Omega_sens += temp1 + temp2 + temp3
+        Omega_measure = np.diag(np.ones(6) * 1e-6)
+        K = Extended_A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
+        sigma = Omega_sens + (Extended_A - K @ H) @ sigma @ Extended_A.T
         passed_newx = np.copy(newx[i, :-Num_Var])
         newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u)
         newx[i + 1, Num_Var:] = passed_newx
@@ -169,12 +198,26 @@ def step5(
         xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], u)
         xref[i + 1, Num_Var:] = passed_xref
         if Noise:
-            newx[i + 1, 4 : 4 + len(u)] += np.random.normal(0, np.sqrt(Variance), 2)
+            newx[i + 1, 4:6] += np.random.normal(0, np.sqrt(Variance), 2)
             # newx[i+1]+= motor_noise #+ mult_noise@u
-        y = H @ (newx[i] - xref[i])
-        if Noise:
-            y += np.random.normal(0, np.sqrt(1e-10), len(y))
-        xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
+
+        y = H @ (exact_deviation)
+
+        # if Noise:
+        # y += np.random.normal(0, np.sqrt(1e-6), len(y))
+        xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau  # + K @ (
+        # y - H @ xhat[i]
+        # )
+        sigmax = (
+            (Extended_A + Extended_B @ L[i])
+            @ sigmax
+            @ (Extended_A + Extended_B @ L[i]).T
+            + K @ H @ sigma @ Extended_A.T
+            + ((Extended_A + Extended_B @ L[i]) @ mx) @ (l[i].T @ Extended_B.T)
+            + Extended_B @ l[i] @ ((Extended_A + Extended_B @ L[i]) @ mx).T
+            + (Extended_B @ l[i]) @ (l[i].T @ Extended_B.T)
+        )
+        mx = (Extended_A + Extended_B @ L[i]) @ mx + Extended_B @ l[i]
 
     return newx
 
@@ -206,7 +249,7 @@ def step2(x, u, Duration, w1, w2, r1, xtarg):
     return A, B, q, qbold, r, Q, R
 
 
-def step3(A, B, C, cbold, q, qbold, r, Q, R):
+def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
     # C should be nxm
     # c should be nx1
 
@@ -223,9 +266,7 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R):
     sbold[-1] = qbold[-1]
 
     for k in np.arange(K - 2, -1, -1):
-        temp1 = 0
-        temp2 = 0
-        temp3 = 0
+        temp1, temp2, temp3 = np.zeros(m), np.zeros((m, m)), 0
         for i in range(m):
             temp1 += C[k, i, :, :].T @ S[k + 1] @ cbold[k, i, :]
             temp2 += C[k, i, :, :].T @ S[k + 1] @ C[k, i, :, :]
@@ -233,7 +274,19 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R):
         gbold = r[k] + B[k].T @ sbold[k + 1] + temp1
         G = B[k].T @ S[k + 1] @ A[k]
         H = R[k] + B[k].T @ S[k + 1] @ B[k] + temp2
+        eigenvalues, eigenvectors = np.linalg.eig(H)
+        H = H + (eps[k] - np.min(eigenvalues)) * np.identity(m)
         Hinv = np.linalg.inv(H)
+        #
+        #
+        # Verify decomposition: A = V Λ V⁻¹
+        # V = np.diag(eigenvalues)  # Create diagonal matrix
+        #
+        # for i in range(V.shape[0]):
+        #    if V[i, i] < (eps[k]):
+        #        V[i, i] = eps[k]
+        #    V[i, i] = 1 / V[i, i]
+        # Hinv = eigenvectors @ V @ np.linalg.inv(eigenvectors)
 
         S[k] = Q[k] + A[k].T @ S[k + 1] @ A[k] - G.T @ Hinv @ G
         sbold[k] = qbold[k] + A[k].T @ sbold[k + 1] - G.T @ Hinv @ gbold
@@ -283,29 +336,26 @@ def ILQG(
     st1, st2 = newton(fnewton, dfnewton, 1e-8, 1000, start[0], start[1])
 
     x0 = np.array([st1, st2, 0, 0, 0, 0])
-    O = np.zeros((6, 6))
-    O[5, 5] = Variance
-    O[4, 4] = Variance
     m = 2
     n = 6
     u = np.zeros((K - 1, m))
     dt = Duration / K
     kdelay = int(Delay / dt)
     cbold = np.zeros((K - 1, m, n))
-    C = np.zeros((K - 1, m, n, m))
+    Cu = np.zeros((K - 1, m, n, m))
     for i in range(K - 1):
         for j in range(m):
-            for k in range(4, 6):
-                cbold[i, j, k] = Variance
+            cbold[i, j, 4 + j] = sqrt(Variance)
     u_incr = [1]
     oldx = np.ones(K) * 100
     # Create an array of 50 colors from the colormap
 
-    for _ in range(100):
+    for iterations in range(1000):
         x = step1(x0, u, Duration, False)
         X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
         if np.max(np.abs(oldx - X)) < 1e-3:
+            print("found at ", iterations)
             x = step5(
                 x0,
                 l,
@@ -320,6 +370,8 @@ def ILQG(
                 Side,
                 kdelay,
                 Variance,
+                cbold,
+                Cu,
             )
             X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
             Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
@@ -339,7 +391,9 @@ def ILQG(
         A, B, q, qbold, r, Q, R = step2(
             x, u, Duration, w1, w2, r1, np.array([obj1, obj2])
         )
-        l, L = step3(A, B, C, cbold, q, qbold, r, Q, R)
+        eps = 1e-2 * np.ones(K - 1)
+
+        l, L = step3(A, B, Cu, cbold, q, qbold, r, Q, R, eps)
         u_incr = step4(l, L, K, A, B)
         u += u_incr
         oldx = np.copy(X)

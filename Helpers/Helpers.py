@@ -287,7 +287,7 @@ def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0, Var=1e-6, Linear=False):
     if Linear:
         return (
             Omegasenslinear,
-            np.diag(np.ones(N) * Var),
+            np.diag(np.ones(N) * 1e-6),
             motornoise,
             np.random.normal(0, np.sqrt(Var), N),
         )
