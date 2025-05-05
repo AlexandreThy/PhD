@@ -164,6 +164,7 @@ def step5(
             F = np.array([0, 0])
         exact_deviation = newx[i] - xref[i]
         deltau = l[i] + L[i] @ exact_deviation
+        print(bestu[i], L[i] @ exact_deviation)
         u = bestu[i] + deltau
         Omega_sens = np.zeros((len(x0), len(x0)))
         temp1, temp2, temp3 = (
@@ -171,7 +172,7 @@ def step5(
             np.zeros((Num_Var, Num_Var)),
             np.zeros((Num_Var, Num_Var)),
         )
-        for j in range(len(u)):
+        for j in range(2):
             temp1 += np.outer(cbold[i, j, :], cbold[i, j, :])
             temp2 += np.outer(C[i, j, :, :] @ (l[i] + L[i] @ mx), cbold[i, j, :])
             temp3 += (
@@ -275,7 +276,7 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
         G = B[k].T @ S[k + 1] @ A[k]
         H = R[k] + B[k].T @ S[k + 1] @ B[k] + temp2
         eigenvalues, eigenvectors = np.linalg.eig(H)
-        H = H + (eps[k] - np.min(eigenvalues)) * np.identity(m)
+        # H = H + (eps[k] - np.min(eigenvalues)) * np.identity(m)
         Hinv = np.linalg.inv(H)
         #
         #
@@ -349,7 +350,6 @@ def ILQG(
     u_incr = [1]
     oldx = np.ones(K) * 100
     # Create an array of 50 colors from the colormap
-
     for iterations in range(1000):
         x = step1(x0, u, Duration, False)
         X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
@@ -391,7 +391,7 @@ def ILQG(
         A, B, q, qbold, r, Q, R = step2(
             x, u, Duration, w1, w2, r1, np.array([obj1, obj2])
         )
-        eps = 1e-2 * np.ones(K - 1)
+        eps = -1e12 * np.ones(K - 1)
 
         l, L = step3(A, B, Cu, cbold, q, qbold, r, Q, R, eps)
         u_incr = step4(l, L, K, A, B)
