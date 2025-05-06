@@ -164,7 +164,6 @@ def step5(
             F = np.array([0, 0])
         exact_deviation = newx[i] - xref[i]
         deltau = l[i] + L[i] @ exact_deviation
-        print(bestu[i], L[i] @ exact_deviation)
         u = bestu[i] + deltau
         Omega_sens = np.zeros((len(x0), len(x0)))
         temp1, temp2, temp3 = (
@@ -206,7 +205,7 @@ def step5(
 
         # if Noise:
         # y += np.random.normal(0, np.sqrt(1e-6), len(y))
-        xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau  # + K @ (
+        xhat[i + 1] = Extended_A @ y + Extended_B @ deltau  # + K @ (
         # y - H @ xhat[i]
         # )
         sigmax = (
@@ -276,6 +275,8 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
         G = B[k].T @ S[k + 1] @ A[k]
         H = R[k] + B[k].T @ S[k + 1] @ B[k] + temp2
         eigenvalues, eigenvectors = np.linalg.eig(H)
+
+        if np.min(eigenvalues) < 0 : print("H is not semi positive definite !! Suboptimal solution")
         # H = H + (eps[k] - np.min(eigenvalues)) * np.identity(m)
         Hinv = np.linalg.inv(H)
         #
@@ -354,8 +355,7 @@ def ILQG(
         x = step1(x0, u, Duration, False)
         X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
-        if np.max(np.abs(oldx - X)) < 1e-3:
-            print("found at ", iterations)
+        if (np.max(np.abs(oldx - X)) < 1e-3) and (iterations > 20):
             x = step5(
                 x0,
                 l,
