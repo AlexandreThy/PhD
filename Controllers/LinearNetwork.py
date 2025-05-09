@@ -18,7 +18,7 @@ a1 = I1 + I2 + m2 * l1 * l1
 a2 = m2 * l1 * s2
 a3 = I2
 
-Bdyn = np.array([[0.05, 0.025], [0.025, 0.05]])
+Bdyn = np.array([[0.05, 0], [0, 0.05]])
 
 def newton(f, Df, epsilon, max_iter, X, Y, x0=np.array([0.8, 1.5])):
     """
@@ -66,7 +66,6 @@ class joint2Ddyn:
         self.M = 6
         self.Wout = np.random.uniform(0, 1, (2, nodes_number))
         self.N = nodes_number
-        self.Win = np.zeros((self.N, 1))
         self.W = W
         self.states = np.zeros((self.N + self.M, 1))
         self.SigmaXi = 1e-4
@@ -91,14 +90,13 @@ class joint2Ddyn:
         Returns:
             [x_{t+1},gamma_{t+1}]
         """
-        M = np.array([[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])],
-                      [a3 + a2 * cos(x[1]), a3]])
-        C = np.array([-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])])
+        M = np.array([[a1 , 0],
+                      [0 , a3]])
 
         x[0:2] += dt * x[2:4]
         x[2:4] += dt * x[4:6]
-        x[4:6] = np.linalg.solve(M, (Wout @ gamma - Bdyn @ (x[2:4]) - C))
-        gamma += dt * (np.tanh(W @ gamma) + u)
+        x[4:6] = np.linalg.solve(M, (Wout @ gamma - Bdyn @ (x[2:4])))
+        gamma += dt * (W @ gamma + u)
         return np.concatenate((x, gamma))
 
 def compute_control_gains(Num_iter, Duration, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1]):
@@ -155,19 +153,14 @@ def compute_nonlinear_command(L, x, Wout, W, gamma):
     Returns:
         u : the nonlinear command to be send to the network
     """
-    M = np.array([[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])],
-                  [a3 + a2 * cos(x[1]), a3]])
+    M = np.array([[a1 , 0 ],
+                  [0 , a3]])
+
     
-    Mdot = np.array([[- 2 * a2 * sin(x[1]) * x[3], - a2 * sin(x[1]) * x[3]],
-                  [- a2 * sin(x[1]) * x[3], 0]])
-    
-    Cdot = np.array([-a2 * x[5] * (2 * x[2] + x[3]) * sin(x[1]) - a2 * x[3] * (2 * x[4] + x[5]) * sin(x[1])
-                     - a2 * x[3] ** 2 * (2 * x[2] + x[3]) * cos(x[1]),
-                     2 * x[2] * x[4] * a2 * sin(x[1]) + x[2] ** 2 * a2 * cos(x[1]) * x[3]])
 
     v = -L @ x
-    gammadot = M @ v + Cdot + Bdyn @ np.array([x[4], x[5]]) + Mdot @ np.array([x[4], x[5]])
-    u = np.linalg.pinv(Wout) @ gammadot - np.tanh(W @ gamma)
+    gammadot = M @ v + Bdyn @ np.array([x[4], x[5]])
+    u = np.linalg.pinv(Wout) @ gammadot - W @ gamma
     return u
 
  
@@ -282,5 +275,4 @@ if __name__ == '__main__':
     for i in range(8) : 
         ax.plot(np.linspace(0,600,60),np.mean(np.abs(all_network[0,:,i,:]),axis = 1),color = colors[i])
 
-    plt.savefig("Preferential_Direction.pdf",dpi = 200)
     plt.show()

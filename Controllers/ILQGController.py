@@ -39,8 +39,7 @@ def fu(x, u):
 
 
 def l(x, u, r1, xtarg=0, w1=0, w2=0):
-    totalcost = 0
-    return totalcost + r1 * (u[0] * u[0] + u[1] * u[1]) / 2
+    return r1 * (u[0] * u[0] + u[1] * u[1]) / 2
 
 
 def lx(x, u, xtarg=0, w1=0, w2=0):
@@ -125,6 +124,7 @@ def step5(
     Variance,
     cbold,
     C,
+    Feedback
 ):
 
     dt = Duration / (Num_steps - 1)
@@ -163,7 +163,8 @@ def step5(
         else:
             F = np.array([0, 0])
         exact_deviation = newx[i] - xref[i]
-        deltau = l[i] + L[i] @ exact_deviation
+        deltau = l[i] 
+        if Feedback : deltau += L[i] @ exact_deviation
         u = bestu[i] + deltau
         Omega_sens = np.zeros((len(x0), len(x0)))
         temp1, temp2, temp3 = (
@@ -198,7 +199,8 @@ def step5(
         xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], u)
         xref[i + 1, Num_Var:] = passed_xref
         if Noise:
-            newx[i + 1, 4:6] += np.random.normal(0, np.sqrt(Variance), 2)
+            newx[i + 1, 4] += np.random.normal(0, np.sqrt(Variance))
+            newx[i + 1, 5] += np.random.normal(0, np.sqrt(Variance))
             # newx[i+1]+= motor_noise #+ mult_noise@u
 
         y = H @ (exact_deviation)
@@ -275,7 +277,6 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
         G = B[k].T @ S[k + 1] @ A[k]
         H = R[k] + B[k].T @ S[k + 1] @ B[k] + temp2
         eigenvalues, eigenvectors = np.linalg.eig(H)
-
         if np.min(eigenvalues) < 0 : print("H is not semi positive definite !! Suboptimal solution")
         # H = H + (eps[k] - np.min(eigenvalues)) * np.identity(m)
         Hinv = np.linalg.inv(H)
@@ -296,7 +297,7 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
 
         l[k] = -Hinv @ gbold
         L[k] = -Hinv @ G
-
+        if l[k].T@gbold+.5*l[k].T@H@l[k] > 0 : print("Positive constraint")
     return l, L
 
 
@@ -331,6 +332,7 @@ def ILQG(
     FF=False,
     Side="Left",
     Variance=1e-6,
+    Feedback = False
 ):
     obj1, obj2 = newton(
         fnewton, dfnewton, 1e-8, 1000, targets[0], targets[1]
@@ -349,13 +351,12 @@ def ILQG(
         for j in range(m):
             cbold[i, j, 4 + j] = sqrt(Variance)
     u_incr = [1]
-    oldx = np.ones(K) * 100
     # Create an array of 50 colors from the colormap
-    for iterations in range(1000):
+    for iterations in range(100):
         x = step1(x0, u, Duration, False)
         X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
-        if (np.max(np.abs(oldx - X)) < 1e-3) and (iterations > 20):
+        if (np.max(np.abs(u_incr)) < 1e-10):
             x = step5(
                 x0,
                 l,
@@ -372,6 +373,7 @@ def ILQG(
                 Variance,
                 cbold,
                 Cu,
+                Feedback
             )
             X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
             Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
@@ -396,7 +398,6 @@ def ILQG(
         l, L = step3(A, B, Cu, cbold, q, qbold, r, Q, R, eps)
         u_incr = step4(l, L, K, A, B)
         u += u_incr
-        oldx = np.copy(X)
     print("Solution not found")
     return X, Y, u, x
 
