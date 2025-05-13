@@ -223,13 +223,21 @@ def compute_individual_responses(network_activity,n,peak_vel_iter):
         responses[i] = np.sum(network_activity[0,:peak_vel_iter,:,i] , axis = 0)
     return responses
 
-def get_joint_angles():
+def get_joint_angles_2():
     theta = np.linspace(0, 2 * pi, 8 + 1)[:-1]
     vx = np.cos(theta)
     vy = np.sin(theta)
     V = np.stack((vx, vy), axis=1)  # shape [T, 2]
 
     return V
+def get_joint_angles():
+    joint_angles = np.zeros((8,2))
+    for i,angles in enumerate(np.linspace(0, 2 * pi, 9)[:-1]):
+        st1, st2 = newton(newtonf, newtondf, 1e-8, 1000, 0, 30)
+        tg1, tg2 = newton(newtonf, newtondf, 1e-8, 1000, 10 * cos(angles), 30 + 10 * sin(angles))
+        joint_angles[i] = np.array([tg1-st1,tg2-st2])
+        joint_angles[i]/= np.linalg.norm(joint_angles[i])
+    return joint_angles
 
 
 if __name__ == '__main__':
@@ -249,18 +257,17 @@ if __name__ == '__main__':
     all_behavior_gains = np.array(all_behavior_gains)
     all_readout = np.array(all_readout)
     plt.style.use('seaborn-v0_8-darkgrid')  # Nice background style
-    print(all_network.shape)
     colors = plt.cm.viridis(np.linspace(0, 1, 8))  # Color map for trajectories
 
     A = []
-    responses = compute_individual_responses(all_network,8,20)
+    responses = compute_individual_responses(np.abs(all_network),8,30)
     Pd = np.zeros(100)
     for i in range(100):
         model = LinearRegression().fit(get_joint_angles(), responses[i])
     # model.coef_ will be the preferred "direction" in joint angle space
         A = model.coef_
         Pd[i] = np.arctan2(A[1],A[0])
-        if Pd[i] <= 0: Pd[i] +=2 *pi
+        print(Pd[i])
 
 
     plt.figure(figsize=(6, 6))
@@ -269,14 +276,13 @@ if __name__ == '__main__':
         #print(Pd[i])
     #theta = np.mean(Pd[i])
     plt.show()
-    Pdd  = np.zeros(9)
-    for p in Pd : 
-        Pdd[int((p+pi/8)//(pi/4))] += 1
-    plt.figure(figsize=(6, 6))
-    ax = plt.subplot(111, projection='polar')
-    Pdd[8] = Pdd[0]
-    ax.plot(np.linspace(0, 2 * pi, 8 + 1),Pdd)
-    plt.show()
+
+    for i in range(5):  # plot first 5 neurons
+        plt.figure()
+        plt.polar(np.arctan2(get_joint_angles()[:, 1], get_joint_angles()[:, 0]), responses[i], 'o-')
+        plt.title(f'Neuron {i} tuning curve')
+        plt.show()
+
     fig = plt.figure(figsize = (16,16))
     gs = gridspec.GridSpec(4, 3)
     ax1 = fig.add_subplot(gs[0, :])
