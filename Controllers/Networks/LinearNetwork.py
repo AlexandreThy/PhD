@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt
 from math import *
 from sklearn.decomposition import PCA
 import matplotlib.gridspec as gridspec
+from sklearn.linear_model import LinearRegression
 from hdf import *
 
 I1 = 0.025
@@ -14,12 +15,16 @@ s2 = 0.16
 K = 1 / 0.06
 tau = 0.06
 
+NUM_TARG = 32
+START_Y = 50
+MOVEMENT_LENGTH = 10
+PLOTWHOLE = False
 # SHOULDER PUIS ELBOW
 a1 = I1 + I2 + m2 * l1 * l1
 a2 = m2 * l1 * s2
 a3 = I2
 
-Bdyn = np.array([[0.05, 0.025], [0.025, 0.05]])
+Bdyn = np.array([[0.05, 0], [0, 0.05]])
 
 def newton(f, Df, epsilon, max_iter, X, Y, x0=np.array([0.8, 1.5])):
     """
@@ -92,8 +97,8 @@ class joint2Ddyn:
         Returns:
             [x_{t+1},gamma_{t+1}]
         """
-        M = np.array([[a1, a3],
-                      [a3, a3]])
+        M = np.array([[a1, 0],
+                      [0, a3]])
 
         x[0:2] += dt * x[2:4]
         x[2:4] += dt * x[4:6]
@@ -155,8 +160,8 @@ def compute_nonlinear_command(L, x, Wout, W, gamma):
     Returns:
         u : the nonlinear command to be send to the network
     """
-    M = np.array([[a1 , a3],
-                  [a3 , a3]])
+    M = np.array([[a1 , 0],
+                  [0 , a3]])
     
 
     v = -L @ x
@@ -172,7 +177,7 @@ def eightCondReach(params: dict) -> dict:
     duration = params["duration"]
     bodyins = joint2Ddyn(params['W'], params['Wout'], params['N'])
     L = compute_control_gains(num_steps, duration)
-    num_targconditions = 8
+    num_targconditions = NUM_TARG
     num_states = int(params['N']) + 6
     dt = duration / num_steps
     all_states = np.zeros((num_steps, num_targconditions, num_states + 2))
@@ -180,8 +185,8 @@ def eightCondReach(params: dict) -> dict:
 
     for i in range(num_targconditions):
         angles = np.linspace(0, 2 * pi, num_targconditions + 1)[:-1]
-        st1, st2 = newton(newtonf, newtondf, 1e-8, 1000, 0, 30)
-        tg1, tg2 = newton(newtonf, newtondf, 1e-8, 1000, 10 * cos(angles[i]), 30 + 10 * sin(angles[i]))
+        st1, st2 = newton(newtonf, newtondf, 1e-8, 1000, 0, START_Y)
+        tg1, tg2 = newton(newtonf, newtondf, 1e-8, 1000, MOVEMENT_LENGTH * cos(angles[i]), START_Y+MOVEMENT_LENGTH * sin(angles[i]))
         all_states[0, i, :] = np.concatenate(([st1, st2, 0, 0, 0, 0, tg1, tg2], np.zeros(params['N'])))
 
         for j in range(num_steps - 1):
@@ -208,11 +213,29 @@ def runOnce(params: dict) -> tuple:
     behavior_gains = L[:, 0, :]
     readout = results['readout']
     return behavior, network, behavior_gains, readout
+def compute_individual_responses(network_activity,n,peak_vel_iter):
+    responses = np.zeros((100,n))
+    for i in range(100):
+        responses[i] = np.sum(network_activity[0,:peak_vel_iter,:,i] , axis = 0)
+    return responses
+
+def get_joint_angles_2():
+    theta = np.linspace(0, 2 * pi, NUM_TARG + 1)[:-1]
+    vx = np.cos(theta)
+    vy = np.sin(theta)
+    V = np.stack((vx, vy), axis=1)  # shape [T, 2]
+
+    return V
+def get_joint_angles():
+    joint_angles = np.zeros((NUM_TARG,2))
+    for i,angles in enumerate(np.linspace(0, 2 * pi, NUM_TARG + 1)[:-1]):
+        st1, st2 = newton(newtonf, newtondf, 1e-8, 1000, 0, START_Y)
+        tg1, tg2 = newton(newtonf, newtondf, 1e-8, 1000, MOVEMENT_LENGTH * cos(angles), START_Y + MOVEMENT_LENGTH * sin(angles))
+        joint_angles[i] = np.array([tg1-st1,tg2-st2])
+        #joint_angles[i]/= np.linalg.norm(joint_angles[i])
+    return joint_angles
 
 if __name__ == '__main__':
-    fig = plt.figure(figsize = (16,16))
-    gs = gridspec.GridSpec(4, 3)
-    ax1 = fig.add_subplot(gs[0, :])
     num_runs = 1
     all_behavior, all_network, all_behavior_gains, all_readout = [], [], [], []
     W,Wout = load_networks_by_spectral_radius()
@@ -229,51 +252,81 @@ if __name__ == '__main__':
     all_behavior_gains = np.array(all_behavior_gains)
     all_readout = np.array(all_readout)
     plt.style.use('seaborn-v0_8-darkgrid')  # Nice background style
+    colors = plt.cm.viridis(np.linspace(0, 1, NUM_TARG))  # Color map for trajectories
 
-    colors = plt.cm.viridis(np.linspace(0, 1, 8))  # Color map for trajectories
-
-    for i in range(8):
-        thetas = behavior[:, i, 0]
-        thetae = behavior[:, i, 1]
+    Pd = np.zeros((100,NUM_TARG))
+    responses = compute_individual_responses(np.abs(all_network),NUM_TARG,20)
+    for i in range(100):
         
-        x = 33 * np.cos(thetas + thetae) + 30 * np.cos(thetas)
-        y = 33 * np.sin(thetas + thetae) + 30 * np.sin(thetas)
-        
-        ax1.plot(x, y, color=colors[i], linewidth=2)
-        ax1.scatter(x[-1], y[-1], color=colors[i], edgecolor='black', zorder=3)  # Start points
+        model = LinearRegression().fit(get_joint_angles(), responses[i].T)
+        beta = model.coef_
+    # model.coef_ will be the preferred "direction" in joint angle space
+        beta_norm = beta/np.linalg.norm(beta)
+        directions = get_joint_angles()/np.linalg.norm(get_joint_angles())
+        Pd[i] = beta_norm @ directions.T 
+    AveragePd = np.sum(Pd,axis = 0)
+    AveragePd = np.append(AveragePd,AveragePd[0])
+    angles = np.linspace(0, 2*np.pi, NUM_TARG + 1)
 
-    ax1.set_title("Feedback Linearization control \n of nonlinear network")
-    ax1.set_aspect('equal', adjustable='box')
-    for side in ["left", "right", "bottom", "top"]:
-        ax1.spines[side].set_visible(False)
-    ax1.set_yticks([])
-    ax1.set_xticks([])
-    ax1.set_xlabel("")
-    ax1.set_ylabel("")
-    axes = [fig.add_subplot(gs[1, 0]),fig.add_subplot(gs[1, 1]),fig.add_subplot(gs[1, 2])]
-    for k in range(3):
-        ax = axes[k]
 
-        for i in range(8): 
-            ax.plot(np.linspace(0,600,60),all_network[0,:,i,k],label = "Target " +str(i),color = colors[i])
-        ax.set_title("Neuron "+str(k))
-        ax.set_xlabel("Time [ms]")
-        if k == 0 : ax.set_ylabel("Activity")
-    ax = fig.add_subplot(gs[2,:])
-    for k in range(100):
-
-        for i in range(8): 
-            ax.scatter(k,np.max(np.abs(all_network[0,:,i,k])),color = colors[i])
-    ax.set_xlabel("Neuron Number")
-    ax.set_ylabel("Maximal absolute \n Neuron activity ")
-
-    ax = fig.add_subplot(gs[3,:])
-
-    ax.set_xlabel("Time [ms]")
-    ax.set_ylabel("Average Absolute \n Network Activity ")
-
-    for i in range(8) : 
-        ax.plot(np.linspace(0,600,60),np.mean(np.abs(all_network[0,:,i,:]),axis = 1),color = colors[i])
-
-    plt.savefig("Preferential_Direction.pdf",dpi = 200)
+    plt.figure(figsize=(6, 6))
+    ax = plt.subplot(111, projection='polar')
+    ax.plot(angles,np.abs(AveragePd)/np.max(AveragePd))
+    mresp = np.mean(responses,axis = 0)
+    mresp = np.append(mresp,mresp[0])
+    print(mresp,AveragePd)
+    #ax.plot(angles,mresp/np.max(mresp))
+        #print(Pd[i])
+    #theta = np.mean(Pd[i])
     plt.show()
+    if PLOTWHOLE : 
+
+        fig = plt.figure(figsize = (16,16))
+        gs = gridspec.GridSpec(4, 3)
+        ax1 = fig.add_subplot(gs[0, :])
+        # shape (2,), weights for [theta_s, theta_e]
+        for i in range(NUM_TARG):
+            thetas = behavior[:, i, 0]
+            thetae = behavior[:, i, 1]
+            
+            x = 33 * np.cos(thetas + thetae) + 30 * np.cos(thetas)
+            y = 33 * np.sin(thetas + thetae) + 30 * np.sin(thetas)
+            
+            ax1.plot(x, y, color=colors[i], linewidth=2)
+            ax1.scatter(x[-1], y[-1], color=colors[i], edgecolor='black', zorder=3)  # Start points
+
+        ax1.set_title("Feedback Linearization control \n of nonlinear network")
+        ax1.set_aspect('equal', adjustable='box')
+        for side in ["left", "right", "bottom", "top"]:
+            ax1.spines[side].set_visible(False)
+        ax1.set_yticks([])
+        ax1.set_xticks([])
+        ax1.set_xlabel("")
+        ax1.set_ylabel("")
+        axes = [fig.add_subplot(gs[1, 0]),fig.add_subplot(gs[1, 1]),fig.add_subplot(gs[1, 2])]
+        for k in range(3):
+            ax = axes[k]
+
+            for i in range(NUM_TARG): 
+                ax.plot(np.linspace(0,600,60),all_network[0,:,i,k],label = "Target " +str(i),color = colors[i])
+            ax.set_title("Neuron "+str(k))
+            ax.set_xlabel("Time [ms]")
+            if k == 0 : ax.set_ylabel("Activity")
+        ax = fig.add_subplot(gs[2,:])
+        for k in range(100):
+
+            for i in range(NUM_TARG): 
+                ax.scatter(k,np.max(np.abs(all_network[0,:,i,k])),color = colors[i])
+        ax.set_xlabel("Neuron Number")
+        ax.set_ylabel("Maximal absolute \n Neuron activity ")
+
+        ax = fig.add_subplot(gs[3,:])
+
+        ax.set_xlabel("Time [ms]")
+        ax.set_ylabel("Average Absolute \n Network Activity ")
+
+        for i in range(NUM_TARG) : 
+            ax.plot(np.linspace(0,600,60),np.mean(np.abs(all_network[0,:,i,:]),axis = 1),color = colors[i])
+
+        plt.savefig("Preferential_Direction.pdf",dpi = 200)
+        plt.show()
