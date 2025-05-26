@@ -416,10 +416,8 @@ def step5(
         xref[i + 1, Num_Var:] = passed_xref
 
         if Noise:
-            newx[i, 4 : 4 + len(u)] += (
-                np.random.normal(0, np.sqrt(motornoise_variance), len(u))
-                + np.random.normal(0, np.sqrt(multnoise_variance), len(u)) * u
-            )
+            newx[i+1, 4 : 4 + len(u)] += (
+                np.random.normal(0, np.sqrt(motornoise_variance), len(u)))
 
         y = H @ (newx[i] - xref[i])
         if Noise:
@@ -512,9 +510,7 @@ def ILQG(
 
     for i in range(K - 1):
         for j in range(m):
-            for k in range(4, 6):
-                cbold[i, j, k] = motornoise_variance
-                C[i, j, k, j] = multnoise_variance
+            cbold[i, j, 4 + j] = sqrt(1e-4)
 
     oldX = np.ones(K) * np.inf
     oldY = np.ones(K) * np.inf
@@ -564,67 +560,69 @@ def ILQG(
         oldX = np.copy(X)
         oldY = np.copy(Y)
 
-    Xtg = targets[0]
-    Ytg = targets[1]
-
-    # Plotting
-    if plot:
-        fig, ax = plt.subplots()
-        ax.plot(X, Y, linewidth=1.4, color="blue")
-        ax.scatter([Xtg], [Ytg], color="red", label="target")
-        ax.scatter([X[0]], [Y[0]], color="black", label="start")
-
-        # image = mpimg.imread("img/assis-sur-une-chaise.png")
-        # ax.imshow(image, extent=[0, 10, -5, 5], zorder=1)
-        plt.axis("equal")
-        for side in ["left", "right", "bottom", "top"]:
-            ax.spines[side].set_visible(False)
-        # ax.set_yticks([-40,-30,-20,-10,0,10,20,30,40])
-        # ax.set_yticklabels(["-40 cm","-30 cm","-20 cm","- 10 cm","0 cm","10 cm","20 cm","30 cm","40 cm"])
-        # ax.set_xticks([0,10,20,30,40,50,60])
-        # ax.set_xticklabels(["0 cm","10 cm","20 cm","30 cm","40 cm","50 cm","60 cm"])
-        ax.legend(frameon=True, shadow=True, fancybox=True)
-        # plt.savefig("img/"+filename,dpi = 200)
-        plt.show()
-        #
-        # fig, ax = plt.subplots()
-        # plt.plot(np.linspace(0,Duration,K),x[:,4], label = "Shoulder Torque",color = "#36f386")
-        # plt.plot(np.linspace(0,Duration,K),x[:,5], label = "Elbow Torque",color = "#36e5f3")
-        # for side in ["right","top"] : ax.spines[side].set_visible(False)
-        # ax.set_ylabel("Torques [Nm]")
-        # ax.set_xlabel("Time [sec]")
-        # ax.legend(frameon = True,shadow = True,fancybox = True)
-        # plt.savefig("img/torqueplot"+filename,dpi = 200)
-        # plt.show()
-
-        V = Compute_Cartesian_Speed(X, Y, dt)
-        fig, ax = plt.subplots()
-        plt.plot(
-            np.linspace(0, Duration, K), V, label="Cartesian Velocity", color="#36f386"
-        )
-        for side in ["right", "top"]:
-            ax.spines[side].set_visible(False)
-        ax.set_ylabel("Velocity [cm/sec]")
-        ax.set_xlabel("Time [sec]")
-        ax.legend(frameon=True, shadow=True, fancybox=True)
-        # plt.savefig("img/velplot"+filename,dpi = 200)
-        plt.show()
-
     return X, Y, u, x
 
 
 if __name__ == "__main__":
-    ILQG(
-        Duration=0.5,
-        start=[10, -10],
-        targets=[40, -10],
-        Noise=True,
+    
+    X,Y,_,x = ILQG(
+        Duration=0.3,
+        start=[30, -30],
+        targets=[40, -30],
+        Noise=False,
+        K = 60,
         filename="ForwardReach.pdf",
     )
-    ILQG(
-        Duration=0.5,
-        start=[40, -10],
-        targets=[10, -10],
-        Noise=True,
+    X2,Y2,_,x2 = ILQG(
+        Duration=0.3,
+        start=[40, -30],
+        targets=[30, -30],
+        Noise=False,
+        K = 60,
         filename="BackwardReach.pdf",
     )
+
+    Xtg = 40
+    Ytg = -30
+
+    fig, ax = plt.subplots(2,1)
+    ax[0].plot(X, Y, linewidth=1.4, color="blue")
+    ax[0].plot(X2, Y2, linewidth=1.4, color="#36f386")
+    ax[0].scatter([Xtg], [Ytg], color="red", label="target")
+    ax[0].scatter([X[0]], [Y[0]], color="black", label="start")
+    # image = mpimg.imread("img/assis-sur-une-chaise.png")
+    # ax.imshow(image, extent=[0, 10, -5, 5], zorder=1)
+    ax[0].set_aspect("equal")
+    for side in ["left", "right", "bottom", "top"]:
+        ax[0].spines[side].set_visible(False)
+    # ax.set_yticks([-40,-30,-20,-10,0,10,20,30,40])
+    # ax.set_yticklabels(["-40 cm","-30 cm","-20 cm","- 10 cm","0 cm","10 cm","20 cm","30 cm","40 cm"])
+    # ax.set_xticks([0,10,20,30,40,50,60])
+    # ax.set_xticklabels(["0 cm","10 cm","20 cm","30 cm","40 cm","50 cm","60 cm"])
+    ax[0].legend(frameon=True, shadow=True, fancybox=True)
+    # plt.savefig("img/"+filename,dpi = 200)
+    #
+    # fig, ax = plt.subplots()
+    # plt.plot(np.linspace(0,Duration,K),x[:,4], label = "Shoulder Torque",color = "#36f386")
+    # plt.plot(np.linspace(0,Duration,K),x[:,5], label = "Elbow Torque",color = "#36e5f3")
+    # for side in ["right","top"] : ax.spines[side].set_visible(False)
+    # ax.set_ylabel("Torques [Nm]")
+    # ax.set_xlabel("Time [sec]")
+    # ax.legend(frameon = True,shadow = True,fancybox = True)
+    # plt.savefig("img/torqueplot"+filename,dpi = 200)
+    # plt.show()
+    V = Compute_Cartesian_Speed(X, Y, 300/60)
+    ax[1].plot(
+        np.linspace(0, 300, 60), V, label="Forward", color="blue"
+    )
+    V = Compute_Cartesian_Speed(X2, Y2, 300/60)
+    ax[1].plot(
+        np.linspace(0, 300, 60), V, label="Backward", color="#36f386"
+    )
+    for side in ["right", "top"]:
+        ax[1].spines[side].set_visible(False)
+    ax[1].set_ylabel("Velocity [cm/sec]")
+    ax[1].set_xlabel("Time [sec]")
+    ax[1].legend(frameon=True, shadow=True, fancybox=True)
+    # plt.savefig("img/velplot"+filename,dpi = 200)
+    plt.show()

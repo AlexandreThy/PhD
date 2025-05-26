@@ -404,7 +404,58 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig("PD_JI.png", dpi=200)
     plt.show()
+    plt.figure(figsize=(6, 6))
+    ax = plt.subplot(111, projection="polar")
+    # Bar plot for preferred direction histogram
+    angles = np.linspace(0, 2 * np.pi, 8, endpoint=False)
+    width = 2 * np.pi / 8 * 0.8  # narrower bars for spacing
+    responses = compute_individual_responses(np.abs(all_network), NUM_TARG, 30)
 
+    ax.bar(
+        angles + width / 2,
+        np.mean(responses,axis = 0),
+        width=width,
+        color="red",
+        alpha=0.7,
+        edgecolor="black",
+        linewidth=0.7,
+    )
+
+    # Plot target directions as colored dots
+    colors = plt.cm.viridis(np.linspace(0, 1, NUM_TARG))
+    joint_targets = get_joint_angles(NUM_TARG)
+
+    # Clean up ticks and radial lines
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+    ax.grid(True)
+    #ax.annotate(
+    #    r"$X$",
+    #    xy=(0, 3.5),
+    #    xytext=(5, 5),  # offset in points
+    #    textcoords="offset points",
+    #    fontsize=15,
+    #    color="black",
+    #    ha="left",
+    #    va="bottom",
+    #)
+    #ax.annotate(
+    #    r"$Y$",
+    #    xy=(np.pi / 2, 3.5),
+    #    xytext=(5, 5),  # offset in points
+    #    textcoords="offset points",
+    #    fontsize=15,
+    #    color="black",
+    #    ha="left",
+    #    va="bottom",
+    #)
+
+    plt.title("Activity of neurons\n with joint interaction")
+    #plt.plot(np.zeros(100), np.linspace(0, 4, 100), color="black")
+    #plt.plot(np.ones(100) * pi / 2, np.linspace(0, 4, 100), color="black")
+    plt.tight_layout()
+    plt.savefig("PD_JI.png", dpi=200)
+    plt.show()
     if PLOTWHOLE:
         fig = plt.figure(figsize=(16, 16))
         gs = gridspec.GridSpec(4, 3, hspace=0.5)
