@@ -2,6 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
 from math import *
+import matplotlib.gridspec as gridspec
 
 I1 = 0.025
 I2 = 0.045
@@ -13,7 +14,6 @@ s1 = 0.11
 s2 = 0.16
 K = 1 / 0.06
 tau = 0.06
-g = 9.81
 
 
 a1 = I1 + I2 + m2 * l1 * l1
@@ -25,7 +25,12 @@ Bvisc = np.array([[0.05, 0.025], [0.025, 0.05]])
 # newton functions are used to implement a newton-raphson method that computes the joint angles given a desired cartesian position.
 
 
-def compute_angles(x, y, l1=30, l2=33):
+def delete_axis(ax, sides=["left", "right", "bottom", "top"]):
+    for side in sides:
+        ax.spines[side].set_visible(False)
+
+
+def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     """
     Computes h1 using the given equation.
 
@@ -50,6 +55,48 @@ def compute_angles(x, y, l1=30, l2=33):
     # Compute h2
     h2 = np.pi - np.arccos((l1**2 + l2**2 - r_squared) / (2 * l1 * l2))
     return h1, h2
+
+
+def ToCartesian(x, at3=False):
+    elbowindex = 3 if at3 else 1
+    if len(x.shape) == 1:
+        s = x[0]
+        e = x[elbowindex]
+    else:
+        s = x[:, 0]
+        e = x[:, elbowindex]
+    X = np.cos(s + e) * 33 + np.cos(s) * 30
+    Y = np.sin(s + e) * 33 + np.sin(s) * 30
+
+    return X, Y
+
+
+def compute_absolute_velocity(x, y, dt):
+    """
+    Computes the absolute velocity (magnitude) in the X-Y plane.
+
+    Parameters:
+    - x (array-like): X-coordinates over time
+    - y (array-like): Y-coordinates over time
+    - dt (float): Time step between each sample
+
+    Returns:
+    - np.ndarray: Array of absolute velocity values
+    """
+
+    # Compute the differences between consecutive x and y points
+    dx = np.diff(x)
+    dy = np.diff(y)
+
+    # Compute velocity components
+    vx = dx / dt
+    vy = dy / dt
+
+    # Compute absolute velocity (Euclidean norm)
+    velocity = np.sqrt(vx**2 + vy**2)
+    velocity = np.insert(velocity, 0, 0.0)
+
+    return velocity
 
 
 def Linearization(x, alpha):
@@ -210,24 +257,168 @@ def fu(x, u):
     return np.array([[0, 0], [0, 0], [0, 0], [0, 0], [1 / tau, 0], [0, 1 / tau]])
 
 
-def l(x, u, r1, xtarg=0, w1=0, w2=0):
-    return r1 * (u[0] ** 2 + u[1] ** 2) / 2
+def X_l(x, u, r1, xtarg=0, w1=0, w2=0, wp=0):
+    return (
+        r1 * (u[0] ** 2 + u[1] ** 2) / 2
+        + wp
+        * (compute_xcartesian(xtarg[0], xtarg[1]) - compute_xcartesian(x[0], x[1])) ** 2
+        / 2
+    )
 
 
-def lx(x, u, xtarg=0, w1=0, w2=0):
-    return np.zeros(6)
+def Y_l(x, u, r1, xtarg=0, w1=0, w2=0, wp=0):
+    return (
+        r1 * (u[0] ** 2 + u[1] ** 2) / 2
+        + wp
+        * (compute_ycartesian(xtarg[0], xtarg[1]) - compute_ycartesian(x[0], x[1])) ** 2
+        / 2
+    )
+
+
+def X_lx(x, u, xtarg=0, w1=0, w2=0, wp=0):
+    return np.array(
+        [
+            wp
+            * (compute_xcartesian(xtarg[0], xtarg[1]) - compute_xcartesian(x[0], x[1]))
+            * -compute_xcartesian_dts(x[0], x[1]),
+            +wp
+            * (compute_xcartesian(xtarg[0], xtarg[1]) - compute_xcartesian(x[0], x[1]))
+            * -compute_xcartesian_dte(x[0], x[1]),
+            0,
+            0,
+            0,
+            0,
+        ]
+    )
+
+
+def Y_lx(x, u, xtarg=0, w1=0, w2=0, wp=0):
+    return np.array(
+        [
+            wp
+            * (compute_ycartesian(xtarg[0], xtarg[1]) - compute_ycartesian(x[0], x[1]))
+            * -compute_ycartesian_dts(x[0], x[1]),
+            +wp
+            * (compute_ycartesian(xtarg[0], xtarg[1]) - compute_ycartesian(x[0], x[1]))
+            * -compute_ycartesian_dte(x[0], x[1]),
+            0,
+            0,
+            0,
+            0,
+        ]
+    )
+
+
+def X_lxx(x, wp, xtarg):
+    lxx = np.zeros((6, 6))
+    lxx[0, 0] += wp * (
+        compute_xcartesian_dts(x[0], x[1]) ** 2
+        - (compute_xcartesian(xtarg[0], xtarg[1]) - compute_xcartesian(x[0], x[1]))
+        * compute_xcartesian_dtss(x[0], x[1])
+    )
+
+    lxx[0, 1] += wp * (
+        compute_xcartesian_dte(x[0], x[1]) * compute_xcartesian_dts(x[0], x[1])
+        + (compute_xcartesian(xtarg[0], xtarg[1]) - compute_xcartesian(x[0], x[1]))
+        * -compute_xcartesian_dtse(x[0], x[1])
+    )
+
+    lxx[1, 0] += wp * (
+        compute_xcartesian_dte(x[0], x[1]) * compute_xcartesian_dts(x[0], x[1])
+        + (compute_xcartesian(xtarg[0], xtarg[1]) - compute_xcartesian(x[0], x[1]))
+        * -compute_xcartesian_dtse(x[0], x[1])
+    )
+
+    lxx[1, 1] += wp * (
+        compute_xcartesian_dte(x[0], x[1]) ** 2
+        - (compute_xcartesian(xtarg[0], xtarg[1]) - compute_xcartesian(x[0], x[1]))
+        * compute_xcartesian_dtee(x[0], x[1])
+    )
+    return lxx
+
+
+def Y_lxx(x, wp, xtarg):
+    lxx = np.zeros((6, 6))
+    lxx[0, 0] += wp * (
+        compute_ycartesian_dts(x[0], x[1]) ** 2
+        - (compute_ycartesian(xtarg[0], xtarg[1]) - compute_ycartesian(x[0], x[1]))
+        * compute_ycartesian_dtss(x[0], x[1])
+    )
+
+    lxx[0, 1] += wp * (
+        compute_ycartesian_dte(x[0], x[1]) * compute_ycartesian_dts(x[0], x[1])
+        + (compute_ycartesian(xtarg[0], xtarg[1]) - compute_ycartesian(x[0], x[1]))
+        * -compute_ycartesian_dtse(x[0], x[1])
+    )
+
+    lxx[1, 0] += wp * (
+        compute_ycartesian_dte(x[0], x[1]) * compute_ycartesian_dts(x[0], x[1])
+        + (compute_ycartesian(xtarg[0], xtarg[1]) - compute_ycartesian(x[0], x[1]))
+        * -compute_ycartesian_dtse(x[0], x[1])
+    )
+
+    lxx[1, 1] += wp * (
+        compute_ycartesian_dte(x[0], x[1]) ** 2
+        - (compute_ycartesian(xtarg[0], xtarg[1]) - compute_ycartesian(x[0], x[1]))
+        * compute_ycartesian_dtee(x[0], x[1])
+    )
+    return lxx
 
 
 def lu(x, u, r1):
     return np.array([u[0] * r1, u[1] * r1])
 
 
-def lxx(w1=0, w2=0):
-    return np.zeros((6, 6))
-
-
 def luu(x, u, r1):
     return np.array([[r1, 0], [0, r1]])
+
+
+def compute_xcartesian(ts, te):
+    return 30 * np.sin(ts) + 33 * np.sin(ts + te)
+
+
+def compute_xcartesian_dts(ts, te):
+    return 30 * np.cos(ts) + 33 * np.cos(ts + te)
+
+
+def compute_xcartesian_dte(ts, te):
+    return 33 * np.cos(ts + te)
+
+
+def compute_xcartesian_dtee(ts, te):
+    return -33 * np.sin(ts + te)
+
+
+def compute_xcartesian_dtse(ts, te):
+    return -33 * np.sin(ts + te)
+
+
+def compute_xcartesian_dtss(ts, te):
+    return -compute_xcartesian(ts, te)
+
+
+def compute_ycartesian(ts, te):
+    return 30 * np.cos(ts) + 33 * np.cos(ts + te)
+
+
+def compute_ycartesian_dts(ts, te):
+    return -30 * np.sin(ts) - 33 * np.sin(ts + te)
+
+
+def compute_ycartesian_dte(ts, te):
+    return -33 * np.sin(ts + te)
+
+
+def compute_ycartesian_dtee(ts, te):
+    return -33 * np.cos(ts + te)
+
+
+def compute_ycartesian_dtse(ts, te):
+    return -33 * np.cos(ts + te)
+
+
+def compute_ycartesian_dtss(ts, te):
+    return -compute_ycartesian(ts, te)
 
 
 def h(x, w1, w2, xtarg):
@@ -243,7 +434,9 @@ def hx(x, w1, w2, xtarg):
 
 
 def hxx(x, w1, w2):
-    return np.diag([w1, w1, w2, w2, 0, 0])
+    Hxx = np.diag([w1, w1, w2, w2, 0, 0])
+
+    return Hxx
 
 
 def Kalman(Omega_measure, Omega_sens, A, sigma, H):
@@ -264,7 +457,7 @@ def step1(x0, u, Duration, alpha):
     return newx
 
 
-def step2(x, u, Duration, w1, w2, r1, xtarg, alpha):
+def step2(x, u, Duration, w1, w2, wp, r1, xtarg, alpha, direction):
     K = np.shape(u)[0] + 1
     dt = Duration / K
     n, m = len(x[0]), len(u[0])
@@ -274,13 +467,23 @@ def step2(x, u, Duration, w1, w2, r1, xtarg, alpha):
     r, Q, R = np.zeros((K - 1, m)), np.zeros((K, n, n)), np.zeros((K - 1, m, m))
 
     for i in range(K - 1):
+        if direction == "Horizontal":
+            q[i] = dt * X_l(x[i], u[i], r1, xtarg, w1, w2, wp)
+            qbold[i] = dt * X_lx(x[i], u[i], xtarg, w1, w2, wp)
+            r[i] = dt * lu(x[i], u[i], r1)
+            Q[i] = dt * X_lxx(x[i], wp, xtarg)
+            R[i] = dt * luu(x[i], u[i], r1)
+
+        elif direction == "Vertical":
+            q[i] = dt * Y_l(x[i], u[i], r1, xtarg, w1, w2, wp)
+            qbold[i] = dt * Y_lx(x[i], u[i], xtarg, w1, w2, wp)
+            r[i] = dt * lu(x[i], u[i], r1)
+            Q[i] = dt * Y_lxx(x[i], wp, xtarg)
+            R[i] = dt * luu(x[i], u[i], r1)
+        else:
+            raise ValueError
         A[i] = np.identity(n) + dt * fx(x[i], u[i], alpha)
         B[i] = dt * fu(x[i], u[i])
-        q[i] = dt * l(x[i], u[i], r1, xtarg, w1, w2)
-        qbold[i] = dt * lx(x[i], u[i], xtarg, w1, w2)
-        r[i] = dt * lu(x[i], u[i], r1)
-        Q[i] = dt * lxx(w1, w2)
-        R[i] = dt * luu(x[i], u[i], r1)
 
     q[-1], qbold[-1], Q[-1] = (
         h(x[-1], w1, w2, xtarg),
@@ -350,7 +553,6 @@ def step5(
     bestu,
     kdelay,
     motornoise_variance,
-    multnoise_variance,
     alpha,
     cbold,
     C,
@@ -416,8 +618,9 @@ def step5(
         xref[i + 1, Num_Var:] = passed_xref
 
         if Noise:
-            newx[i+1, 4 : 4 + len(u)] += (
-                np.random.normal(0, np.sqrt(motornoise_variance), len(u)))
+            newx[i + 1, 4 : 4 + len(u)] += np.random.normal(
+                0, np.sqrt(motornoise_variance), len(u)
+            )
 
         y = H @ (newx[i] - xref[i])
         if Noise:
@@ -448,7 +651,8 @@ def ILQG(
     Duration=0.5,
     w1=1e4,
     w2=1,
-    r1=1e-3,
+    wp=1e-2,
+    r1=1e-2,
     targets=[0, 50],
     start=[0, 30],
     K=120,
@@ -457,6 +661,7 @@ def ILQG(
     delay=0,
     alpha=0,
     filename="test.pdf",
+    direction="Horizontal",
 ):
     """
     Parameters :
@@ -477,8 +682,8 @@ def ILQG(
         - x : Vector state of the trajectory
     """
 
-    obj1, obj2 = compute_angles(targets[0], targets[1])
-    st1, st2 = compute_angles(start[0], start[1])
+    obj1, obj2 = compute_angles_from_cartesian(targets[0], targets[1])
+    st1, st2 = compute_angles_from_cartesian(start[0], start[1])
 
     tau1, tau2 = np.array(
         [
@@ -506,17 +711,16 @@ def ILQG(
     motornoise_variance = (
         1e-4 * K / 60
     )  # Play with it to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
-    multnoise_variance = 1e-6 * K / 60
 
     for i in range(K - 1):
         for j in range(m):
-            cbold[i, j, 4 + j] = sqrt(1e-4)
+            cbold[i, j, 4 + j] = sqrt(motornoise_variance)
 
     oldX = np.ones(K) * np.inf
     oldY = np.ones(K) * np.inf
     u_incr = np.ones(u.shape) * np.inf
 
-    for _ in range(100):
+    for iter in range(100):
         x = step1(
             x0, u, Duration, alpha
         )  # Forward step computing the sequence of state trajectory given a sequence of input u
@@ -524,9 +728,9 @@ def ILQG(
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
 
         if (
-            np.max(np.abs(oldX - X)) < 1e-3 and np.max(np.abs(oldY - Y)) < 1e-3
+            np.max(np.abs(u_incr)) < 1e-7
         ):  # If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
-
+            print("Solution found at iteration ", iter)
             x = step5(
                 x0,
                 l,
@@ -539,7 +743,6 @@ def ILQG(
                 u - u_incr,
                 kdelay,
                 motornoise_variance,
-                multnoise_variance,
                 alpha,
                 cbold,
                 C,
@@ -550,7 +753,16 @@ def ILQG(
             break
 
         A, B, q, qbold, r, Q, R = step2(
-            x, u, Duration, w1, w2, r1, np.array([obj1, obj2]), alpha
+            x,
+            u,
+            Duration,
+            w1,
+            w2,
+            wp,
+            r1,
+            np.array([obj1, obj2]),
+            alpha,
+            direction,
         )  # Compute the Linearizations of the dynamic
         l, L = step3(
             A, B, C, cbold, q, qbold, r, Q, R
@@ -560,69 +772,150 @@ def ILQG(
         oldX = np.copy(X)
         oldY = np.copy(Y)
 
-    return X, Y, u, x
+    return X, Y, x
 
 
 if __name__ == "__main__":
-    
-    X,Y,_,x = ILQG(
-        Duration=0.3,
-        start=[30, -30],
-        targets=[40, -30],
-        Noise=False,
-        K = 60,
-        filename="ForwardReach.pdf",
-    )
-    X2,Y2,_,x2 = ILQG(
-        Duration=0.3,
-        start=[40, -30],
-        targets=[30, -30],
-        Noise=False,
-        K = 60,
-        filename="BackwardReach.pdf",
-    )
 
-    Xtg = 40
-    Ytg = -30
+    ALL_DIRECTIONS = ["Vertical", "Horizontal"]
+    SIMULATED_MOVEMENT_DIRECTION = ALL_DIRECTIONS[0]
 
-    fig, ax = plt.subplots(2,1)
-    ax[0].plot(X, Y, linewidth=1.4, color="blue")
-    ax[0].plot(X2, Y2, linewidth=1.4, color="#36f386")
-    ax[0].scatter([Xtg], [Ytg], color="red", label="target")
-    ax[0].scatter([X[0]], [Y[0]], color="black", label="start")
-    # image = mpimg.imread("img/assis-sur-une-chaise.png")
-    # ax.imshow(image, extent=[0, 10, -5, 5], zorder=1)
-    ax[0].set_aspect("equal")
-    for side in ["left", "right", "bottom", "top"]:
-        ax[0].spines[side].set_visible(False)
-    # ax.set_yticks([-40,-30,-20,-10,0,10,20,30,40])
-    # ax.set_yticklabels(["-40 cm","-30 cm","-20 cm","- 10 cm","0 cm","10 cm","20 cm","30 cm","40 cm"])
-    # ax.set_xticks([0,10,20,30,40,50,60])
-    # ax.set_xticklabels(["0 cm","10 cm","20 cm","30 cm","40 cm","50 cm","60 cm"])
-    ax[0].legend(frameon=True, shadow=True, fancybox=True)
-    # plt.savefig("img/"+filename,dpi = 200)
-    #
-    # fig, ax = plt.subplots()
-    # plt.plot(np.linspace(0,Duration,K),x[:,4], label = "Shoulder Torque",color = "#36f386")
-    # plt.plot(np.linspace(0,Duration,K),x[:,5], label = "Elbow Torque",color = "#36e5f3")
-    # for side in ["right","top"] : ax.spines[side].set_visible(False)
-    # ax.set_ylabel("Torques [Nm]")
-    # ax.set_xlabel("Time [sec]")
-    # ax.legend(frameon = True,shadow = True,fancybox = True)
-    # plt.savefig("img/torqueplot"+filename,dpi = 200)
-    # plt.show()
-    V = Compute_Cartesian_Speed(X, Y, 300/60)
-    ax[1].plot(
-        np.linspace(0, 300, 60), V, label="Forward", color="blue"
-    )
-    V = Compute_Cartesian_Speed(X2, Y2, 300/60)
-    ax[1].plot(
-        np.linspace(0, 300, 60), V, label="Backward", color="#36f386"
-    )
-    for side in ["right", "top"]:
-        ax[1].spines[side].set_visible(False)
-    ax[1].set_ylabel("Velocity [cm/sec]")
-    ax[1].set_xlabel("Time [sec]")
-    ax[1].legend(frameon=True, shadow=True, fancybox=True)
-    # plt.savefig("img/velplot"+filename,dpi = 200)
+    ACTIVATE_PATH_CONSTRAINT = True
+    ACTIVATE_Gravity = True
+    MOVEMENT_DURATION = 0.3  # in seconds
+    MOVEMENT_LENGTH = 20  # in cm
+    NUM_ITER = 600
+    g = 9.81 if ACTIVATE_Gravity else 0
+
+    led_dl = int(MOVEMENT_LENGTH / 10)
+
+    dt = MOVEMENT_DURATION / NUM_ITER
+    time = np.linspace(0, MOVEMENT_DURATION * 1000, NUM_ITER)
+
+    if SIMULATED_MOVEMENT_DIRECTION == "Horizontal":
+        LED = np.array([20, 30, 40, 50])
+        HEIGHT = -30
+        starting_positions = np.column_stack(
+            (LED[: (4 - led_dl)], [HEIGHT] * (4 - led_dl))
+        )
+        ending_positions = np.column_stack(
+            (LED[(4 - led_dl) :], [HEIGHT] * (4 - led_dl))
+        )
+    else:
+        LED = np.array([-20, -10, 0, 10])
+        DEPTH = 40
+        starting_positions = np.column_stack(
+            ([DEPTH] * (4 - led_dl), LED[: (4 - led_dl)])
+        )
+        ending_positions = np.column_stack(
+            ([DEPTH] * (4 - led_dl), LED[(4 - led_dl) :])
+        )
+
+    fig = plt.figure(figsize=(8, 14))
+    gs = gridspec.GridSpec(4, (4 - led_dl), hspace=0.5)
+    colors = plt.cm.viridis(np.linspace(0, 1, 6))[:3]
+    colors2 = plt.cm.viridis(np.linspace(0, 1, 6))[3:]
+    dotcolor = np.array(["blue", "red", "#f932f0"])
+    ax3 = fig.add_subplot(gs[2, :])
+    ax4 = fig.add_subplot(gs[3, :])
+
+    WP = 1e-2 * 2 if ACTIVATE_PATH_CONSTRAINT else 0  # Path Constraint Cost
+
+    for u in range((4 - led_dl)):
+
+        start = starting_positions[u]
+        end = ending_positions[u]
+
+        ax1 = fig.add_subplot(gs[0, u])
+        ax2 = fig.add_subplot(gs[1, u])
+
+        ax1.scatter(end[0], end[1], marker="s", color="grey", s=300)
+        delete_axis(ax1)
+        ax1.set_aspect("equal")
+        if SIMULATED_MOVEMENT_DIRECTION == "Horizontal":
+            ax1.set_ylim(HEIGHT - 3, HEIGHT + 3)
+            ax1.set_yticks([])
+        else:
+            ax1.set_xlim(DEPTH - 3, DEPTH + 3)
+            ax1.set_xticks([])
+
+        X, Y, states = ILQG(
+            Duration=MOVEMENT_DURATION,
+            K=NUM_ITER,
+            start=start,
+            targets=end,
+            delay=0,
+            wp=WP,
+            direction=SIMULATED_MOVEMENT_DIRECTION,
+        )
+        X2, Y2, states2 = ILQG(
+            Duration=MOVEMENT_DURATION,
+            K=NUM_ITER,
+            start=end,
+            targets=start,
+            delay=0,
+            wp=WP,
+            direction=SIMULATED_MOVEMENT_DIRECTION,
+        )
+
+        ax1.plot(X, Y, color=colors[u], label="Forward")
+        ax1.plot(X2, Y2, color=colors2[u], label="Backward")
+        ax1.legend(fontsize=6)
+
+        if u == 0:
+            ax2.set_ylabel("Velocity [cm/sec]")
+        ax2.set_xlabel("Time [sec]")
+
+        ax2.plot(
+            time,
+            compute_absolute_velocity(X, Y, dt),
+            color=colors[u],
+            label="Forward",
+            linewidth=2,
+        )
+        ax2.plot(
+            time,
+            compute_absolute_velocity(X2, Y2, dt),
+            color=colors2[u],
+            label="Backward",
+            linewidth=2,
+        )
+
+        ax3.set_ylabel("Delta rtpv")
+        ax3.set_xlabel("3 Movements")
+        ax3.plot(
+            np.linspace(0, (3 - led_dl), 100),
+            np.zeros(100),
+            color="grey",
+            linestyle="--",
+        )
+        ax3.set_xticks([])
+
+        ax3.scatter(
+            u,
+            (
+                np.argmax(compute_absolute_velocity(X2, Y2, dt))
+                - np.argmax(compute_absolute_velocity(X, Y, dt))
+            )
+            / NUM_ITER,
+            color=dotcolor[u],
+        )
+
+        ax4.plot(
+            states[:, 0] * 180 / pi,
+            states[:, 1] * 180 / pi,
+            color=colors[u],
+            linewidth=3,
+        )
+        ax4.plot(
+            states2[:, 0] * 180 / pi,
+            states2[:, 1] * 180 / pi,
+            color=colors2[u],
+            linewidth=3,
+        )
+
+        ax4.set_ylabel(r"$\theta_e$")
+        ax4.set_xlabel(r"$\theta_s$")
+
+    plt.savefig("Gravitypath.png", dpi=200)
     plt.show()
