@@ -778,11 +778,11 @@ def ILQG(
 if __name__ == "__main__":
 
     ALL_DIRECTIONS = ["Vertical", "Horizontal"]
-    SIMULATED_MOVEMENT_DIRECTION = ALL_DIRECTIONS[0]
+    SIMULATED_MOVEMENT_DIRECTION = ALL_DIRECTIONS[1]
 
     ACTIVATE_PATH_CONSTRAINT = True
     ACTIVATE_Gravity = True
-    MOVEMENT_DURATION = 0.3  # in seconds
+    MOVEMENT_DURATION = 0.4  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
     NUM_ITER = 600
     g = 9.81 if ACTIVATE_Gravity else 0
@@ -794,7 +794,7 @@ if __name__ == "__main__":
 
     if SIMULATED_MOVEMENT_DIRECTION == "Horizontal":
         LED = np.array([20, 30, 40, 50])
-        HEIGHT = -30
+        HEIGHT = -25
         starting_positions = np.column_stack(
             (LED[: (4 - led_dl)], [HEIGHT] * (4 - led_dl))
         )
@@ -819,7 +819,7 @@ if __name__ == "__main__":
     ax3 = fig.add_subplot(gs[2, :])
     ax4 = fig.add_subplot(gs[3, :])
 
-    WP = 1e-2 * 2 if ACTIVATE_PATH_CONSTRAINT else 0  # Path Constraint Cost
+    WP = 1e-3 if ACTIVATE_PATH_CONSTRAINT else 0  # Path Constraint Cost
 
     for u in range((4 - led_dl)):
 
@@ -917,5 +917,5 @@ if __name__ == "__main__":
         ax4.set_ylabel(r"$\theta_e$")
         ax4.set_xlabel(r"$\theta_s$")
 
-    plt.savefig("Gravitypath.png", dpi=200)
+    plt.savefig("HorizontalGP.png", dpi=200)
     plt.show()
