@@ -14,9 +14,11 @@ from matplotlib.cm import ScalarMappable
 
 I1 = 0.025
 I2 = 0.045
+m1 = 1.4
 m2 = 1
 l1 = 0.3
 l2 = 0.33
+s1 = 0.11
 s2 = 0.16
 K = 1 / 0.06
 tau = 0.06
@@ -260,6 +262,13 @@ def Cov_Matrix(M, N, Var=1e-6):
         S[5, 5] = Sigmav[1, 1]
     return Sigma, Sigmam
 
+
+def Compute_Cartesian_Speed(X, Y, dt):
+    V = np.zeros(X.shape)
+    Vx = np.diff(X) / dt
+    Vy = np.diff(Y) / dt
+    V[1:] = np.sqrt(Vx * Vx + Vy * Vy)
+    return V
 
 def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0, Var=1e-6, Linear=False):
 

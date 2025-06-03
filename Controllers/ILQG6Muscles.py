@@ -100,7 +100,7 @@ def compute_absolute_velocity(x, y, dt):
     return velocity
 
 
-def Linearization(x, u, alpha):
+def Linearization(x, u):
     """
     Parameters :
         - x : the state of the system
@@ -110,10 +110,7 @@ def Linearization(x, u, alpha):
         The Jacobian Matrix of the dynamic of the system around the state x
     """
 
-    # Extract state variables
     theta1, theta2, dtheta1, dtheta2 = x[:4]
-    # Gravity force
-    # Coriolis force
     C = np.array(
         [
             -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.sin(theta2),
@@ -235,7 +232,7 @@ def Linearization(x, u, alpha):
     return A
 
 
-def f(x, u, alpha):
+def f(x, u):
     C = np.array(
         [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
     )
@@ -275,9 +272,9 @@ def f(x, u, alpha):
     )
     l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
     v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-    # Equation (6): fl(l)
+
     fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-    # Equation (7): ff_v(l, v)
+
     ff_v = np.where(
         v <= 0,
         (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
@@ -288,8 +285,8 @@ def f(x, u, alpha):
     return np.array([[x[2], x[3], theta[0], theta[1]]])
 
 
-def fx(x, u, alpha):
-    return Linearization(x, u, alpha)
+def fx(x, u):
+    return Linearization(x, u)
 
 
 def fu(x, u):
@@ -386,19 +383,19 @@ def Kalman(Omega_measure, Omega_sens, A, sigma, H):
     return K, sigma
 
 
-def step1(x0, u, Duration, alpha):
+def step1(x0, u, Duration):
     K = np.shape(u)[0] + 1
     dt = Duration / (K - 1)
     newx = np.zeros((K, len(x0)))
     newx[0] = np.copy(x0)
 
     for i in range(K - 1):
-        newx[i + 1] = newx[i] + dt * f(newx[i], u[i], alpha)
+        newx[i + 1] = newx[i] + dt * f(newx[i], u[i])
 
     return newx
 
 
-def step2(x, u, Duration, w1, w2, r1, xtarg, alpha):
+def step2(x, u, Duration, w1, w2, r1, xtarg):
     K = np.shape(u)[0] + 1
     dt = Duration / K
     n, m = len(x[0]), len(u[0])
@@ -408,7 +405,7 @@ def step2(x, u, Duration, w1, w2, r1, xtarg, alpha):
     r, Q, R = np.zeros((K - 1, m)), np.zeros((K, n, n)), np.zeros((K - 1, m, m))
 
     for i in range(K - 1):
-        A[i] = np.identity(n) + dt * fx(x[i], u[i], alpha)
+        A[i] = np.identity(n) + dt * fx(x[i], u[i])
         B[i] = dt * fu(x[i], u[i])
         q[i] = dt * l(x[i], u[i], r1, xtarg, w1, w2)
         qbold[i] = dt * lx(x[i], u[i], xtarg, w1, w2)
@@ -424,7 +421,7 @@ def step2(x, u, Duration, w1, w2, r1, xtarg, alpha):
     return A, B, q, qbold, r, Q, R
 
 
-def step3(A, B, C, cbold, q, qbold, r, Q, R):
+def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
     K = A.shape[0] + 1
     n, m = np.shape(B[0])
     S = np.zeros((K, n, n))
@@ -448,6 +445,7 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R):
         gbold = r[k] + B[k].T @ sbold[k + 1] + temp1
         G = B[k].T @ S[k + 1] @ A[k]
         H = R[k] + B[k].T @ S[k + 1] @ B[k] + temp2
+        
         eigenvalues, eigenvectors = np.linalg.eig(H)
 
         #
@@ -456,8 +454,8 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R):
         V = np.diag(eigenvalues)  # Create diagonal matrix
 
         for i in range(V.shape[0]):
-            if V[i, i] < (1e-3 * 1.2):
-                V[i, i] = 1e-3 * 1.2
+            if V[i, i] < (eps):
+                V[i, i] = eps
             V[i, i] = 1 / V[i, i]
         Hinv = eigenvectors @ V @ np.linalg.inv(eigenvectors)
 
@@ -495,7 +493,6 @@ def step5(
     bestu,
     kdelay,
     motornoise_variance,
-    alpha,
     cbold,
     C,
 ):
@@ -529,7 +526,15 @@ def step5(
 
         deltau = l[i] + L[i] @ xhat[i, :Num_Var]
         u = bestu[i] + deltau
+        if FF == True:
+            if i == 0:
+                acc = np.zeros(2)
+            else:
+                acc = Compute_acc(newx[i], F)
+            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 1)
 
+        else:
+            F = np.array([0, 0])
         for j in range(len(u)):
             temp1 += cbold[i, j, :] @ cbold[i, j, :].T
             temp2 += C[i, j, :, :] @ (l[i] + L[i] @ mx) @ cbold[i, j, :].T
@@ -552,16 +557,16 @@ def step5(
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
 
         passed_newx = np.copy(newx[i, :-Num_Var])
-        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u, alpha)
-        newx[i + 1, Num_Var:] = passed_newx
+        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u) + dt*F
+        newx[i + 1, Num_Var:] = passed_newx 
 
         passed_xref = np.copy(xref[i, :-Num_Var])
-        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], u, alpha)
+        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], bestu[i])
         xref[i + 1, Num_Var:] = passed_xref
 
         if Noise:
-            newx[i + 1, 2 : 2 + len(u)] += np.random.normal(
-                0, np.sqrt(motornoise_variance), len(u)
+            newx[i + 1, 2 : 4] += np.random.normal(
+                0, np.sqrt(motornoise_variance), 2
             )
 
         y = H @ (newx[i] - xref[i])
@@ -599,7 +604,7 @@ def ILQG(
     K=120,
     Noise=False,
     delay=0,
-    alpha=0,
+    eps=1e-3,
 ):
     """
     Parameters :
@@ -636,28 +641,25 @@ def ILQG(
     C = np.zeros((K - 1, m, n, m))
 
     motornoise_variance = (
-        1e-6 * K / 60
+        1e-5
     )  # Play with it to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
 
     for i in range(K - 1):
         for j in range(2):
             cbold[i, j, 2 + j] = sqrt(motornoise_variance)
 
-    oldX = np.ones(K) * np.inf
-    oldY = np.ones(K) * np.inf
     u_incr = np.ones(u.shape) * np.inf
 
-    for iterate in range(50):
+    for iterate in range(30):
         x = step1(
-            x0, u, Duration, alpha
+            x0, u, Duration
         )  # Forward step computing the sequence of state trajectory given a sequence of input u
         X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
 
         if (
-            np.max(np.abs(u_incr)) < 1e-5
+            np.max(np.abs(u_incr)) < 1e-3
         ):  # If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
-
             x = step5(
                 x0,
                 l,
@@ -670,7 +672,6 @@ def ILQG(
                 u - u_incr,
                 kdelay,
                 motornoise_variance,
-                alpha,
                 cbold,
                 C,
             )
@@ -680,15 +681,13 @@ def ILQG(
             break
 
         A, B, q, qbold, r, Q, R = step2(
-            x, u, Duration, w1, w2, r1, np.array([obj1, obj2]), alpha
+            x, u, Duration, w1, w2, r1, np.array([obj1, obj2])
         )  # Compute the Linearizations of the dynamic
         l, L = step3(
-            A, B, C, cbold, q, qbold, r, Q, R
+            A, B, C, cbold, q, qbold, r, Q, R, eps
         )  # Compute the control gains improvement (feedforward and feedback)
         u_incr = step4(l, L, K, A, B)  # Compute the command sequence improvement
         u += u_incr  # Improves the command sequence
-        oldX = np.copy(X)
-        oldY = np.copy(Y)
 
     return X, Y, x
 
@@ -720,19 +719,20 @@ if __name__ == "__main__":
     ax1 = fig.add_subplot(gs[1, 0])
     ax2 = fig.add_subplot(gs[1, 1])
     K = 600
+    EPS = 1e-3
     colors = plt.cm.viridis(np.linspace(0, 1, 8))  # Color map for trajectories
     time = np.linspace(0, 600, K)
     angles = np.linspace(0, 2 * pi, 9)[:-1]
-    end = ToCartesian(np.array([30 / 180 * pi, 40 / 180 * pi]))
-    start = ToCartesian(np.array([70 / 180 * pi, 110 / 180 * pi]))
-    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-3 * 2)
+    end = ToCartesian(np.array([25 / 180 * pi, 55 / 180 * pi]))
+    start = ToCartesian(np.array([70 / 180 * pi, 105 / 180 * pi]))
+    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-2,eps = EPS)
     ax1.plot(X, Y, color="#990000", linewidth=3)
     ax1.scatter(end[0], end[1], color="grey", edgecolor="black", zorder=3)
     ax2.plot(time, x[:, 2], linewidth=2, color="#990000")
     ax2.plot(time, x[:, 3], linewidth=2, color="#990000", linestyle="--")
     end = ToCartesian(np.array([-10 / 180 * pi, 100 / 180 * pi]))
     start = ToCartesian(np.array([70 / 180 * pi, 70 / 180 * pi]))
-    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-3 * 2)
+    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-2,eps = EPS)
     ax1.plot(X, Y, color="#2be1db", linewidth=3)
     ax1.scatter(end[0], end[1], color="grey", edgecolor="black", zorder=3)
     ax2.plot(time, x[:, 2], linewidth=2, color="#2be1db")

@@ -156,15 +156,15 @@ def step5(
                 acc = np.zeros(2)
             else:
                 acc = Compute_acc(newx[i], F)
-            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 0.3)
+            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 3)
             if Side == "Left":
                 F *= -1
 
         else:
             F = np.array([0, 0])
         exact_deviation = newx[i] - xref[i]
-        deltau = l[i] 
-        if Feedback : deltau += L[i] @ exact_deviation
+        deltau = np.zeros(l[i].shape)
+        if Feedback : deltau += L[i] @ xhat[i]
         u = bestu[i] + deltau
         Omega_sens = np.zeros((len(x0), len(x0)))
         temp1, temp2, temp3 = (
@@ -174,19 +174,7 @@ def step5(
         )
         for j in range(2):
             temp1 += np.outer(cbold[i, j, :], cbold[i, j, :])
-            temp2 += np.outer(C[i, j, :, :] @ (l[i] + L[i] @ mx), cbold[i, j, :])
-            temp3 += (
-                C[i, j, :, :]
-                @ (
-                    l[i] @ l[i].T
-                    + l[i] @ (mx.T @ L[i].T)
-                    + L[i] @ mx @ l[i].T
-                    + L[i] @ sigmax @ L[i].T
-                )
-                @ C[i, j, :, :].T
-            )
-
-        Omega_sens += temp1 + temp2 + temp3
+        Omega_sens = np.diag(np.ones(6) * 1e-6)
         Omega_measure = np.diag(np.ones(6) * 1e-6)
         K = Extended_A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
         sigma = Omega_sens + (Extended_A - K @ H) @ sigma @ Extended_A.T
@@ -196,7 +184,7 @@ def step5(
         newx[i + 1, 2:4] += dt * F
 
         passed_xref = np.copy(xref[i, :-Num_Var])
-        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], u)
+        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], bestu[i])
         xref[i + 1, Num_Var:] = passed_xref
         if Noise:
             newx[i + 1, 4] += np.random.normal(0, np.sqrt(Variance))
@@ -205,21 +193,9 @@ def step5(
 
         y = H @ (exact_deviation)
 
-        # if Noise:
-        # y += np.random.normal(0, np.sqrt(1e-6), len(y))
-        xhat[i + 1] = Extended_A @ y + Extended_B @ deltau  # + K @ (
-        # y - H @ xhat[i]
-        # )
-        sigmax = (
-            (Extended_A + Extended_B @ L[i])
-            @ sigmax
-            @ (Extended_A + Extended_B @ L[i]).T
-            + K @ H @ sigma @ Extended_A.T
-            + ((Extended_A + Extended_B @ L[i]) @ mx) @ (l[i].T @ Extended_B.T)
-            + Extended_B @ l[i] @ ((Extended_A + Extended_B @ L[i]) @ mx).T
-            + (Extended_B @ l[i]) @ (l[i].T @ Extended_B.T)
-        )
-        mx = (Extended_A + Extended_B @ L[i]) @ mx + Extended_B @ l[i]
+        if Noise:
+            y += np.random.normal(0, np.sqrt(1e-6), len(y))
+        xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
 
     return newx
 
@@ -326,12 +302,12 @@ def ILQG(
     targets=[0, 50],
     K=60,
     start=[0, 30],
-    plot=True,
+    plot=False,
     Noise=False,
     Delay=0,
     FF=False,
     Side="Left",
-    Variance=1e-6,
+    Variance=1e-4*4,
     Feedback = False
 ):
     obj1, obj2 = newton(
