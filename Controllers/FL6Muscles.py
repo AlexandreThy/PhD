@@ -1,7 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
 from math import *
-from sklearn.decomposition import PCA
 import matplotlib.gridspec as gridspec
 
 I1 = 0.025
@@ -73,87 +72,143 @@ def newtondf(var):
     )
 
 
-class joint2Ddyn:
-    def __init__(self):
-        self.dt = 0.01
-        self.M = 6
-        self.states = np.zeros((self.M, 1))
-        self.SigmaXi = 1e-4
-        return
 
-    @staticmethod
-    def sysdyn(x, u, dt):
-        """
-        Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
 
-        \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
-        \dot{\gamma} = tanh(W gamma) + u
-
-        Args:
-            x : x_t biomechanical state at time t [theta_s, theta_e, omega_s, omega_e, angular_acc_s, angular_acc_e]
-            gamma : gamma_t vector of the newtork activity at time t
-            u : command
-            dt : timestep
-            Wout : readout matrix
-            W : internal network connectivity
-
-        Returns:
-            [x_{t+1},gamma_{t+1}]
-        """
-        M = np.array(
-            [[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])], [a3 + a2 * cos(x[1]), a3]]
-        )
-        C = np.array(
+def sysdyn(x, u, dt,activate_noise):
+    """
+    Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
+    \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
+    \dot{\gamma} = tanh(W gamma) + u
+    Args:
+        x : x_t biomechanical state at time t [theta_s, theta_e, omega_s, omega_e, angular_acc_s, angular_acc_e]
+        gamma : gamma_t vector of the newtork activity at time t
+        u : command
+        dt : timestep
+        Wout : readout matrix
+        W : internal network connectivity
+    Returns:
+        [x_{t+1},gamma_{t+1}]
+    """
+    M = np.array(
+        [[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])], [a3 + a2 * cos(x[1]), a3]]
+    )
+    C = np.array(
+        [
+            -x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]),
+            x[2] ** 2 * a2 * np.sin(x[1]),
+        ]
+    )
+    x[0:2] += dt * x[2:4]
+    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
+    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
+    theta0 = np.array(
+        [
             [
-                -x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]),
-                x[2] ** 2 * a2 * np.sin(x[1]),
-            ]
-        )
-
-        x[0:2] += dt * x[2:4]
-        A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-        l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-        theta0 = np.array(
+                2 * pi / 360 * 15,
+                2 * pi / 360 * 4.88,
+                0,
+                0,
+                2 * pi / 360 * 4.5,
+                2 * pi / 360 * 2.12,
+            ],
             [
-                [
-                    2 * pi / 360 * 15,
-                    2 * pi / 360 * 4.88,
-                    0,
-                    0,
-                    2 * pi / 360 * 4.5,
-                    2 * pi / 360 * 2.12,
-                ],
-                [
-                    0,
-                    0,
-                    2 * pi / 360 * 80.86,
-                    2 * pi / 360 * 109.32,
-                    2 * pi / 360 * 92.96,
-                    2 * pi / 360 * 91.52,
-                ],
-            ]
-        )
-        l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-        v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
+                0,
+                0,
+                2 * pi / 360 * 80.86,
+                2 * pi / 360 * 109.32,
+                2 * pi / 360 * 92.96,
+                2 * pi / 360 * 91.52,
+            ],
+        ]
+    )
+    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
+    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
+    # Equation (6): fl(l)
+    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
+    # Equation (7): ff_v(l, v)
+    ff_v = np.where(
+        v <= 0,
+        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
+        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
+    )
+    noise = np.random.normal(0,1e-4,2) if activate_noise else np.zeros(2)
+    x[2:4] += dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + noise
+    return x
 
-        # Equation (6): fl(l)
-        fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
+def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0):
 
-        # Equation (7): ff_v(l, v)
-        ff_v = np.where(
-            v <= 0,
-            (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-            (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-        )
+    Var = 1e-4
+    K = 1 / 0.06
+    M = np.linalg.inv(M)
+    Sigmau = np.array([[Var, 0], [0, Var]])
+    Sigmav = K * K * M @ Sigmau @ M.T
+    SigmaMotor = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
+    Sigma = np.zeros((N, N))
+    SigmaSense = np.diag(np.ones(N) * 1e-6)
+    for S in [Sigma, SigmaSense]:
+        S[2, 2] = Sigmav[0, 0]
+        S[2, 5] = Sigmav[0, 1]
+        S[5, 2] = Sigmav[1, 0]
+        S[5, 5] = Sigmav[1, 1]
+    SigmaMotor[:N, :N] = Sigma
 
-        x[2:4] += dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C))
-        return x
+    sensorynoise = np.zeros(N)
+    for i in range(N):
+        sensorynoise[i] = np.random.normal(0, np.sqrt(SigmaSense[i, i]))
+    Omegasenslinear = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
+    Omegasenslinear[2, 2] = Var
+    Omegasenslinear[5, 5] = Var
 
+    return SigmaMotor, SigmaSense, sensorynoise
+
+def estdyn(est_x,true_x, u, dt,activated_noise, delay):
+    """
+    Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
+    \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
+    \dot{\gamma} = tanh(W gamma) + u
+    Args:
+        x : x_t biomechanical state at time t [theta_s, theta_e, omega_s, omega_e, angular_acc_s, angular_acc_e]
+        gamma : gamma_t vector of the newtork activity at time t
+        u : command
+        dt : timestep
+        Wout : readout matrix
+        W : internal network connectivity
+    Returns:
+        [x_{t+1},gamma_{t+1}]
+    """
+    H = np.zeros((6, (delay + 1) * 6))
+    H[:, delay * 6 :] = np.identity(6)
+
+    if activated_noise : 
+        Omega_motor,Omega_measure, sensorynoise = NoiseAndCovMatrix()
+        K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
+        sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
+
+    y = H@true_x
+    A_basic = np.array(
+    [
+        [1, 0, dt, 0, 0, 0],
+        [0, 1, 0, dt, 0, 0],
+        [0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0],
+        [0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 1],
+    ]
+    )
+    B_basic = np.zeros((6, 2))
+    B_basic[2, 0] = dt
+    B_basic[3, 1] = dt
+    A = np.zeros(((delay + 1) * 6, (delay + 1) * 6))
+    A[:6, :6] = A_basic
+    A[6:, :-6] = np.identity((delay) * 6)
+    B = np.zeros(((delay + 1) * 6, 2))
+    B[:6] = B_basic
+    next_est_x = A@est_x+B@u
+    if activated_noise: next_est_x += K@(y-H@est_x)
+    return next_est_x
 
 def compute_control_gains(
-    Num_iter, Duration, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1]
-):
+    Num_iter, Duration, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1]):
     """
     Compute the control gains L
 
@@ -270,93 +325,53 @@ def compute_nonlinear_command(L, x):
     u = np.zeros(6)
     for i in range(6):
         u[i] = U[i] / (fl[i] * ff_v[i])
-    return u
+    return u,linear_command
 
 
 # now define the 8 condition reaching controller
-def eightCondReach(params: dict) -> dict:
+def FL_6muscles(Duration=0.6,
+    w1=1e8,
+    w2=1e8,
+    w3=1e4,
+    w4=1e4,
+    r=1e-5,
+    targets=[0, 55],
+    starting_point=[0, 30],
+    Activate_Noise=False,
+    Num_iter=300,
+    Delay=0.06):
     """Simulates an eight-condition reaching task with control gains and neural network dynamics."""
-    num_steps = params["num_iter"]
-    duration = params["duration"]
-    bodyins = joint2Ddyn()
-    L = compute_control_gains(num_steps, duration)
-    num_targconditions = 8
+
+    dt = Duration / Num_iter
+    kdelay = int(Delay / dt)
+    L = compute_control_gains(Num_iter, Duration,motor_cost=r,cost_weights=[w1,w2,w3,w4])
     num_states = 4
-    dt = duration / num_steps
-    all_states = np.zeros((num_steps, num_targconditions, num_states + 2))
+    
+    all_true_states = np.zeros((Num_iter, num_states + 2))
+    all_estimated_states= np.zeros((Num_iter, (num_states + 2)))
+    all_commands= np.zeros((Num_iter-1, 6))
 
-    for i in range(num_targconditions):
-        angles = np.linspace(0, 2 * pi, num_targconditions + 1)[:-1]
-        st1, st2 = newton(newtonf, newtondf, 1e-8, 1000, 0, 30)
-        tg1, tg2 = newton(
-            newtonf, newtondf, 1e-8, 1000, 10 * cos(angles[i]), 30 + 10 * sin(angles[i])
-        )
-        all_states[0, i, :] = np.array([st1, st2, 0, 0, tg1, tg2])
+    st1, st2 = newton(newtonf, newtondf, 1e-8, 1000, starting_point[0],starting_point[1])
+    tg1, tg2 = newton(
+        newtonf, newtondf, 1e-8, 1000,targets[0], targets[1]
+    )
+    x0 = np.array([st1, st2, 0, 0, tg1, tg2])
+    x0_with_delay = np.tile(x0, kdelay + 1)
+    true_state,estimated_state = x0_with_delay,x0_with_delay
+    all_true_states[0, :] = np.copy(x0)
+    all_estimated_states[0, :] = np.copy(x0)
+    
+    for j in range(Num_iter - 1):
+        u,v = compute_nonlinear_command(L[j], estimated_state[:6])
+        estimated_state = estdyn(estimated_state,true_state, v, dt,Activate_Noise, kdelay)
+        true_state = np.concatenate((sysdyn(true_state[:6], u, dt,Activate_Noise),true_state[:-6]))
+        
+        all_true_states[j + 1, :] = true_state[:6]
+        all_estimated_states[j + 1, :] = estimated_state[:6]
+        all_commands[j] = u
+    
+    s,e = all_true_states[:,0],all_true_states[:,1]
+    X = np.cos(s + e) * 33 + np.cos(s) * 30
+    Y = np.sin(s + e) * 33 + np.sin(s) * 30
+    return X,Y,all_true_states,all_commands
 
-        for j in range(num_steps - 1):
-            cur_state = all_states[j, i, :]
-            u = compute_nonlinear_command(L[j], cur_state)
-            next_state = bodyins.sysdyn(cur_state[:6], u, dt)
-            all_states[j + 1, i, :] = next_state
-
-    return {"states": all_states}
-
-
-def setParams() -> dict:
-    """Sets parameters for the eight condition reaching task."""
-    rtime = 0.6
-    num_iter = 60
-    return {"num_iter": num_iter, "duration": rtime}
-
-
-def runOnce(params: dict) -> tuple:
-    """Runs the eight condition reaching task once with given parameters."""
-    results = eightCondReach(params)
-    behavior = results["states"][:, :, :4]
-    return behavior
-
-
-if __name__ == "__main__":
-    fig = plt.figure(figsize=(16, 16))
-    gs = gridspec.GridSpec(4, 3)
-    ax1 = fig.add_subplot(gs[0, :])
-    num_runs = 1
-    all_behavior = []
-
-    for i in range(num_runs):
-        params = setParams()
-        behavior = runOnce(params)
-        all_behavior.append(behavior)
-
-    all_behavior = np.array(all_behavior)
-    plt.style.use("seaborn-v0_8-darkgrid")  # Nice background style
-
-    colors = plt.cm.viridis(np.linspace(0, 1, 8))  # Color map for trajectories
-
-    for i in range(8):
-        thetas = behavior[:, i, 0]
-        thetae = behavior[:, i, 1]
-
-        x = 33 * np.cos(thetas + thetae) + 30 * np.cos(thetas)
-        y = 33 * np.sin(thetas + thetae) + 30 * np.sin(thetas)
-
-        ax1.plot(x, y, color=colors[i], linewidth=2)
-        angles = np.linspace(0, 2 * pi, 9)[:-1]
-        tg1, tg2 = newton(
-            newtonf, newtondf, 1e-8, 1000, 10 * cos(angles[i]), 30 + 10 * sin(angles[i])
-        )
-        x = 33 * np.cos(tg1 + tg2) + 30 * np.cos(tg1)
-        y = 33 * np.sin(tg1 + tg2) + 30 * np.sin(tg1)
-        ax1.scatter(x, y, color=colors[i], edgecolor="black", zorder=3)  # Start points
-
-    ax1.set_title("Feedback Linearization control \n of nonlinear network")
-    ax1.set_aspect("equal", adjustable="box")
-    for side in ["left", "right", "bottom", "top"]:
-        ax1.spines[side].set_visible(False)
-    ax1.set_yticks([])
-    ax1.set_xticks([])
-    ax1.set_xlabel("")
-    ax1.set_ylabel("")
-
-    # plt.savefig("Preferential_Direction.pdf", dpi=200)
-    plt.show()

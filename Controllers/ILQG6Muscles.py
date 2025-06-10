@@ -100,7 +100,7 @@ def compute_absolute_velocity(x, y, dt):
     return velocity
 
 
-def Linearization(x, u):
+def Linearization_6muscles(x, u):
     """
     Parameters :
         - x : the state of the system
@@ -286,7 +286,7 @@ def f(x, u):
 
 
 def fx(x, u):
-    return Linearization(x, u)
+    return Linearization_6muscles(x, u)
 
 
 def fu(x, u):
@@ -689,7 +689,7 @@ def ILQG(
         u_incr = step4(l, L, K, A, B)  # Compute the command sequence improvement
         u += u_incr  # Improves the command sequence
 
-    return X, Y, x
+    return X, Y, x,u
 
 
 if __name__ == "__main__":
