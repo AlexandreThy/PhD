@@ -156,7 +156,7 @@ def step5(
                 acc = np.zeros(2)
             else:
                 acc = Compute_acc(newx[i], F)
-            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 3)
+            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, .3)
             if Side == "Left":
                 F *= -1
 
@@ -167,14 +167,8 @@ def step5(
         if Feedback : deltau += L[i] @ xhat[i]
         u = bestu[i] + deltau
         Omega_sens = np.zeros((len(x0), len(x0)))
-        temp1, temp2, temp3 = (
-            np.zeros((Num_Var, Num_Var)),
-            np.zeros((Num_Var, Num_Var)),
-            np.zeros((Num_Var, Num_Var)),
-        )
-        for j in range(2):
-            temp1 += np.outer(cbold[i, j, :], cbold[i, j, :])
-        Omega_sens = np.diag(np.ones(6) * 1e-6)
+        Omega_sens[4,4] = 1e-4
+        Omega_sens[5,5] = 1e-4
         Omega_measure = np.diag(np.ones(6) * 1e-6)
         K = Extended_A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
         sigma = Omega_sens + (Extended_A - K @ H) @ sigma @ Extended_A.T

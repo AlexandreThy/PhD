@@ -195,6 +195,7 @@ def BestLQG(
     Activate_Noise=False,
     plotEstimation=False,
     ClassicLQG=False,
+    filter = [1,0,0,1,0,0],
     AdditionalDynamics={},
 ):
 
@@ -261,7 +262,8 @@ def BestLQG(
             )
         else:
             xcopy = np.copy(xhat)
-            xcopy[[1, 2, 4, 5]] = [0, 0, 0, 0]
+            for i in range(6):
+                xcopy[i] *= filter[i]
             A[:Num_Var, :Num_Var] = Linearization(dt, xcopy)
         S = Q
         for _ in range(Num_iter - 1 - k):
@@ -680,8 +682,6 @@ def DLQG_6Muscles(
         u = -L @ xhat
         J += u.T @ R @ u
 
-        #Omega_sens = np.diag(np.ones(Num_Var*(kdelay+1)))*1e-6
-        #Omega_measure = np.diag(np.ones(Num_Var))*1e-6
         Omega_motor,Omega_measure = NoiseAndCovMatrix(kdelay=kdelay,Var = 1e-4)[:2]
 
         y[k] = (H @ x).flatten()

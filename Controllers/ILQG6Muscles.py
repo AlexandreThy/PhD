@@ -511,9 +511,6 @@ def step5(
 
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
     Omega_measure = np.diag(np.ones(4)) * 1e-6
-    sigmax = np.zeros((len(x0), len(x0)))
-    mx = np.zeros(len(x0))
-    temp1, temp2, temp3 = 0, 0, 0
     ##
 
     for i in range(Num_steps - 1):
@@ -526,38 +523,15 @@ def step5(
 
         deltau = l[i] + L[i] @ xhat[i, :Num_Var]
         u = bestu[i] + deltau
-        if FF == True:
-            if i == 0:
-                acc = np.zeros(2)
-            else:
-                acc = Compute_acc(newx[i], F)
-            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 1)
-
-        else:
-            F = np.array([0, 0])
-        for j in range(len(u)):
-            temp1 += cbold[i, j, :] @ cbold[i, j, :].T
-            temp2 += C[i, j, :, :] @ (l[i] + L[i] @ mx) @ cbold[i, j, :].T
-            temp3 += (
-                C[i, j, :, :]
-                @ (
-                    l[i] @ l[i].T
-                    + l[i] @ (mx.T @ L[i].T)
-                    + L[i] @ mx @ l[i].T
-                    + L[i] @ sigmax @ L[i].T
-                )
-                @ C[i, j, :, :].T
-            )
 
         Omega_sens = np.zeros((len(x0), len(x0)))
         Omega_sens[3, 3] = motornoise_variance
         Omega_sens[2, 2] = motornoise_variance
-        mx = (Extended_A + Extended_B @ L[i]) @ mx + Extended_B @ l[i]
-        Omega_sens += temp1 + temp2 + temp3
+        #Omega_sens += temp1 + temp2 + temp3
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
 
         passed_newx = np.copy(newx[i, :-Num_Var])
-        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u) + dt*F
+        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u)
         newx[i + 1, Num_Var:] = passed_newx 
 
         passed_xref = np.copy(xref[i, :-Num_Var])
@@ -574,16 +548,7 @@ def step5(
             y += np.random.normal(0, 1e-3, len(y))
 
         xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
-        sigmax = (
-            (Extended_A + Extended_B @ L[i])
-            @ sigmax
-            @ (Extended_A + Extended_B @ L[i]).T
-            + K @ H @ sigma @ Extended_A.T
-            + ((Extended_A + Extended_B @ L[i]) @ mx) @ (l[i].T @ Extended_B.T)
-            + Extended_B @ l[i] @ ((Extended_A + Extended_B @ L[i]) @ mx).T
-            + (Extended_B @ l[i]) @ (l[i].T @ Extended_B.T)
-        )
-    return newx
+    return newx[:,:Num_Var]
 
 
 def Compute_Cartesian_Speed(X, Y, dt):
@@ -650,7 +615,7 @@ def ILQG(
 
     u_incr = np.ones(u.shape) * np.inf
 
-    for iterate in range(30):
+    for iterate in range(300):
         x = step1(
             x0, u, Duration
         )  # Forward step computing the sequence of state trajectory given a sequence of input u

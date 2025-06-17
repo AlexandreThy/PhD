@@ -161,7 +161,7 @@ def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0):
 
     return SigmaMotor, SigmaSense, sensorynoise
 
-def estdyn(est_x,true_x, u, dt,activated_noise, delay):
+def estdyn(est_x,true_x, u, dt,activated_noise, delay,sigma):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
     \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
@@ -179,12 +179,6 @@ def estdyn(est_x,true_x, u, dt,activated_noise, delay):
     H = np.zeros((6, (delay + 1) * 6))
     H[:, delay * 6 :] = np.identity(6)
 
-    if activated_noise : 
-        Omega_motor,Omega_measure, sensorynoise = NoiseAndCovMatrix()
-        K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
-        sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
-
-    y = H@true_x
     A_basic = np.array(
     [
         [1, 0, dt, 0, 0, 0],
@@ -203,9 +197,17 @@ def estdyn(est_x,true_x, u, dt,activated_noise, delay):
     A[6:, :-6] = np.identity((delay) * 6)
     B = np.zeros(((delay + 1) * 6, 2))
     B[:6] = B_basic
-    next_est_x = A@est_x+B@u
-    if activated_noise: next_est_x += K@(y-H@est_x)
-    return next_est_x
+
+    Omega_motor,Omega_measure, sensorynoise = NoiseAndCovMatrix(kdelay =delay)
+    K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
+    sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
+
+
+    y = H@true_x
+    if activated_noise:
+        y+=sensorynoise
+    next_est_x = A@est_x+B@u+K@(y-H@est_x)
+    return next_est_x,sigma
 
 def compute_control_gains(
     Num_iter, Duration, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1]):
@@ -360,10 +362,10 @@ def FL_6muscles(Duration=0.6,
     true_state,estimated_state = x0_with_delay,x0_with_delay
     all_true_states[0, :] = np.copy(x0)
     all_estimated_states[0, :] = np.copy(x0)
-    
+    sigma = np.zeros((6 * (kdelay + 1), 6 * (kdelay + 1)))
     for j in range(Num_iter - 1):
         u,v = compute_nonlinear_command(L[j], estimated_state[:6])
-        estimated_state = estdyn(estimated_state,true_state, v, dt,Activate_Noise, kdelay)
+        estimated_state,sigma = estdyn(estimated_state,true_state, v, dt,Activate_Noise, kdelay, sigma)
         true_state = np.concatenate((sysdyn(true_state[:6], u, dt,Activate_Noise),true_state[:-6]))
         
         all_true_states[j + 1, :] = true_state[:6]

@@ -522,3 +522,19 @@ def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     # Compute h2
     h2 = np.pi - np.arccos((l1**2 + l2**2 - r_squared) / (2 * l1 * l2))
     return h1, h2
+
+def centerout_reachingtask(start = [0,30],L = 10,num_targ = 8):
+    tg = np.zeros((num_targ,2))
+    for i,angles in enumerate(np.linspace(0,2*pi,num_targ+1)[:-1]) :
+        tg[i] = np.array([start[0]+cos(angles)*L,start[1]+sin(angles)*L])
+    return start,tg
+
+def longmovement_1():
+    st = ToCartesian(np.array([70,110])*pi/180)
+    tg = ToCartesian(np.array([20,60])*pi/180)
+    return st,tg 
+
+def longmovement_2():
+    st = ToCartesian(np.array([70,70])*pi/180)
+    tg = ToCartesian(np.array([-12,100])*pi/180)
+    return st,tg 
