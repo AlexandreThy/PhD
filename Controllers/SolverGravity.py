@@ -1,5 +1,7 @@
 
 
+
+
 import numpy as np
 from matplotlib import pyplot as plt
 from math import *
@@ -95,7 +97,7 @@ def compute_absolute_velocity(x, y, dt):
     return velocity
 
 
-def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r,end,estimate_now,direction):
+def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r1,r2,end,estimate_now,direction,endmass):
 
     theta = ca.SX.sym("theta",2)
     omega = ca.SX.sym("omega",2)
@@ -109,25 +111,49 @@ def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r,end,estimate_now,direction):
     sin_elbow = ca.sin(theta[1])
     cos_shoulder = ca.cos(theta[0])
     cos_both = ca.cos(theta[1]+theta[0])
-    DetM = a1*a3-a3*a3-a2*a2*cos_elbow*cos_elbow
-    Minv = np.array([[a3,-a3-a2*cos_elbow],
-                [-a3-a2*cos_elbow,a1+2*a2*cos_elbow]])/DetM
+    if endmass : 
+        m = .8 if g == 0 else .4
+        a4 = m*(l1*l1+l2*l2)
+        a5 = m*(l1*l2)
+        a6 = m*(l2*l2)
+        Minv = ca.inv(ca.vertcat(
+            ca.horzcat(a1 + a4 + 2 * (a2 + a5) * cos_elbow, (a3 + a6) + (a2 + a5) * cos_elbow),
+            ca.horzcat((a3 + a6) + (a2 + a5) * cos_elbow, (a3 + a6))
+        ))
 
 
-    C = ca.SX(np.array([-omega[1]*(2*omega[0]+omega[1])*a2*sin_elbow,omega[0]*omega[0]*a2*sin_elbow]))
-    G = ca.SX(np.array(
-        [
-            g
-            * (
-                m1 * s1 * cos_shoulder
-                + m2
-                * (s2 * cos_both + l1 * cos_shoulder)
-            ),
-            g * m2 * s2 * cos_both]
-    ))
+        C = ca.SX(np.array([-omega[1]*(2*omega[0]+omega[1])*(a2+a5)*sin_elbow,omega[0]*omega[0]*(a2+a5)*sin_elbow]))
+        G = ca.SX(np.array(
+            [
+                g
+                * (
+                    m1 * s1 * cos_shoulder
+                    + m2
+                    * (s2 * cos_both + l1 * cos_shoulder)
+                + m * (l2*cos_both+l1*cos_shoulder)),
+                g * (m2 * s2 + m * l2) * cos_both]
+        ))
+    else : 
+        Minv = ca.inv(ca.vertcat(
+            ca.horzcat(a1 + 2 * a2 * cos_elbow, a3 + a2 * cos_elbow),
+            ca.horzcat(a3 + a2 * cos_elbow,      a3)
+        ))
+
+
+        C = ca.SX(np.array([-omega[1]*(2*omega[0]+omega[1])*a2*sin_elbow,omega[0]*omega[0]*a2*sin_elbow]))
+        G = ca.SX(np.array(
+            [
+                g
+                * (
+                    m1 * s1 * cos_shoulder
+                    + m2
+                    * (s2 * cos_both + l1 * cos_shoulder)
+                ),
+                g * m2 * s2 * cos_both]
+        ))
 
     Bdyn = ca.SX(np.array([[0.05,0.025],[0.025,0.05]]))           
-    jerk = Minv @ (tau-C-Bdyn@omega-G)
+    jerk = Minv @ (tau-C-Bdyn@omega-G) #Accelerations
     taudot = (u-tau)/.06
     xdot = ca.vertcat(omega,jerk,taudot)
 
@@ -138,6 +164,8 @@ def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r,end,estimate_now,direction):
     opti = ca.Opti()
     X = opti.variable(6, Horizon )  
     U = opti.variable(2, Horizon-1) 
+    # Test by Simon
+    # Acc = opti.variable(2, Horizon) 
 
     # Initial and target states
     X0 = opti.parameter(6)
@@ -152,10 +180,66 @@ def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r,end,estimate_now,direction):
         x_k = X[:, k]
         u_k = U[:, k]
 
+        # acc_k = Acc[:,k]
+
+        # Current cartesian positions
         Xcurr = 30*np.cos(x_k[0]) + 33*np.cos(x_k[0]+x_k[1])
         Ycurr = 30*np.sin(x_k[0]) + 33*np.sin(x_k[0]+x_k[1])
 
-        cost += r*ca.sumsqr(u_k)  
+         # Current acceleration 
+        cos_elbow_k = ca.cos(x_k[1])
+        sin_elbow_k = ca.sin(x_k[1])
+        cos_shoulder_k = ca.cos(x_k[0])
+        cos_both_k = ca.cos(x_k[1]+x_k[0])
+
+        if endmass : 
+            m = .8 if g == 0 else .4
+            a4 = m*(l1*l1+l2*l2)
+            a5 = m*(l1*l2)
+            a6 = m*(l2*l2)
+            Minv_k = ca.inv(ca.reshape(ca.vertcat(a1 + a4 + 2 * (a2 + a5) * cos_elbow_k, (a3 +a6) + (a2 + a5) * cos_elbow_k,
+                (a3 + a6) + (a2 + a5) * cos_elbow_k, (a3+a6)),2,2))
+            
+            C_k = ca.vertcat(-x_k[3]*(2*x_k[2]+x_k[3])*(a2+a5)*sin_elbow_k,x_k[2]*x_k[2]*(a2+a5)*sin_elbow_k)
+            G_k = ca.vertcat(
+                
+                    g
+                    * (
+                        m1 * s1 * cos_shoulder_k
+                        + m2
+                        * (s2 * cos_both_k + l1 * cos_shoulder_k)
+                    + m * (l2*cos_both_k+l1*cos_shoulder_k)),
+                    g * (m2 * s2 + m * l2) * cos_both_k
+            )
+            
+        else : 
+            Minv_k = ca.inv(ca.reshape(ca.vertcat(a1 + 2 * a2 * cos_elbow_k, a3 + a2 * cos_elbow_k,
+                a3 + a2 * cos_elbow_k, a3),2,2))
+            
+            C_k = ca.vertcat(-x_k[3]*(2*x_k[2]+x_k[3])*a2*sin_elbow_k,x_k[2]*x_k[2]*a2*sin_elbow_k)
+            G_k = ca.vertcat(
+                
+                    g
+                    * (
+                        m1 * s1 * cos_shoulder_k
+                        + m2
+                        * (s2 * cos_both_k + l1 * cos_shoulder_k)
+                    ),
+                    g * m2 * s2 * cos_both_k
+            )
+        Bdyn_k = ca.MX(np.array([[0.05,0.025],[0.025,0.05]]))  
+        omega_k = x_k[2:4]
+        tau_k = x_k[4:6]
+
+
+        Acc_k = Minv_k  @ (tau_k-C_k-Bdyn_k@omega_k-G_k)
+
+        # Classical cost expression for motor commands : cost += r*ca.sumsqr(u_k)  
+        #cost += r*ca.sumsqr(u_k)  
+
+        # Cost penalizing absolute work of torque and motor commands
+        cost += r1 * (ca.fabs(X[2,k]*X[4,k]) + ca.fabs(X[3,k]*X[5,k])) + r2 * ca.sumsqr(Acc_k)
+        #r*((ca.fabs(X[2,k]*X[4,k]) + ca.fabs(X[3,k]*X[5,k])) + 0.2*(xdot[0]*xdot[0] + xdot[1]*xdot[1]))  
         if direction == "Horizontal" : 
             cost += wp* (Yend-Ycurr)**2
         else : 
@@ -164,9 +248,12 @@ def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r,end,estimate_now,direction):
         x_next = X[:, k] + dt * f(x_k, u_k)
         opti.subject_to(X[:, k + 1] == x_next)
 
+        """ acc_next = Acc_k
+        opti.subject_to(acc_k[:, k + 1] == acc_next) """
+
     # Final state cost
     cost += w1 * ca.sumsqr(X[:2, -1] - X_targ[:2])
-    cost += w2*ca.sumsqr(X[2:4, -1])
+    cost += w2 * ca.sumsqr(X[2:4, -1])
 
     opti.minimize(cost)
 
@@ -175,6 +262,12 @@ def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r,end,estimate_now,direction):
 
     # Solver setup
     opts = {
+        "print_time": 0,
+        "ipopt.tol": 1e-7,
+        "ipopt.acceptable_tol": 1e-6,
+        "ipopt.max_iter": 2000,
+    }
+    """ opts = {
     "print_time": 0,
     "ipopt.hessian_approximation": "exact",
     "ipopt.tol": 1e-8,                      
@@ -183,13 +276,13 @@ def optimizationofmpcproblem(dt,Horizon,w1,w2,wp,r,end,estimate_now,direction):
     "ipopt.constr_viol_tol": 1e-6,          
     "ipopt.dual_inf_tol": 1e-6,             
     "ipopt.compl_inf_tol": 1e-6             
-    }
+    } """
     opti.solver("ipopt", opts)
     opti.set_value(X0, estimate_now)
     sol = opti.solve()
     return sol,U,f
 
-def MPC(Duration,start,end,w1 = 1e4,w2 = 1,wp = 1e-2,r = 1e-4,num_iter = 60,direction = "Horizontal"):
+def MPC(Duration,start,end,w1 = 1e3,w2 = 1,wp = 1e-2,r1 = 1e-4,r2 = 1e-5,num_iter = 100,direction = "Horizontal",endmass = False):
 
 
     
@@ -200,21 +293,33 @@ def MPC(Duration,start,end,w1 = 1e4,w2 = 1,wp = 1e-2,r = 1e-4,num_iter = 60,dire
     dt = Duration/num_iter
     states = np.zeros((6, num_iter))
     controls = np.zeros((2, num_iter-1))
-    G = np.array(
-        [
-            g
-            * (
-                m1 * s1 * np.cos(start[0])
-                + m2
-                * (s2 * np.cos(start[0] +start[1] ) + l1 * np.cos(start[0] ))
-            ),
-            g * m2 * s2 * np.cos(start[0] + start[1] ),
-        ]
-    )
+    if endmass : 
+        m = .8 if g == 0 else .4
+        G = np.array(
+            [
+                g
+                * (
+                    m1 * s1 * 
+                    + m2
+                    * (s2 * np.cos(start[0] +start[1] ) + l1 * np.cos(start[0]))
+                + m * (l2*np.cos(start[0] +start[1] )+l1*np.cos(start[0]))),
+                g * (m2 * s2 + m * l2) * np.cos(start[0] +start[1] )]
+        )
+    else : 
+        G = np.array(
+            [
+                g
+                * (
+                    m1 * s1 * np.cos(start[0])
+                    + m2
+                    * (s2 * np.cos(start[0] +start[1] ) + l1 * np.cos(start[0]))
+                ),
+                g * m2 * s2 * np.cos(start[0] +start[1] )]
+        )
 
     state_now = np.array([start[0], start[1],0, 0,G[0],G[1]])  
     states[:,0] = state_now
-    sol,U,f = optimizationofmpcproblem(dt,num_iter,w1,w2,wp,r,end,state_now,direction)
+    sol,U,f = optimizationofmpcproblem(dt,num_iter,w1,w2,wp,r1,r2,end,state_now,direction,endmass)
     for t in range(num_iter-1):
             
         u_opt = sol.value(U[:, t])
@@ -235,12 +340,13 @@ if __name__ == "__main__":
     ALL_DIRECTIONS = ["Vertical", "Horizontal"]
     SIMULATED_MOVEMENT_DIRECTION = ALL_DIRECTIONS[0]
 
-    ACTIVATE_PATH_CONSTRAINT = True
+    ACTIVATE_PATH_CONSTRAINT = False
+    ENDPOINTMASS = True
     ACTIVATE_Gravity = True
-    MOVEMENT_DURATION = 0.4  # in seconds
+    MOVEMENT_DURATION = 0.45  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
-    NUM_ITER = 60
-    FILENAME = "HorizontalGP.png"
+    NUM_ITER = 90
+    FILENAME = ALL_DIRECTIONS[0]+".png"
 
     g = 9.81 if ACTIVATE_Gravity else 0
     led_dl = int(MOVEMENT_LENGTH / 10)
@@ -259,7 +365,7 @@ if __name__ == "__main__":
         )
     else:
         LED = np.array([-20, -10, 0, 10])
-        DEPTH = 40
+        DEPTH = 45
         starting_positions = np.column_stack(
             ([DEPTH] * (4 - led_dl), LED[: (4 - led_dl)])
         )
@@ -268,14 +374,13 @@ if __name__ == "__main__":
         )
 
     fig = plt.figure(figsize=(8, 14))
-    gs = gridspec.GridSpec(4, (4 - led_dl), hspace=0.5)
+    gs = gridspec.GridSpec(3, (4 - led_dl), hspace=0.5)
     colors = plt.cm.viridis(np.linspace(0, 1, 6))[:3]
     colors2 = plt.cm.viridis(np.linspace(0, 1, 6))[3:]
     dotcolor = np.array(["blue", "red", "#f932f0"])
     ax3 = fig.add_subplot(gs[2, :])
-    ax4 = fig.add_subplot(gs[3, :])
 
-    WP = 1e-4 if ACTIVATE_PATH_CONSTRAINT else 0  # Path Constraint Cost
+    WP = 5e-4 if ACTIVATE_PATH_CONSTRAINT else 0  # Path Constraint Cost
 
     for u in range((4 - led_dl)):
 
@@ -301,7 +406,8 @@ if __name__ == "__main__":
             end=end,
             num_iter = NUM_ITER,
             direction=SIMULATED_MOVEMENT_DIRECTION,
-            wp = WP
+            wp = WP,
+            endmass = ENDPOINTMASS
         )
         X2, Y2, states2 = MPC(
             Duration=MOVEMENT_DURATION,
@@ -309,12 +415,18 @@ if __name__ == "__main__":
             end=start,
             num_iter = NUM_ITER,
             direction=SIMULATED_MOVEMENT_DIRECTION,
-            wp = WP
+            wp = WP,
+            endmass = ENDPOINTMASS
         )
 
-        ax1.plot(X, Y, color=colors[u], label="Forward")
-        ax1.plot(X2, Y2, color=colors2[u], label="Backward")
-        ax1.legend(fontsize=6)
+        if SIMULATED_MOVEMENT_DIRECTION == "Horizontal":
+            ax1.plot(X, Y, color=colors[u], label="Forward",linestyle='--')
+            ax1.plot(X2, Y2, color=colors2[u], label="Backward")
+            ax1.legend(fontsize=6,loc='lower right')
+        else:
+            ax1.plot(X, Y, color=colors[u], label="Upward",linestyle='--')
+            ax1.plot(X2, Y2, color=colors2[u], label="Downward")
+            ax1.legend(fontsize=6,loc='lower right')
 
         if u == 0:
             ax2.set_ylabel("Velocity [cm/sec]")
@@ -322,18 +434,21 @@ if __name__ == "__main__":
 
         ax2.plot(
             time,
-            compute_absolute_velocity(X, Y, dt),
-            color=colors[u],
-            label="Forward",
+            np.abs(np.insert(np.diff(X)/dt, 0, 0.0)) if SIMULATED_MOVEMENT_DIRECTION == "Horizontal" else np.abs(np.insert(np.diff(Y)/dt, 0, 0.0)),
+            color="grey",
+            label="Forward" if SIMULATED_MOVEMENT_DIRECTION == "Horizontal" else "Upward",
             linewidth=2,
+            linestyle='--'
+            #compute_absolute_velocity(X, Y, dt)
         )
         ax2.plot(
             time,
-            compute_absolute_velocity(X2, Y2, dt),
-            color=colors2[u],
-            label="Backward",
+            np.abs(np.insert(np.diff(X2)/dt, 0, 0.0)) if SIMULATED_MOVEMENT_DIRECTION == "Horizontal" else np.abs(np.insert(np.diff(Y2)/dt, 0, 0.0)),
+            color="black",
+            label="Backward" if SIMULATED_MOVEMENT_DIRECTION == "Horizontal" else "Downward",
             linewidth=2,
         )
+        ax2.legend(fontsize=6)
 
         ax3.set_ylabel("Delta rtpv")
         ax3.set_xlabel("3 Movements")
@@ -344,32 +459,19 @@ if __name__ == "__main__":
             linestyle="--",
         )
         ax3.set_xticks([])
+        ax3.set_ylim((-0.15,0.15))
 
         ax3.scatter(
             u,
             (
-                np.argmax(compute_absolute_velocity(X2, Y2, dt))
-                - np.argmax(compute_absolute_velocity(X, Y, dt))
+                np.argmax(np.abs(np.insert(np.diff(X2)/dt, 0, 0.0)))
+                - np.argmax(np.abs(np.insert(np.diff(X)/dt, 0, 0.0))) if SIMULATED_MOVEMENT_DIRECTION == "Horizontal" else
+                np.argmax(np.abs(np.insert(np.diff(Y2)/dt, 0, 0.0)))
+                - np.argmax(np.abs(np.insert(np.diff(Y)/dt, 0, 0.0)))
             )
             / NUM_ITER,
             color=dotcolor[u],
         )
-
-        ax4.plot(
-            states[:, 0] * 180 / pi,
-            states[:, 1] * 180 / pi,
-            color=colors[u],
-            linewidth=3,
-        )
-        ax4.plot(
-            states2[:, 0] * 180 / pi,
-            states2[:, 1] * 180 / pi,
-            color=colors2[u],
-            linewidth=3,
-        )
-
-        ax4.set_ylabel(r"$\theta_e$")
-        ax4.set_xlabel(r"$\theta_s$")
 
     plt.savefig(FILENAME, dpi=200)
     plt.show()

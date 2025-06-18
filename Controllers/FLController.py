@@ -205,7 +205,7 @@ def Feedback_Linearization(
         )
 
         Omega_motor, Omega_measure, motornoise, sensorynoise = NoiseAndCovMatrix(
-            M, Num_Var, kdelay, Var=1e-3
+            M, Num_Var, kdelay, Var=1e-4
         )
 
         # Compute the command through the FL technique

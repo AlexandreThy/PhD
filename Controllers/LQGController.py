@@ -286,7 +286,7 @@ def BestLQG(
         )
 
         Omega_sens, Omega_measure, motor_noise, measure_noise = NoiseAndCovMatrix(
-            M, Num_Var, kdelay, Linear=True, Var=1e-3
+            M, Num_Var, kdelay, Linear=True, Var=1e-4
         )
         # Omega_sens = np.diag(np.ones(Num_Var))*1e-6
         # Omega_measure = np.diag(np.ones(Num_Var))*1e-7
