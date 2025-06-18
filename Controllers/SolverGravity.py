@@ -4,22 +4,38 @@ from math import *
 import casadi as ca
 import matplotlib.gridspec as gridspec
 
-I1 = 0.025
-I2 = 0.045
-m1 = 1.4
-m2 = 1
-l1 = 0.3
-l2 = 0.33
-s1 = 0.11
-s2 = 0.16
+#I1 = 0.025
+#I2 = 0.045
+#m1 = 1.4
+#m2 = 1
+#l1 = 0.3
+#l2 = 0.33
+#s1 = 0.11
+#s2 = 0.16
+
+def kinematic_params(body_mass,body_height):
+    m1 = body_mass*0.028
+    m2 = body_mass * 0.022
+    l1 = 0.186*body_height
+    l2 = 0.254*body_height
+    s1 = 0.436*l1 
+    s2 = 0.682*l2 
+    I1 = m1*(l1*0.322)**2
+    I2 = m2*(l2*0.468)**2
+    print("The person has segments masses of ",m1," kg and ",m2," kg.\n The person has segments lengts of ",l1," m and ",l2," m")
+    return I1,I2,m1,m2,l1,l2,s1,s2
+
+I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(80,1.8)
+
+
 K = 1 / 0.06
 tau = 0.06
 
 # SHOULDER PUIS ELBOW
 
-a1 = I1 + I2 + m2 * l1 * l1
+a1 = I1 + I2 + m2 * l1 * l1 + m2*s2*s2 + m1*s1*s1
 a2 = m2 * l1 * s2
-a3 = I2
+a3 = I2 + m2*s2*s2
 
 Bdyn = np.array([[0.05, 0.025], [0.025, 0.05]])
 
@@ -29,7 +45,7 @@ def delete_axis(ax, sides=["left", "right", "bottom", "top"]):
         ax.spines[side].set_visible(False)
 
 
-def compute_angles_from_cartesian(x, y, l1=30, l2=33):
+def compute_angles_from_cartesian(x, y,l1 = l1* 100 , l2 = l2* 100):
     """
     Computes h1 using the given equation.
 
@@ -62,8 +78,8 @@ def ToCartesian(x, at3=False):
     else:
         s = x[:, 0]
         e = x[:, elbowindex]
-    X = np.cos(s + e) * 33 + np.cos(s) * 30
-    Y = np.sin(s + e) * 33 + np.sin(s) * 30
+    X = np.cos(s + e) * l2 * 100 + np.cos(s) * l1 * 100
+    Y = np.sin(s + e) * l2 * 100 + np.sin(s) * l1 * 100
 
     return X, Y
 
@@ -94,7 +110,7 @@ def compute_absolute_velocity(x, y, dt):
 
 
 def optimizationofmpcproblem(
-    dt, Horizon, w1, w2, wp, r1, r2, end, estimate_now, direction, endmass
+    dt, Horizon, wp, r1, r2, end, estimate_now, direction, endmass, opts
 ):
 
     theta = ca.SX.sym("theta", 2)
@@ -112,7 +128,7 @@ def optimizationofmpcproblem(
     if endmass:
         m = 0.8 if g == 0 else 0.4
         a4 = m * (l1 * l1 + l2 * l2)
-        a5 = m * (l1 * l2)
+        a5 = m * (l1 * l2 )
         a6 = m * (l2 * l2)
         Minv = ca.inv(
             ca.vertcat(
@@ -191,9 +207,9 @@ def optimizationofmpcproblem(
 
     # Initial and target states
     X0 = opti.parameter(6)
-    Xend = 30 * np.cos(end[0]) + 33 * np.cos(end[0] + end[1])
-    Yend = 30 * np.sin(end[0]) + 33 * np.sin(end[0] + end[1])
-    X_targ = np.array([end[0], end[1]])
+    Xend = l1 * 100 * np.cos(end[0]) + l2 * 100 * np.cos(end[0] + end[1])
+    Yend = l1 * 100 * np.sin(end[0]) + l2 * 100 * np.sin(end[0] + end[1])
+    X_targ = np.array([end[0], end[1],0,0])
 
     # Objective function and constraints
     cost = 0
@@ -205,8 +221,8 @@ def optimizationofmpcproblem(
         # acc_k = Acc[:,k]
 
         # Current cartesian positions
-        Xcurr = 30 * np.cos(x_k[0]) + 33 * np.cos(x_k[0] + x_k[1])
-        Ycurr = 30 * np.sin(x_k[0]) + 33 * np.sin(x_k[0] + x_k[1])
+        Xcurr = l1 * 100 * np.cos(x_k[0]) + l2 * 100 * np.cos(x_k[0] + x_k[1])
+        Ycurr = l1 * 100 * np.sin(x_k[0]) + l2 * 100 * np.sin(x_k[0] + x_k[1])
 
         # Current acceleration
         cos_elbow_k = ca.cos(x_k[1])
@@ -297,22 +313,14 @@ def optimizationofmpcproblem(
         """ acc_next = Acc_k
         opti.subject_to(acc_k[:, k + 1] == acc_next) """
 
-    # Final state cost
-    cost += w1 * ca.sumsqr(X[:2, -1] - X_targ[:2])
-    cost += w2 * ca.sumsqr(X[2:4, -1])
+    opti.subject_to(X[:, 0] == X0)
+    opti.subject_to(X[:4, -1] == X_targ)
 
     opti.minimize(cost)
 
     # Initial condition constraint
-    opti.subject_to(X[:, 0] == X0)
+    
 
-    # Solver setup
-    opts = {
-        "print_time": 0,
-        "ipopt.tol": 1e-7,
-        "ipopt.acceptable_tol": 1e-6,
-        "ipopt.max_iter": 2000,
-    }
     """ opts = {
     "print_time": 0,
     "ipopt.hessian_approximation": "exact",
@@ -323,7 +331,7 @@ def optimizationofmpcproblem(
     "ipopt.dual_inf_tol": 1e-6,             
     "ipopt.compl_inf_tol": 1e-6             
     } """
-    opti.solver("ipopt", opts)
+    opti.solver("ipopt" , opts)
     opti.set_value(X0, estimate_now)
     sol = opti.solve()
     return sol, U, f
@@ -333,14 +341,13 @@ def MPC(
     Duration,
     start,
     end,
-    w1=1e3,
-    w2=1,
     wp=1e-2,
     r1=1e-4,
     r2=1e-5,
     num_iter=100,
     direction="Horizontal",
     endmass=False,
+    opts = {}
 ):
 
     end = compute_angles_from_cartesian(end[0], end[1])
@@ -379,7 +386,7 @@ def MPC(
     state_now = np.array([start[0], start[1], 0, 0, G[0], G[1]])
     states[:, 0] = state_now
     sol, U, f = optimizationofmpcproblem(
-        dt, num_iter, w1, w2, wp, r1, r2, end, state_now, direction, endmass
+        dt, num_iter, wp, r1, r2, end, state_now, direction, endmass, opts
     )
     for t in range(num_iter - 1):
 
@@ -391,22 +398,31 @@ def MPC(
 
     s = states[0]
     e = states[1]
-    X = np.cos(s + e) * 33 + np.cos(s) * 30
-    Y = np.sin(s + e) * 33 + np.sin(s) * 30
+    X = np.cos(s + e) * l2 * 100 + np.cos(s) * l1 * 100
+    Y = np.sin(s + e) * l2 * 100 + np.sin(s) * l1 * 100
     return X, Y, states
 
 
 if __name__ == "__main__":
-
     ALL_DIRECTIONS = ["Vertical", "Horizontal"]
     SIMULATED_MOVEMENT_DIRECTION = ALL_DIRECTIONS[0]
 
     ACTIVATE_PATH_CONSTRAINT = False
     ENDPOINTMASS = True
-    ACTIVATE_Gravity = True
+    ACTIVATE_Gravity = False
     MOVEMENT_DURATION = 0.45  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
     NUM_ITER = 90
+    EFFORT_R = 4
+    SMOOTH_R = 1
+    OPTS = {
+        
+        "print_time": 0,
+        "ipopt.tol": 1e-4*2,
+        "ipopt.acceptable_tol": 1e-2,
+        "ipopt.max_iter": 1000,
+        "ipopt.constr_viol_tol": 1e-2
+    }
     FILENAME = ALL_DIRECTIONS[0] + ".png"
 
     g = 9.81 if ACTIVATE_Gravity else 0
@@ -465,6 +481,10 @@ if __name__ == "__main__":
             direction=SIMULATED_MOVEMENT_DIRECTION,
             wp=WP,
             endmass=ENDPOINTMASS,
+            r1 = EFFORT_R,
+            r2 = SMOOTH_R,
+            opts = OPTS
+            
         )
         X2, Y2, states2 = MPC(
             Duration=MOVEMENT_DURATION,
@@ -474,6 +494,9 @@ if __name__ == "__main__":
             direction=SIMULATED_MOVEMENT_DIRECTION,
             wp=WP,
             endmass=ENDPOINTMASS,
+            r1 = EFFORT_R,
+            r2 = SMOOTH_R,
+            opts = OPTS
         )
 
         if SIMULATED_MOVEMENT_DIRECTION == "Horizontal":
