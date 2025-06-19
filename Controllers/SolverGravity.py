@@ -25,7 +25,7 @@ def kinematic_params(body_mass,body_height):
     print("The person has segments masses of ",m1," kg and ",m2," kg.\n The person has segments lengts of ",l1," m and ",l2," m")
     return I1,I2,m1,m2,l1,l2,s1,s2
 
-I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(80,1.8)
+I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(70,1.7)
 
 
 K = 1 / 0.06
@@ -36,8 +36,6 @@ tau = 0.06
 a1 = I1 + I2 + m2 * l1 * l1 + m2*s2*s2 + m1*s1*s1
 a2 = m2 * l1 * s2
 a3 = I2 + m2*s2*s2
-
-Bdyn = np.array([[0.05, 0.025], [0.025, 0.05]])
 
 
 def delete_axis(ax, sides=["left", "right", "bottom", "top"]):
@@ -352,6 +350,7 @@ def MPC(
 
     end = compute_angles_from_cartesian(end[0], end[1])
     start = compute_angles_from_cartesian(start[0], start[1])
+    print(start,end)
 
     dt = Duration / num_iter
     states = np.zeros((6, num_iter))
@@ -409,19 +408,18 @@ if __name__ == "__main__":
 
     ACTIVATE_PATH_CONSTRAINT = False
     ENDPOINTMASS = True
-    ACTIVATE_Gravity = False
+    ACTIVATE_Gravity = True
     MOVEMENT_DURATION = 0.45  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
-    NUM_ITER = 90
-    EFFORT_R = 4
-    SMOOTH_R = 1
+    NUM_ITER = 450
+    EFFORT_R = 1e-4
+    SMOOTH_R = 1e-5
     OPTS = {
         
         "print_time": 0,
-        "ipopt.tol": 1e-4*2,
-        "ipopt.acceptable_tol": 1e-2,
-        "ipopt.max_iter": 1000,
-        "ipopt.constr_viol_tol": 1e-2
+        "ipopt.tol": 1e-5*5,
+        "ipopt.acceptable_tol": 1e-3,
+        "ipopt.max_iter": 5000,
     }
     FILENAME = ALL_DIRECTIONS[0] + ".png"
 
@@ -440,7 +438,7 @@ if __name__ == "__main__":
         ending_positions = np.column_stack((LED[(led_dl):], [HEIGHT] * (4 - led_dl)))
     else:
         LED = np.array([-20, -10, 0, 10])
-        DEPTH = 45
+        DEPTH = 50
         starting_positions = np.column_stack(
             ([DEPTH] * (4 - led_dl), LED[: (4 - led_dl)])
         )
