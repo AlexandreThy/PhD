@@ -407,18 +407,18 @@ if __name__ == "__main__":
     SIMULATED_MOVEMENT_DIRECTION = ALL_DIRECTIONS[0]
 
     ACTIVATE_PATH_CONSTRAINT = False
-    ENDPOINTMASS = True
-    ACTIVATE_Gravity = True
+    ENDPOINTMASS = False
+    ACTIVATE_Gravity = False
     MOVEMENT_DURATION = 0.45  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
-    NUM_ITER = 450
-    EFFORT_R = 1e-4
-    SMOOTH_R = 1e-5
+    NUM_ITER = 225
+    EFFORT_R = 1
+    SMOOTH_R = 1e-1*3
     OPTS = {
         
         "print_time": 0,
-        "ipopt.tol": 1e-5*5,
-        "ipopt.acceptable_tol": 1e-3,
+        "ipopt.tol": 1e-2,
+        "ipopt.acceptable_tol": 1e-1,
         "ipopt.max_iter": 5000,
     }
     FILENAME = ALL_DIRECTIONS[0] + ".png"
@@ -438,7 +438,7 @@ if __name__ == "__main__":
         ending_positions = np.column_stack((LED[(led_dl):], [HEIGHT] * (4 - led_dl)))
     else:
         LED = np.array([-20, -10, 0, 10])
-        DEPTH = 50
+        DEPTH = 55
         starting_positions = np.column_stack(
             ([DEPTH] * (4 - led_dl), LED[: (4 - led_dl)])
         )
