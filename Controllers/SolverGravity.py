@@ -25,7 +25,7 @@ def kinematic_params(body_mass,body_height):
     print("The person has segments masses of ",m1," kg and ",m2," kg.\n The person has segments lengts of ",l1," m and ",l2," m")
     return I1,I2,m1,m2,l1,l2,s1,s2
 
-I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(70,1.7)
+I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(60,1.7)
 
 
 K = 1 / 0.06
@@ -407,18 +407,18 @@ if __name__ == "__main__":
     SIMULATED_MOVEMENT_DIRECTION = ALL_DIRECTIONS[0]
 
     ACTIVATE_PATH_CONSTRAINT = False
-    ENDPOINTMASS = False
+    ENDPOINTMASS = True
     ACTIVATE_Gravity = False
     MOVEMENT_DURATION = 0.45  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
     NUM_ITER = 225
-    EFFORT_R = 1
-    SMOOTH_R = 1e-1*3
+    EFFORT_R = 1.5
+    SMOOTH_R = 1e-1*5
     OPTS = {
         
         "print_time": 0,
         "ipopt.tol": 1e-2,
-        "ipopt.acceptable_tol": 1e-1,
+        "ipopt.acceptable_tol": 1e-1*5,
         "ipopt.max_iter": 5000,
     }
     FILENAME = ALL_DIRECTIONS[0] + ".png"
@@ -438,7 +438,7 @@ if __name__ == "__main__":
         ending_positions = np.column_stack((LED[(led_dl):], [HEIGHT] * (4 - led_dl)))
     else:
         LED = np.array([-20, -10, 0, 10])
-        DEPTH = 55
+        DEPTH = 50
         starting_positions = np.column_stack(
             ([DEPTH] * (4 - led_dl), LED[: (4 - led_dl)])
         )
