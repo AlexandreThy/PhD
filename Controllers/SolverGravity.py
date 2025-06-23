@@ -25,7 +25,7 @@ def kinematic_params(body_mass,body_height):
     print("The person has segments masses of ",m1," kg and ",m2," kg.\n The person has segments lengts of ",l1," m and ",l2," m")
     return I1,I2,m1,m2,l1,l2,s1,s2
 
-I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(60,1.7)
+I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(80,1.8)
 
 
 K = 1 / 0.06
@@ -128,15 +128,19 @@ def optimizationofmpcproblem(
         a4 = m * (l1 * l1 + l2 * l2)
         a5 = m * (l1 * l2 )
         a6 = m * (l2 * l2)
-        Minv = ca.inv(
-            ca.vertcat(
-                ca.horzcat(
-                    a1 + a4 + 2 * (a2 + a5) * cos_elbow,
-                    (a3 + a6) + (a2 + a5) * cos_elbow,
-                ),
-                ca.horzcat((a3 + a6) + (a2 + a5) * cos_elbow, (a3 + a6)),
-            )
-        )
+        #Minv = ca.inv(
+        #    ca.vertcat(
+        #        ca.horzcat(
+        #            a1 + a4 + 2 * (a2 + a5) * cos_elbow,
+        #            (a3 + a6) + (a2 + a5) * cos_elbow,
+        #        ),
+        #        ca.horzcat((a3 + a6) + (a2 + a5) * cos_elbow, (a3 + a6)),
+        #    )
+        #)
+
+        DetM = (a1+a4)*(a3+a6)-(a3+a6)*(a3+a6)-(a2+a5)*(a2+a5)*cos_elbow*cos_elbow
+        Minv = np.array([[a3+a6,-(a3+a6)-(a2+a5)*cos_elbow],
+                    [-(a3+a6)-(a2+a5)*cos_elbow,(a1+a4)+2*(a2+a5)*cos_elbow]])/DetM
 
         C = ca.SX(
             np.array(
@@ -160,13 +164,15 @@ def optimizationofmpcproblem(
             )
         )
     else:
-        Minv = ca.inv(
-            ca.vertcat(
-                ca.horzcat(a1 + 2 * a2 * cos_elbow, a3 + a2 * cos_elbow),
-                ca.horzcat(a3 + a2 * cos_elbow, a3),
-            )
-        )
-
+        #Minv = ca.inv(
+        #    ca.vertcat(
+        #        ca.horzcat(a1 + 2 * a2 * cos_elbow, a3 + a2 * cos_elbow),
+        #        ca.horzcat(a3 + a2 * cos_elbow, a3),
+        #    )
+        #)
+        DetM = a1*a3-a3*a3-a2*a2*cos_elbow*cos_elbow
+        Minv = np.array([[a3,-a3-a2*cos_elbow],
+                    [-a3-a2*cos_elbow,a1+2*a2*cos_elbow]])/DetM
         C = ca.SX(
             np.array(
                 [
@@ -233,18 +239,24 @@ def optimizationofmpcproblem(
             a4 = m * (l1 * l1 + l2 * l2)
             a5 = m * (l1 * l2)
             a6 = m * (l2 * l2)
-            Minv_k = ca.inv(
-                ca.reshape(
-                    ca.vertcat(
-                        a1 + a4 + 2 * (a2 + a5) * cos_elbow_k,
-                        (a3 + a6) + (a2 + a5) * cos_elbow_k,
-                        (a3 + a6) + (a2 + a5) * cos_elbow_k,
-                        (a3 + a6),
-                    ),
-                    2,
-                    2,
-                )
-            )
+            #Minv_k = ca.inv(
+            #    ca.reshape(
+            #        ca.vertcat(
+            #            a1 + a4 + 2 * (a2 + a5) * cos_elbow_k,
+            #            (a3 + a6) + (a2 + a5) * cos_elbow_k,
+            #            (a3 + a6) + (a2 + a5) * cos_elbow_k,
+            #            (a3 + a6),
+            #        ),
+            #        2,
+            #        2,
+            #    )
+            #)
+            DetM_k = (a1+a4)*(a3+a6)-(a3+a6)*(a3+a6)-(a2+a5)*(a2+a5)*cos_elbow_k*cos_elbow_k
+            Minv_k = ca.mtimes(1/DetM_k, ca.reshape(
+            ca.vertcat(
+                a3+a6,-(a3+a6)-(a2+a5)*cos_elbow_k,
+                    -(a3+a6)-(a2+a5)*cos_elbow_k,(a1+a4)+2*(a2+a5)*cos_elbow_k
+            ), 2, 2))
 
             C_k = ca.vertcat(
                 -x_k[3] * (2 * x_k[2] + x_k[3]) * (a2 + a5) * sin_elbow_k,
@@ -261,18 +273,12 @@ def optimizationofmpcproblem(
             )
 
         else:
-            Minv_k = ca.inv(
-                ca.reshape(
-                    ca.vertcat(
-                        a1 + 2 * a2 * cos_elbow_k,
-                        a3 + a2 * cos_elbow_k,
-                        a3 + a2 * cos_elbow_k,
-                        a3,
-                    ),
-                    2,
-                    2,
-                )
-            )
+            DetM_k = a1*a3-a3*a3-a2*a2*cos_elbow_k*cos_elbow_k
+            Minv_k = ca.mtimes(1/DetM_k, ca.reshape(
+            ca.vertcat(
+                a3, -a3 - a2 * cos_elbow_k,
+                -a3 - a2 * cos_elbow_k, a1 + 2 * a2 * cos_elbow_k
+            ), 2, 2))
 
             C_k = ca.vertcat(
                 -x_k[3] * (2 * x_k[2] + x_k[3]) * a2 * sin_elbow_k,
@@ -350,7 +356,6 @@ def MPC(
 
     end = compute_angles_from_cartesian(end[0], end[1])
     start = compute_angles_from_cartesian(start[0], start[1])
-    print(start,end)
 
     dt = Duration / num_iter
     states = np.zeros((6, num_iter))
@@ -363,7 +368,7 @@ def MPC(
                 * (
                     m1
                     * s1
-                    * +m2
+                     + m2
                     * (s2 * np.cos(start[0] + start[1]) + l1 * np.cos(start[0]))
                     + m * (l2 * np.cos(start[0] + start[1]) + l1 * np.cos(start[0]))
                 ),
@@ -409,17 +414,17 @@ if __name__ == "__main__":
     ACTIVATE_PATH_CONSTRAINT = False
     ENDPOINTMASS = True
     ACTIVATE_Gravity = False
-    MOVEMENT_DURATION = 0.45  # in seconds
+    MOVEMENT_DURATION = 0.4  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
-    NUM_ITER = 225
-    EFFORT_R = 1.5
-    SMOOTH_R = 1e-1*5
+    NUM_ITER = 400
+    EFFORT_R = 1
+    SMOOTH_R = .12
     OPTS = {
         
         "print_time": 0,
         "ipopt.tol": 1e-2,
-        "ipopt.acceptable_tol": 1e-1*5,
-        "ipopt.max_iter": 5000,
+        "ipopt.acceptable_tol": .6,
+        "ipopt.max_iter": 1500,
     }
     FILENAME = ALL_DIRECTIONS[0] + ".png"
 
@@ -438,7 +443,7 @@ if __name__ == "__main__":
         ending_positions = np.column_stack((LED[(led_dl):], [HEIGHT] * (4 - led_dl)))
     else:
         LED = np.array([-20, -10, 0, 10])
-        DEPTH = 50
+        DEPTH = 60
         starting_positions = np.column_stack(
             ([DEPTH] * (4 - led_dl), LED[: (4 - led_dl)])
         )
