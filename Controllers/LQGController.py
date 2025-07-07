@@ -195,7 +195,7 @@ def BestLQG(
     Activate_Noise=False,
     plotEstimation=False,
     ClassicLQG=False,
-    filter = [1,0,0,1,0,0],
+    filter=[1, 0, 0, 1, 0, 0],
     AdditionalDynamics={},
 ):
 
@@ -362,7 +362,8 @@ def BestLQG(
         )
     return X, Y, u, x_nonlin
 
-def Linearization_6dof(dt,x, u):
+
+def Linearization_6dof(dt, x, u):
     """
     Parameters :
         - x : the state of the system
@@ -428,7 +429,11 @@ def Linearization_6dof(dt,x, u):
             ],
         ]
     )
-    l = 1 + Moment_Arm[0] * (theta0[0] - x[0]) / l0 + Moment_Arm[1] * (theta0[1] - x[1]) / l0
+    l = (
+        1
+        + Moment_Arm[0] * (theta0[0] - x[0]) / l0
+        + Moment_Arm[1] * (theta0[1] - x[1]) / l0
+    )
     dldts = -Moment_Arm[0] / l0
     dldte = -Moment_Arm[1] / l0
 
@@ -438,11 +443,7 @@ def Linearization_6dof(dt,x, u):
     # Equation (6): fl(l)
     fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
 
-    dfldl = (
-        fl
-        * np.sign((l**1.55 - 1) / 0.81)
-        * (1.55 * l**0.55 / 0.81)
-    )
+    dfldl = fl * np.sign((l**1.55 - 1) / 0.81) * (1.55 * l**0.55 / 0.81)
     # Equation (7): ff_v(l, v)
     fv = np.where(
         v <= 0,
@@ -454,7 +455,7 @@ def Linearization_6dof(dt,x, u):
     dfvdv = np.where(
         v <= 0,
         7.39 * (1 + 0.96) / (-7.39 + 0.96 * v) ** 2,
-        0.62 * (-3.12 + 4.21 * l - 2.67 * l**2 - 1) / (0.62 + v) ** 2,
+        -0.62 * (-3.12 + 4.21 * l - 2.67 * l**2 + 1) / (0.62 + v) ** 2,
     )
 
     dfldts = dfldl * dldts
@@ -468,11 +469,15 @@ def Linearization_6dof(dt,x, u):
     dtheta = np.array([dtheta1, dtheta2])
 
     d_accel_theta1 = Minv @ (Moment_Arm @ (u * (dfldts * fv + fl * dfvdts)))
-    d_accel_dtheta1 = Minv @ (Moment_Arm @ (u * dfvdos * fl) - dCdos - Bdyn @ np.array([1, 0]))
+    d_accel_dtheta1 = Minv @ (
+        Moment_Arm @ (u * dfvdos * fl) - dCdos - Bdyn @ np.array([1, 0])
+    )
     d_accel_theta2 = -Minv @ (
         dM @ Minv @ (Moment_Arm @ (u * fl * fv) - C - Bdyn @ dtheta)
     ) + Minv @ (Moment_Arm @ (u * (dfldte * fv + fl * dfvdte)) - dCdte)
-    d_accel_dtheta2 = Minv @ (Moment_Arm @ (u * dfvdoe * fl) - dCdoe - Bdyn @ np.array([0, 1]))
+    d_accel_dtheta2 = Minv @ (
+        Moment_Arm @ (u * dfvdoe * fl) - dCdoe - Bdyn @ np.array([0, 1])
+    )
 
     # Construct the Jacobian matrix
     A = np.zeros((4, 4))
@@ -491,7 +496,7 @@ def Linearization_6dof(dt,x, u):
     A[3, 1] = d_accel_theta2[1]
     A[3, 3] = d_accel_dtheta2[1]
     FinalA = np.identity(6)
-    FinalA[:4,:4] += dt*A
+    FinalA[:4, :4] += dt * A
     return FinalA
 
 
@@ -545,7 +550,7 @@ def f(x, u):
     )
     theta = Minv @ (A @ (u * fl * ff_v) - Bdyn @ x[2:4] - C)
 
-    return np.array([[x[2], x[3], theta[0], theta[1],0,0]])
+    return np.array([[x[2], x[3], theta[0], theta[1], 0, 0]])
 
 
 def fx(x, u):
@@ -634,7 +639,7 @@ def DLQG_6Muscles(
     x0_with_delay = np.tile(x0, kdelay + 1)
     Num_Var = 6
 
-    R = np.diag(np.ones(6)*r1)
+    R = np.diag(np.ones(6) * r1)
 
     Q = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
     Q[:Num_Var, :Num_Var] = np.array(
@@ -644,7 +649,7 @@ def DLQG_6Muscles(
             [0, 0, w3, 0, 0, 0],
             [0, 0, 0, w4, 0, 0],
             [-w1, 0, 0, 0, w1, 0],
-            [0, -w2,0, 0, 0, w2],
+            [0, -w2, 0, 0, 0, w2],
         ]
     )
 
@@ -658,7 +663,7 @@ def DLQG_6Muscles(
 
     array_x = np.zeros((Num_iter, Num_Var))
     array_xhat = np.zeros((Num_iter, Num_Var))
-    array_u = np.zeros((Num_iter-1, 6))
+    array_u = np.zeros((Num_iter - 1, 6))
     y = np.zeros((Num_iter - 1, Num_Var))
 
     array_x[0] = x0.flatten()
@@ -672,8 +677,8 @@ def DLQG_6Muscles(
     u = np.zeros(6)
     for k in range(Num_iter - 1):
         xcopy = np.copy(x)
-        A[:Num_Var, :Num_Var] = Linearization_6dof(dt, xcopy , 0)
-        B[:4] = dt*fu(xcopy,u)
+        A[:Num_Var, :Num_Var] = Linearization_6dof(dt, xcopy, 0)
+        B[:4] = dt * fu(xcopy, u)
 
         S = Q
         for _ in range(Num_iter - 1 - k):
@@ -682,29 +687,28 @@ def DLQG_6Muscles(
         u = -L @ xhat
         J += u.T @ R @ u
 
-        Omega_motor,Omega_measure = NoiseAndCovMatrix(kdelay=kdelay,Var = 1e-4)[:2]
+        Omega_motor = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
+        Omega_measure = np.diag(np.ones(Num_Var) * 1e-3)
+        for i in range(2, 4):
 
+            Omega_motor[i, i] = 1e-4 * 9
         y[k] = (H @ x).flatten()
         if Activate_Noise == True:
-            y[k] += np.random.normal(0,1e-3,Num_Var)
+            y[k] += np.random.normal(0, 1e-2 * 3, Num_Var)
 
-        sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-        for _ in range(Num_iter - 1):
-
-            K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
-            sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
+        K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
+        sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
 
         xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
 
-        x_new = (x[:Num_Var] + dt*f(x,u)).reshape(6)
-        
+        x_new = (x[:Num_Var] + dt * f(x, u)).reshape(6)
 
         # Concatenate with remaining x values
         x = np.concatenate((x_new, x[:-Num_Var]))
 
         if Activate_Noise:
 
-            x[[2,3]] += np.random.normal(0,1e-2,2)
+            x[[2, 3]] += np.random.normal(0, np.sqrt(1e-3), 2)
 
         array_xhat[k + 1] = xhat[:Num_Var].flatten()
         array_x[k + 1] = x[:Num_Var].flatten()
@@ -723,7 +727,7 @@ def DLQG_6Muscles(
         color = "magenta" if ClassicLQG else "green"
         label = "LQG" if ClassicLQG else "DLQG"
         plt.plot(X, Y, color=color, label=label, linewidth=0.8)
-        plt.scatter(X, Y, color=color,s = 10)
+        plt.scatter(X, Y, color=color, s=10)
         plt.axis("equal")
         tg = np.array([obj1, obj2])
         plt.scatter(
@@ -732,7 +736,7 @@ def DLQG_6Muscles(
             color="black",
         )
         plt.show()
-        time = np.linspace(0,Duration,Num_iter)
-        plt.plot(time,x_nonlin[2],color = "green",linestyle= "--")
-        plt.plot(time,x_nonlin[3],color = "green")
+        time = np.linspace(0, Duration, Num_iter)
+        plt.plot(time, x_nonlin[2], color="green", linestyle="--")
+        plt.plot(time, x_nonlin[3], color="green")
     return X, Y, array_u, x_nonlin

@@ -72,9 +72,7 @@ def newtondf(var):
     )
 
 
-
-
-def sysdyn(x, u, dt,activate_noise):
+def sysdyn(x, u, dt, activate_noise):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
     \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
@@ -89,6 +87,7 @@ def sysdyn(x, u, dt,activate_noise):
     Returns:
         [x_{t+1},gamma_{t+1}]
     """
+    newx = np.copy(x)
     M = np.array(
         [[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])], [a3 + a2 * cos(x[1]), a3]]
     )
@@ -98,7 +97,7 @@ def sysdyn(x, u, dt,activate_noise):
             x[2] ** 2 * a2 * np.sin(x[1]),
         ]
     )
-    x[0:2] += dt * x[2:4]
+    newx[0:2] += dt * x[2:4]
     A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
     l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
     theta0 = np.array(
@@ -131,37 +130,29 @@ def sysdyn(x, u, dt,activate_noise):
         (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
         (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
-    noise = np.random.normal(0,1e-4,2) if activate_noise else np.zeros(2)
-    x[2:4] += dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + noise
-    return x
+    noise = np.random.normal(0, np.sqrt(1e-3), 2) if activate_noise else np.zeros(2)
+    newx[2:4] += (
+        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + noise
+    )
+    return newx
+
 
 def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0):
 
-    Var = 1e-4
-    K = 1 / 0.06
-    M = np.linalg.inv(M)
-    Sigmau = np.array([[Var, 0], [0, Var]])
-    Sigmav = K * K * M @ Sigmau @ M.T
     SigmaMotor = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
-    Sigma = np.zeros((N, N))
-    SigmaSense = np.diag(np.ones(N) * 1e-6)
-    for S in [Sigma, SigmaSense]:
-        S[2, 2] = Sigmav[0, 0]
-        S[2, 5] = Sigmav[0, 1]
-        S[5, 2] = Sigmav[1, 0]
-        S[5, 5] = Sigmav[1, 1]
-    SigmaMotor[:N, :N] = Sigma
+    SigmaSense = np.diag(np.ones(N) * 1e-4)
+    for i in range(2, 4):
+
+        SigmaMotor[i, i] = 1e-3
 
     sensorynoise = np.zeros(N)
     for i in range(N):
-        sensorynoise[i] = np.random.normal(0, np.sqrt(SigmaSense[i, i]))
-    Omegasenslinear = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
-    Omegasenslinear[2, 2] = Var
-    Omegasenslinear[5, 5] = Var
+        sensorynoise[i] = np.random.normal(0, 1e-2)
 
     return SigmaMotor, SigmaSense, sensorynoise
 
-def estdyn(est_x,true_x, u, dt,activated_noise, delay,sigma):
+
+def estdyn(est_x, true_x, u, dt, activated_noise, delay, sigma):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
     \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
@@ -180,14 +171,14 @@ def estdyn(est_x,true_x, u, dt,activated_noise, delay,sigma):
     H[:, delay * 6 :] = np.identity(6)
 
     A_basic = np.array(
-    [
-        [1, 0, dt, 0, 0, 0],
-        [0, 1, 0, dt, 0, 0],
-        [0, 0, 1, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0],
-        [0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 1],
-    ]
+        [
+            [1, 0, dt, 0, 0, 0],
+            [0, 1, 0, dt, 0, 0],
+            [0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1],
+        ]
     )
     B_basic = np.zeros((6, 2))
     B_basic[2, 0] = dt
@@ -198,19 +189,20 @@ def estdyn(est_x,true_x, u, dt,activated_noise, delay,sigma):
     B = np.zeros(((delay + 1) * 6, 2))
     B[:6] = B_basic
 
-    Omega_motor,Omega_measure, sensorynoise = NoiseAndCovMatrix(kdelay =delay)
+    Omega_motor, Omega_measure, sensorynoise = NoiseAndCovMatrix(kdelay=delay)
     K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
     sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
 
-
-    y = H@true_x
+    y = H @ true_x
     if activated_noise:
-        y+=sensorynoise
-    next_est_x = A@est_x+B@u+K@(y-H@est_x)
-    return next_est_x,sigma
+        y += sensorynoise
+    next_est_x = A @ est_x + B @ u + K @ (y - H @ est_x)
+    return next_est_x, sigma
+
 
 def compute_control_gains(
-    Num_iter, Duration, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1]):
+    Num_iter, Duration, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1]
+):
     """
     Compute the control gains L
 
@@ -327,11 +319,12 @@ def compute_nonlinear_command(L, x):
     u = np.zeros(6)
     for i in range(6):
         u[i] = U[i] / (fl[i] * ff_v[i])
-    return u,linear_command
+    return u, linear_command
 
 
 # now define the 8 condition reaching controller
-def FL_6muscles(Duration=0.6,
+def FL_6muscles(
+    Duration=0.6,
     w1=1e8,
     w2=1e8,
     w3=1e4,
@@ -341,39 +334,45 @@ def FL_6muscles(Duration=0.6,
     starting_point=[0, 30],
     Activate_Noise=False,
     Num_iter=300,
-    Delay=0.06):
+    Delay=0.06,
+):
     """Simulates an eight-condition reaching task with control gains and neural network dynamics."""
 
     dt = Duration / Num_iter
     kdelay = int(Delay / dt)
-    L = compute_control_gains(Num_iter, Duration,motor_cost=r,cost_weights=[w1,w2,w3,w4])
-    num_states = 4
-    
-    all_true_states = np.zeros((Num_iter, num_states + 2))
-    all_estimated_states= np.zeros((Num_iter, (num_states + 2)))
-    all_commands= np.zeros((Num_iter-1, 6))
-
-    st1, st2 = newton(newtonf, newtondf, 1e-8, 1000, starting_point[0],starting_point[1])
-    tg1, tg2 = newton(
-        newtonf, newtondf, 1e-8, 1000,targets[0], targets[1]
+    L = compute_control_gains(
+        Num_iter, Duration, motor_cost=r, cost_weights=[w1, w2, w3, w4]
     )
+    num_states = 4
+
+    all_true_states = np.zeros((Num_iter, num_states + 2))
+    all_estimated_states = np.zeros((Num_iter, (num_states + 2)))
+    all_commands = np.zeros((Num_iter - 1, 6))
+
+    st1, st2 = newton(
+        newtonf, newtondf, 1e-8, 1000, starting_point[0], starting_point[1]
+    )
+    tg1, tg2 = newton(newtonf, newtondf, 1e-8, 1000, targets[0], targets[1])
     x0 = np.array([st1, st2, 0, 0, tg1, tg2])
     x0_with_delay = np.tile(x0, kdelay + 1)
-    true_state,estimated_state = x0_with_delay,x0_with_delay
+    true_state, estimated_state = x0_with_delay, x0_with_delay
     all_true_states[0, :] = np.copy(x0)
     all_estimated_states[0, :] = np.copy(x0)
     sigma = np.zeros((6 * (kdelay + 1), 6 * (kdelay + 1)))
     for j in range(Num_iter - 1):
-        u,v = compute_nonlinear_command(L[j], estimated_state[:6])
-        estimated_state,sigma = estdyn(estimated_state,true_state, v, dt,Activate_Noise, kdelay, sigma)
-        true_state = np.concatenate((sysdyn(true_state[:6], u, dt,Activate_Noise),true_state[:-6]))
-        
+        u, v = compute_nonlinear_command(L[j], estimated_state[:6])
+        estimated_state, sigma = estdyn(
+            estimated_state, true_state, v, dt, Activate_Noise, kdelay, sigma
+        )
+        true_state = np.concatenate(
+            (sysdyn(true_state[:6], u, dt, Activate_Noise), true_state[:-6])
+        )
+
         all_true_states[j + 1, :] = true_state[:6]
         all_estimated_states[j + 1, :] = estimated_state[:6]
         all_commands[j] = u
-    
-    s,e = all_true_states[:,0],all_true_states[:,1]
+
+    s, e = all_true_states[:, 0], all_true_states[:, 1]
     X = np.cos(s + e) * 33 + np.cos(s) * 30
     Y = np.sin(s + e) * 33 + np.sin(s) * 30
-    return X,Y,all_true_states,all_commands
-
+    return X, Y, all_true_states, all_commands

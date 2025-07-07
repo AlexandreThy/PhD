@@ -192,7 +192,7 @@ def Linearization_6muscles(x, u):
     dfvdv = np.where(
         v <= 0,
         7.39 * (1 + 0.96) / (-7.39 + 0.96 * v) ** 2,
-        0.62 * (-3.12 + 4.21 * l - 2.67 * l**2 - 1) / (0.62 + v) ** 2,
+        -0.62 * (-3.12 + 4.21 * l - 2.67 * l**2 + 1) / (0.62 + v) ** 2,
     )
 
     dfldts = dfldl * dldts
@@ -445,7 +445,7 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
         gbold = r[k] + B[k].T @ sbold[k + 1] + temp1
         G = B[k].T @ S[k + 1] @ A[k]
         H = R[k] + B[k].T @ S[k + 1] @ B[k] + temp2
-        
+
         eigenvalues, eigenvectors = np.linalg.eig(H)
 
         #
@@ -455,6 +455,7 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
 
         for i in range(V.shape[0]):
             if V[i, i] < (eps):
+                print("H matrix poorly defined")
                 V[i, i] = eps
             V[i, i] = 1 / V[i, i]
         Hinv = eigenvectors @ V @ np.linalg.inv(eigenvectors)
@@ -510,7 +511,7 @@ def step5(
     H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
 
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-    Omega_measure = np.diag(np.ones(4)) * 1e-6
+    Omega_measure = np.diag(np.ones(4)) * 1e-4
     ##
 
     for i in range(Num_steps - 1):
@@ -527,28 +528,26 @@ def step5(
         Omega_sens = np.zeros((len(x0), len(x0)))
         Omega_sens[3, 3] = motornoise_variance
         Omega_sens[2, 2] = motornoise_variance
-        #Omega_sens += temp1 + temp2 + temp3
+        # Omega_sens += temp1 + temp2 + temp3
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
 
         passed_newx = np.copy(newx[i, :-Num_Var])
         newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u)
-        newx[i + 1, Num_Var:] = passed_newx 
+        newx[i + 1, Num_Var:] = passed_newx
 
         passed_xref = np.copy(xref[i, :-Num_Var])
         xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], bestu[i])
         xref[i + 1, Num_Var:] = passed_xref
 
         if Noise:
-            newx[i + 1, 2 : 4] += np.random.normal(
-                0, np.sqrt(motornoise_variance), 2
-            )
+            newx[i + 1, 2:4] += np.random.normal(0, np.sqrt(1e-3), 2)
 
         y = H @ (newx[i] - xref[i])
         if Noise:
-            y += np.random.normal(0, 1e-3, len(y))
+            y += np.random.normal(0, 1e-2, len(y))
 
         xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
-    return newx[:,:Num_Var]
+    return newx[:, :Num_Var]
 
 
 def Compute_Cartesian_Speed(X, Y, dt):
@@ -569,7 +568,8 @@ def ILQG(
     K=120,
     Noise=False,
     delay=0,
-    eps=1e-3,
+    eps=1e-4,
+    print_iterations=True,
 ):
     """
     Parameters :
@@ -605,9 +605,7 @@ def ILQG(
     cbold = np.zeros((K - 1, m, n))
     C = np.zeros((K - 1, m, n, m))
 
-    motornoise_variance = (
-        1e-5
-    )  # Play with it to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
+    motornoise_variance = 1e-3  # Play with it to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
 
     for i in range(K - 1):
         for j in range(2):
@@ -623,7 +621,7 @@ def ILQG(
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
 
         if (
-            np.max(np.abs(u_incr)) < 1e-3
+            np.max(np.abs(u_incr)) < 1e-5
         ):  # If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
             x = step5(
                 x0,
@@ -642,7 +640,8 @@ def ILQG(
             )
             X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
             Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
-            print("Solution found at iteration ", iterate)
+            if print_iterations:
+                print("Solution found at iteration ", iterate)
             break
 
         A, B, q, qbold, r, Q, R = step2(
@@ -654,7 +653,7 @@ def ILQG(
         u_incr = step4(l, L, K, A, B)  # Compute the command sequence improvement
         u += u_incr  # Improves the command sequence
 
-    return X, Y, x,u
+    return X, Y, x, u
 
 
 if __name__ == "__main__":
@@ -690,14 +689,14 @@ if __name__ == "__main__":
     angles = np.linspace(0, 2 * pi, 9)[:-1]
     end = ToCartesian(np.array([25 / 180 * pi, 55 / 180 * pi]))
     start = ToCartesian(np.array([70 / 180 * pi, 105 / 180 * pi]))
-    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-2,eps = EPS)
+    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-2, eps=EPS)
     ax1.plot(X, Y, color="#990000", linewidth=3)
     ax1.scatter(end[0], end[1], color="grey", edgecolor="black", zorder=3)
     ax2.plot(time, x[:, 2], linewidth=2, color="#990000")
     ax2.plot(time, x[:, 3], linewidth=2, color="#990000", linestyle="--")
     end = ToCartesian(np.array([-10 / 180 * pi, 100 / 180 * pi]))
     start = ToCartesian(np.array([70 / 180 * pi, 70 / 180 * pi]))
-    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-2,eps = EPS)
+    X, Y, x = ILQG(K=K, start=start, targets=end, r1=1e-2, eps=EPS)
     ax1.plot(X, Y, color="#2be1db", linewidth=3)
     ax1.scatter(end[0], end[1], color="grey", edgecolor="black", zorder=3)
     ax2.plot(time, x[:, 2], linewidth=2, color="#2be1db")
