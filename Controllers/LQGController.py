@@ -624,6 +624,7 @@ def DLQG_6Muscles(
     Activate_Noise=False,
     plotEstimation=False,
     ClassicLQG=False,
+    FF=False,
 ):
 
     dt = Duration / Num_iter
@@ -677,6 +678,16 @@ def DLQG_6Muscles(
     u = np.zeros(6)
     for k in range(Num_iter - 1):
         xcopy = np.copy(x)
+        if k != 0:
+            acc = (f(x[:Num_Var], u)[:, 2:4] + F).reshape(2)
+        else:
+            acc = np.zeros(2)
+        F = (
+            Compute_f_new_version(x[0:2], x[2:4], acc, 0.3)
+            if FF == True
+            else np.array([0, 0])
+        )
+
         A[:Num_Var, :Num_Var] = Linearization_6dof(dt, xcopy, 0)
         B[:4] = dt * fu(xcopy, u)
 
@@ -701,7 +712,8 @@ def DLQG_6Muscles(
 
         xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
 
-        x_new = (x[:Num_Var] + dt * f(x, u)).reshape(6)
+        x_new = (x[:Num_Var] + dt * (f(x, u))).reshape(6)
+        x_new[2:4] += dt * F
 
         # Concatenate with remaining x values
         x = np.concatenate((x_new, x[:-Num_Var]))

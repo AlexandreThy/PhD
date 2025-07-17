@@ -72,7 +72,81 @@ def newtondf(var):
     )
 
 
-def sysdyn(x, u, dt, activate_noise):
+def Compute_gamma_nu(theta, omega):
+    fe = -33 * np.sin(theta[0] + theta[1])
+    fs = -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0])
+    ge = 33 * np.cos(theta[0] + theta[1])
+    gs = 33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0])
+    fse = -33 * np.cos(theta[0] + theta[1])
+    gse = -33 * np.sin(theta[0] + theta[1])
+    fee = -33 * np.cos(theta[0] + theta[1])
+    fss = -33 * np.cos(theta[0] + theta[1]) - 30 * np.cos(theta[0])
+    gee = fe
+    gss = fs
+    gamma = (
+        gs * omega[0]
+        + ge * omega[1]
+        - fss * omega[0] * omega[0]
+        - 2 * fse * omega[0] * omega[1]
+        - fee * omega[1] * omega[1]
+    )
+    nu = (
+        -gss * omega[0] * omega[0]
+        - 2 * gse * omega[0] * omega[1]
+        - gee * omega[1] * omega[1]
+    )
+    return gamma, nu, fs, fe, gs, ge, fss, fse, fee, gss, gse, gee
+
+
+def pre_Compute(theta, omega):
+    fe = -33 * np.sin(theta[0] + theta[1])
+    fs = -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0])
+    ge = 33 * np.cos(theta[0] + theta[1])
+    gs = 33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0])
+    fse = -33 * np.cos(theta[0] + theta[1])
+    gse = -33 * np.sin(theta[0] + theta[1])
+    fee = -33 * np.cos(theta[0] + theta[1])
+    fss = -33 * np.cos(theta[0] + theta[1]) - 30 * np.cos(theta[0])
+    gee = fe
+    gss = fs
+    return fs, fe, gs, ge, fss, fse, fee, gss, gse, gee
+
+
+def Compute_f_new_version(theta, omega, acc, factor):
+    fs, fe, gs, ge, fss, fse, fee, gss, gse, gee = pre_Compute(theta, omega)
+    xddot = (
+        13 * (gs * omega[0] + ge * omega[1]) * factor
+        + fss * omega[0] * omega[0]
+        + 2 * fse * omega[0] * omega[1]
+        + fee * omega[1] * omega[1]
+        + fs * acc[0]
+        + fe * acc[1]
+    )
+    yddot = (
+        gss * omega[0] * omega[0]
+        + 2 * gse * omega[0] * omega[1]
+        + gee * omega[1] * omega[1]
+        + gs * acc[0]
+        + ge * acc[1]
+    )
+    gamma = (
+        xddot
+        - fss * omega[0] * omega[0]
+        - 2 * fse * omega[0] * omega[1]
+        - fee * omega[1] * omega[1]
+    )
+    nu = (
+        yddot
+        - gss * omega[0] * omega[0]
+        - 2 * gse * omega[0] * omega[1]
+        - gee * omega[1] * omega[1]
+    )
+    F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
+    F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
+    return np.array([F1, F2])
+
+
+def sysdyn(x, u, dt, activate_noise, FF, F):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
     \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
@@ -87,6 +161,7 @@ def sysdyn(x, u, dt, activate_noise):
     Returns:
         [x_{t+1},gamma_{t+1}]
     """
+
     newx = np.copy(x)
     M = np.array(
         [[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])], [a3 + a2 * cos(x[1]), a3]]
@@ -130,11 +205,21 @@ def sysdyn(x, u, dt, activate_noise):
         (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
         (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
+    acc = (np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + F).reshape(
+        2
+    )
+    F = (
+        Compute_f_new_version(x[0:2], x[2:4], acc, 0.3)
+        if FF == True
+        else np.array([0, 0])
+    )
     noise = np.random.normal(0, np.sqrt(1e-3), 2) if activate_noise else np.zeros(2)
     newx[2:4] += (
         dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + noise
     )
-    return newx
+    if FF == True:
+        newx[2:4] += dt * F
+    return newx, F
 
 
 def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0):
@@ -335,6 +420,7 @@ def FL_6muscles(
     Activate_Noise=False,
     Num_iter=300,
     Delay=0.06,
+    FF=True,
 ):
     """Simulates an eight-condition reaching task with control gains and neural network dynamics."""
 
@@ -359,14 +445,14 @@ def FL_6muscles(
     all_true_states[0, :] = np.copy(x0)
     all_estimated_states[0, :] = np.copy(x0)
     sigma = np.zeros((6 * (kdelay + 1), 6 * (kdelay + 1)))
+    F = np.zeros(2)
     for j in range(Num_iter - 1):
         u, v = compute_nonlinear_command(L[j], estimated_state[:6])
         estimated_state, sigma = estdyn(
             estimated_state, true_state, v, dt, Activate_Noise, kdelay, sigma
         )
-        true_state = np.concatenate(
-            (sysdyn(true_state[:6], u, dt, Activate_Noise), true_state[:-6])
-        )
+        new_state, F = sysdyn(true_state[:6], u, dt, Activate_Noise, FF, F)
+        true_state = np.concatenate((new_state, true_state[:-6]))
 
         all_true_states[j + 1, :] = true_state[:6]
         all_estimated_states[j + 1, :] = estimated_state[:6]

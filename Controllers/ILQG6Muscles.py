@@ -4,6 +4,7 @@ import matplotlib.image as mpimg
 from math import *
 import matplotlib.gridspec as gridspec
 
+
 I1 = 0.025
 I2 = 0.045
 m1 = 1.4
@@ -24,6 +25,80 @@ a3 = I2
 Bvisc = np.array([[0.05, 0.025], [0.025, 0.05]])
 
 # newton functions are used to implement a newton-raphson method that computes the joint angles given a desired cartesian position.
+
+
+def Compute_gamma_nu(theta, omega):
+    fe = -33 * np.sin(theta[0] + theta[1])
+    fs = -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0])
+    ge = 33 * np.cos(theta[0] + theta[1])
+    gs = 33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0])
+    fse = -33 * np.cos(theta[0] + theta[1])
+    gse = -33 * np.sin(theta[0] + theta[1])
+    fee = -33 * np.cos(theta[0] + theta[1])
+    fss = -33 * np.cos(theta[0] + theta[1]) - 30 * np.cos(theta[0])
+    gee = fe
+    gss = fs
+    gamma = (
+        gs * omega[0]
+        + ge * omega[1]
+        - fss * omega[0] * omega[0]
+        - 2 * fse * omega[0] * omega[1]
+        - fee * omega[1] * omega[1]
+    )
+    nu = (
+        -gss * omega[0] * omega[0]
+        - 2 * gse * omega[0] * omega[1]
+        - gee * omega[1] * omega[1]
+    )
+    return gamma, nu, fs, fe, gs, ge, fss, fse, fee, gss, gse, gee
+
+
+def pre_Compute(theta, omega):
+    fe = -33 * np.sin(theta[0] + theta[1])
+    fs = -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0])
+    ge = 33 * np.cos(theta[0] + theta[1])
+    gs = 33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0])
+    fse = -33 * np.cos(theta[0] + theta[1])
+    gse = -33 * np.sin(theta[0] + theta[1])
+    fee = -33 * np.cos(theta[0] + theta[1])
+    fss = -33 * np.cos(theta[0] + theta[1]) - 30 * np.cos(theta[0])
+    gee = fe
+    gss = fs
+    return fs, fe, gs, ge, fss, fse, fee, gss, gse, gee
+
+
+def Compute_f_new_version(theta, omega, acc, factor):
+    fs, fe, gs, ge, fss, fse, fee, gss, gse, gee = pre_Compute(theta, omega)
+    xddot = (
+        13 * (gs * omega[0] + ge * omega[1]) * factor
+        + fss * omega[0] * omega[0]
+        + 2 * fse * omega[0] * omega[1]
+        + fee * omega[1] * omega[1]
+        + fs * acc[0]
+        + fe * acc[1]
+    )
+    yddot = (
+        gss * omega[0] * omega[0]
+        + 2 * gse * omega[0] * omega[1]
+        + gee * omega[1] * omega[1]
+        + gs * acc[0]
+        + ge * acc[1]
+    )
+    gamma = (
+        xddot
+        - fss * omega[0] * omega[0]
+        - 2 * fse * omega[0] * omega[1]
+        - fee * omega[1] * omega[1]
+    )
+    nu = (
+        yddot
+        - gss * omega[0] * omega[0]
+        - 2 * gse * omega[0] * omega[1]
+        - gee * omega[1] * omega[1]
+    )
+    F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
+    F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
+    return np.array([F1, F2])
 
 
 def delete_axis(ax, sides=["left", "right", "bottom", "top"]):
@@ -483,19 +558,7 @@ def step4(l, L, K, A, B):
 
 
 def step5(
-    x0,
-    l,
-    L,
-    Duration,
-    Noise,
-    A,
-    B,
-    Num_steps,
-    bestu,
-    kdelay,
-    motornoise_variance,
-    cbold,
-    C,
+    x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_variance, FF
 ):
     dt = Duration / (Num_steps - 1)
     Num_Var = len(x0)
@@ -512,10 +575,17 @@ def step5(
 
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
     Omega_measure = np.diag(np.ones(4)) * 1e-4
-    ##
-
+    F = 0
     for i in range(Num_steps - 1):
-
+        if i != 0:
+            acc = (f(newx[i, :Num_Var], u)[:, 2:4] + F).reshape(2)
+        else:
+            acc = np.zeros(2)
+        F = (
+            Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 0.3)
+            if FF == True
+            else np.array([0, 0])
+        )
         Extended_A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
         Extended_A[:Num_Var, :Num_Var] = A[i]
         Extended_A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
@@ -533,6 +603,7 @@ def step5(
 
         passed_newx = np.copy(newx[i, :-Num_Var])
         newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u)
+        newx[i + 1, 2:4] += dt * F
         newx[i + 1, Num_Var:] = passed_newx
 
         passed_xref = np.copy(xref[i, :-Num_Var])
@@ -570,6 +641,7 @@ def ILQG(
     delay=0,
     eps=1e-4,
     print_iterations=True,
+    FF=False,
 ):
     """
     Parameters :
@@ -635,8 +707,7 @@ def ILQG(
                 u - u_incr,
                 kdelay,
                 motornoise_variance,
-                cbold,
-                C,
+                FF,
             )
             X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
             Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
