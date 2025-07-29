@@ -623,7 +623,7 @@ def step5(
         xref[i + 1, Num_Var:] = passed_xref
 
         if Noise:
-            newx[i + 1, 2:4] += np.random.normal(0, np.sqrt(1e-3), 2)
+            newx[i + 1, 2:4] += np.random.normal(0, np.sqrt(motornoise_variance), 2)
 
         y = H @ (newx[i] - xref[i])
         if Noise:
@@ -654,6 +654,7 @@ def ILQG(
     Noise=False,
     delay=0,
     eps=1e-4,
+    motornoise_variance = 1e-3,
     print_iterations=True,
     FF=False,
     ff_power=0.3,
@@ -691,8 +692,7 @@ def ILQG(
 
     cbold = np.zeros((K - 1, m, n))
     C = np.zeros((K - 1, m, n, m))
-
-    motornoise_variance = 1e-3  # Play with it to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
+  # Play with it to change the motornoise variance, K/60 is to scale it withthe number of iteration steps
 
     for i in range(K - 1):
         for j in range(2):

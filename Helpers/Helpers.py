@@ -533,14 +533,14 @@ def centerout_reachingtask(start=[0, 30], L=10, num_targ=8):
 
 
 def longmovement_1():
-    st = ToCartesian(np.array([70, 110]) * pi / 180)
-    tg = ToCartesian(np.array([20, 60]) * pi / 180)
-    return st, tg
+    st2 = ToCartesian(np.array([70, 105]) * pi / 180)
+    tg2 = ToCartesian(np.array([25, 59.322]) * pi / 180)
+    return st2, tg2
 
 
 def longmovement_2():
-    st = ToCartesian(np.array([70, 70]) * pi / 180)
-    tg = ToCartesian(np.array([-12, 100]) * pi / 180)
+    st = ToCartesian(np.array([75, 75]) * pi / 180)
+    tg = ToCartesian(np.array([-12.608, 100]) * pi / 180)
     return st, tg
 
 

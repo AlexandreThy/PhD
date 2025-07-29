@@ -146,7 +146,7 @@ def Compute_f_new_version(theta, omega, acc, factor):
     return np.array([F1, F2])
 
 
-def sysdyn(x, u, dt, activate_noise, FF, F, ff_power):
+def sysdyn(x, u, dt, activate_noise, FF, F, ff_power,motornoise_variance):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
     \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
@@ -213,7 +213,7 @@ def sysdyn(x, u, dt, activate_noise, FF, F, ff_power):
         if FF == True
         else np.array([0, 0])
     )
-    noise = np.random.normal(0, np.sqrt(1e-3), 2) if activate_noise else np.zeros(2)
+    noise = np.random.normal(0, np.sqrt(motornoise_variance), 2) if activate_noise else np.zeros(2)
     newx[2:4] += (
         dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + noise
     )
@@ -222,13 +222,13 @@ def sysdyn(x, u, dt, activate_noise, FF, F, ff_power):
     return newx, F
 
 
-def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0):
+def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0,motornoise_variance = 1e-3):
 
     SigmaMotor = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
     SigmaSense = np.diag(np.ones(N) * 1e-4)
     for i in range(2, 4):
 
-        SigmaMotor[i, i] = 1e-3
+        SigmaMotor[i, i] = motornoise_variance
 
     sensorynoise = np.zeros(N)
     for i in range(N):
@@ -237,7 +237,7 @@ def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0):
     return SigmaMotor, SigmaSense, sensorynoise
 
 
-def estdyn(est_x, true_x, u, dt, activated_noise, delay, sigma):
+def estdyn(est_x, true_x, u, dt, activated_noise, delay, sigma,motornoise_variance):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
     \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
@@ -274,7 +274,7 @@ def estdyn(est_x, true_x, u, dt, activated_noise, delay, sigma):
     B = np.zeros(((delay + 1) * 6, 2))
     B[:6] = B_basic
 
-    Omega_motor, Omega_measure, sensorynoise = NoiseAndCovMatrix(kdelay=delay)
+    Omega_motor, Omega_measure, sensorynoise = NoiseAndCovMatrix(kdelay=delay,motornoise_variance = motornoise_variance)
     K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
     sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
 
@@ -422,6 +422,7 @@ def FL_6muscles(
     Delay=0.06,
     FF=True,
     ff_power=0.3,
+    motornoise_variance = 1e-3
 ):
     """Simulates an eight-condition reaching task with control gains and neural network dynamics."""
 
@@ -450,9 +451,9 @@ def FL_6muscles(
     for j in range(Num_iter - 1):
         u, v = compute_nonlinear_command(L[j], estimated_state[:6])
         estimated_state, sigma = estdyn(
-            estimated_state, true_state, v, dt, Activate_Noise, kdelay, sigma
+            estimated_state, true_state, v, dt, Activate_Noise, kdelay, sigma,motornoise_variance
         )
-        new_state, F = sysdyn(true_state[:6], u, dt, Activate_Noise, FF, F, ff_power)
+        new_state, F = sysdyn(true_state[:6], u, dt, Activate_Noise, FF, F, ff_power,motornoise_variance)
         true_state = np.concatenate((new_state, true_state[:-6]))
 
         all_true_states[j + 1, :] = true_state[:6]

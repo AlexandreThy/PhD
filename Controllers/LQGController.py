@@ -22,6 +22,7 @@ def LQG(
     newtondfunc=newtondf,
     Num_iter=300,
     Activate_Noise=False,
+    motornoise_variance = 1e-3
 ):
 
     dt = Duration / Num_iter
@@ -123,7 +124,7 @@ def LQG(
         else:
             F = [0, 0]
         Omega_sens, Omega_measure, motor_noise, measure_noise = NoiseAndCovMatrix(
-            N=Num_Var, kdelay=kdelay, Linear=True, Var=1e-3
+            N=Num_Var, kdelay=kdelay, Linear=True, Var=motornoise_variance
         )
         y[k] = (H @ x).flatten()
         if Activate_Noise == True:
@@ -622,7 +623,7 @@ def DLQG_6Muscles(
     Delay=0,
     Num_iter=60,
     Activate_Noise=False,
-    plotEstimation=False,
+    motornoise_variance=1e-3,
     ClassicLQG=False,
     FF=False,
     ff_power=0.3,
@@ -700,13 +701,13 @@ def DLQG_6Muscles(
         J += u.T @ R @ u
 
         Omega_motor = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-        Omega_measure = np.diag(np.ones(Num_Var) * 1e-3)
+        Omega_measure = np.diag(np.ones(Num_Var) * 1e-4)
         for i in range(2, 4):
 
-            Omega_motor[i, i] = 1e-4 * 9
+            Omega_motor[i, i] = motornoise_variance
         y[k] = (H @ x).flatten()
         if Activate_Noise == True:
-            y[k] += np.random.normal(0, 1e-2 * 3, Num_Var)
+            y[k] += np.random.normal(0, 1e-2, Num_Var)
 
         K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
         sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
@@ -721,7 +722,7 @@ def DLQG_6Muscles(
 
         if Activate_Noise:
 
-            x[[2, 3]] += np.random.normal(0, np.sqrt(1e-3), 2)
+            x[[2, 3]] += np.random.normal(0, np.sqrt(motornoise_variance), 2)
 
         array_xhat[k + 1] = xhat[:Num_Var].flatten()
         array_x[k + 1] = x[:Num_Var].flatten()
