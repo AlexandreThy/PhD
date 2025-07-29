@@ -4,28 +4,40 @@ from math import *
 import casadi as ca
 import matplotlib.gridspec as gridspec
 
-#I1 = 0.025
-#I2 = 0.045
-#m1 = 1.4
-#m2 = 1
-#l1 = 0.3
-#l2 = 0.33
-#s1 = 0.11
-#s2 = 0.16
+# I1 = 0.025
+# I2 = 0.045
+# m1 = 1.4
+# m2 = 1
+# l1 = 0.3
+# l2 = 0.33
+# s1 = 0.11
+# s2 = 0.16
 
-def kinematic_params(body_mass,body_height):
-    m1 = body_mass*0.028
+
+def kinematic_params(body_mass, body_height):
+    m1 = body_mass * 0.028
     m2 = body_mass * 0.022
-    l1 = 0.186*body_height
-    l2 = 0.254*body_height
-    s1 = 0.436*l1 
-    s2 = 0.682*l2 
-    I1 = m1*(l1*0.322)**2
-    I2 = m2*(l2*0.468)**2
-    print("The person has segments masses of ",m1," kg and ",m2," kg.\n The person has segments lengts of ",l1," m and ",l2," m")
-    return I1,I2,m1,m2,l1,l2,s1,s2
+    l1 = 0.186 * body_height
+    l2 = 0.254 * body_height
+    s1 = 0.436 * l1
+    s2 = 0.682 * l2
+    I1 = m1 * (l1 * 0.322) ** 2
+    I2 = m2 * (l2 * 0.468) ** 2
+    print(
+        "The person has segments masses of ",
+        m1,
+        " kg and ",
+        m2,
+        " kg.\n The person has segments lengts of ",
+        l1,
+        " m and ",
+        l2,
+        " m",
+    )
+    return I1, I2, m1, m2, l1, l2, s1, s2
 
-I1,I2,m1,m2,l1,l2,s1,s2 = kinematic_params(80,1.8)
+
+I1, I2, m1, m2, l1, l2, s1, s2 = kinematic_params(80, 1.8)
 
 
 K = 1 / 0.06
@@ -33,9 +45,9 @@ tau = 0.06
 
 # SHOULDER PUIS ELBOW
 
-a1 = I1 + I2 + m2 * l1 * l1 + m2*s2*s2 + m1*s1*s1
+a1 = I1 + I2 + m2 * l1 * l1 + m2 * s2 * s2 + m1 * s1 * s1
 a2 = m2 * l1 * s2
-a3 = I2 + m2*s2*s2
+a3 = I2 + m2 * s2 * s2
 
 
 def delete_axis(ax, sides=["left", "right", "bottom", "top"]):
@@ -43,7 +55,7 @@ def delete_axis(ax, sides=["left", "right", "bottom", "top"]):
         ax.spines[side].set_visible(False)
 
 
-def compute_angles_from_cartesian(x, y,l1 = l1* 100 , l2 = l2* 100):
+def compute_angles_from_cartesian(x, y, l1=l1 * 100, l2=l2 * 100):
     """
     Computes h1 using the given equation.
 
@@ -126,9 +138,9 @@ def optimizationofmpcproblem(
     if endmass:
         m = 0.8 if g == 0 else 0.4
         a4 = m * (l1 * l1 + l2 * l2)
-        a5 = m * (l1 * l2 )
+        a5 = m * (l1 * l2)
         a6 = m * (l2 * l2)
-        #Minv = ca.inv(
+        # Minv = ca.inv(
         #    ca.vertcat(
         #        ca.horzcat(
         #            a1 + a4 + 2 * (a2 + a5) * cos_elbow,
@@ -136,11 +148,25 @@ def optimizationofmpcproblem(
         #        ),
         #        ca.horzcat((a3 + a6) + (a2 + a5) * cos_elbow, (a3 + a6)),
         #    )
-        #)
+        # )
 
-        DetM = (a1+a4)*(a3+a6)-(a3+a6)*(a3+a6)-(a2+a5)*(a2+a5)*cos_elbow*cos_elbow
-        Minv = np.array([[a3+a6,-(a3+a6)-(a2+a5)*cos_elbow],
-                    [-(a3+a6)-(a2+a5)*cos_elbow,(a1+a4)+2*(a2+a5)*cos_elbow]])/DetM
+        DetM = (
+            (a1 + a4) * (a3 + a6)
+            - (a3 + a6) * (a3 + a6)
+            - (a2 + a5) * (a2 + a5) * cos_elbow * cos_elbow
+        )
+        Minv = (
+            np.array(
+                [
+                    [a3 + a6, -(a3 + a6) - (a2 + a5) * cos_elbow],
+                    [
+                        -(a3 + a6) - (a2 + a5) * cos_elbow,
+                        (a1 + a4) + 2 * (a2 + a5) * cos_elbow,
+                    ],
+                ]
+            )
+            / DetM
+        )
 
         C = ca.SX(
             np.array(
@@ -164,15 +190,22 @@ def optimizationofmpcproblem(
             )
         )
     else:
-        #Minv = ca.inv(
+        # Minv = ca.inv(
         #    ca.vertcat(
         #        ca.horzcat(a1 + 2 * a2 * cos_elbow, a3 + a2 * cos_elbow),
         #        ca.horzcat(a3 + a2 * cos_elbow, a3),
         #    )
-        #)
-        DetM = a1*a3-a3*a3-a2*a2*cos_elbow*cos_elbow
-        Minv = np.array([[a3,-a3-a2*cos_elbow],
-                    [-a3-a2*cos_elbow,a1+2*a2*cos_elbow]])/DetM
+        # )
+        DetM = a1 * a3 - a3 * a3 - a2 * a2 * cos_elbow * cos_elbow
+        Minv = (
+            np.array(
+                [
+                    [a3, -a3 - a2 * cos_elbow],
+                    [-a3 - a2 * cos_elbow, a1 + 2 * a2 * cos_elbow],
+                ]
+            )
+            / DetM
+        )
         C = ca.SX(
             np.array(
                 [
@@ -195,9 +228,9 @@ def optimizationofmpcproblem(
         )
 
     Bdyn = ca.SX(np.array([[0.05, 0.025], [0.025, 0.05]]))
-    jerk = Minv @ (tau - C - Bdyn @ omega - G)  # Accelerations
+    acc = Minv @ (tau - C - Bdyn @ omega - G)  # Accelerations
     taudot = (u - tau) / 0.06
-    xdot = ca.vertcat(omega, jerk, taudot)
+    xdot = ca.vertcat(omega, acc, taudot)
 
     # CasADi function for system dynamics
     f = ca.Function("f", [state, control], [xdot])
@@ -213,7 +246,7 @@ def optimizationofmpcproblem(
     X0 = opti.parameter(6)
     Xend = l1 * 100 * np.cos(end[0]) + l2 * 100 * np.cos(end[0] + end[1])
     Yend = l1 * 100 * np.sin(end[0]) + l2 * 100 * np.sin(end[0] + end[1])
-    X_targ = np.array([end[0], end[1],0,0])
+    X_targ = np.array([end[0], end[1], 0, 0])
 
     # Objective function and constraints
     cost = 0
@@ -239,7 +272,7 @@ def optimizationofmpcproblem(
             a4 = m * (l1 * l1 + l2 * l2)
             a5 = m * (l1 * l2)
             a6 = m * (l2 * l2)
-            #Minv_k = ca.inv(
+            # Minv_k = ca.inv(
             #    ca.reshape(
             #        ca.vertcat(
             #            a1 + a4 + 2 * (a2 + a5) * cos_elbow_k,
@@ -250,13 +283,25 @@ def optimizationofmpcproblem(
             #        2,
             #        2,
             #    )
-            #)
-            DetM_k = (a1+a4)*(a3+a6)-(a3+a6)*(a3+a6)-(a2+a5)*(a2+a5)*cos_elbow_k*cos_elbow_k
-            Minv_k = ca.mtimes(1/DetM_k, ca.reshape(
-            ca.vertcat(
-                a3+a6,-(a3+a6)-(a2+a5)*cos_elbow_k,
-                    -(a3+a6)-(a2+a5)*cos_elbow_k,(a1+a4)+2*(a2+a5)*cos_elbow_k
-            ), 2, 2))
+            # )
+            DetM_k = (
+                (a1 + a4) * (a3 + a6)
+                - (a3 + a6) * (a3 + a6)
+                - (a2 + a5) * (a2 + a5) * cos_elbow_k * cos_elbow_k
+            )
+            Minv_k = ca.mtimes(
+                1 / DetM_k,
+                ca.reshape(
+                    ca.vertcat(
+                        a3 + a6,
+                        -(a3 + a6) - (a2 + a5) * cos_elbow_k,
+                        -(a3 + a6) - (a2 + a5) * cos_elbow_k,
+                        (a1 + a4) + 2 * (a2 + a5) * cos_elbow_k,
+                    ),
+                    2,
+                    2,
+                ),
+            )
 
             C_k = ca.vertcat(
                 -x_k[3] * (2 * x_k[2] + x_k[3]) * (a2 + a5) * sin_elbow_k,
@@ -273,12 +318,20 @@ def optimizationofmpcproblem(
             )
 
         else:
-            DetM_k = a1*a3-a3*a3-a2*a2*cos_elbow_k*cos_elbow_k
-            Minv_k = ca.mtimes(1/DetM_k, ca.reshape(
-            ca.vertcat(
-                a3, -a3 - a2 * cos_elbow_k,
-                -a3 - a2 * cos_elbow_k, a1 + 2 * a2 * cos_elbow_k
-            ), 2, 2))
+            DetM_k = a1 * a3 - a3 * a3 - a2 * a2 * cos_elbow_k * cos_elbow_k
+            Minv_k = ca.mtimes(
+                1 / DetM_k,
+                ca.reshape(
+                    ca.vertcat(
+                        a3,
+                        -a3 - a2 * cos_elbow_k,
+                        -a3 - a2 * cos_elbow_k,
+                        a1 + 2 * a2 * cos_elbow_k,
+                    ),
+                    2,
+                    2,
+                ),
+            )
 
             C_k = ca.vertcat(
                 -x_k[3] * (2 * x_k[2] + x_k[3]) * a2 * sin_elbow_k,
@@ -323,7 +376,6 @@ def optimizationofmpcproblem(
     opti.minimize(cost)
 
     # Initial condition constraint
-    
 
     """ opts = {
     "print_time": 0,
@@ -335,7 +387,7 @@ def optimizationofmpcproblem(
     "ipopt.dual_inf_tol": 1e-6,             
     "ipopt.compl_inf_tol": 1e-6             
     } """
-    opti.solver("ipopt" , opts)
+    opti.solver("ipopt", opts)
     opti.set_value(X0, estimate_now)
     sol = opti.solve()
     return sol, U, f
@@ -351,7 +403,7 @@ def MPC(
     num_iter=100,
     direction="Horizontal",
     endmass=False,
-    opts = {}
+    opts={},
 ):
 
     end = compute_angles_from_cartesian(end[0], end[1])
@@ -366,10 +418,8 @@ def MPC(
             [
                 g
                 * (
-                    m1
-                    * s1
-                     + m2
-                    * (s2 * np.cos(start[0] + start[1]) + l1 * np.cos(start[0]))
+                    m1 * s1
+                    + m2 * (s2 * np.cos(start[0] + start[1]) + l1 * np.cos(start[0]))
                     + m * (l2 * np.cos(start[0] + start[1]) + l1 * np.cos(start[0]))
                 ),
                 g * (m2 * s2 + m * l2) * np.cos(start[0] + start[1]),
@@ -413,18 +463,17 @@ if __name__ == "__main__":
 
     ACTIVATE_PATH_CONSTRAINT = False
     ENDPOINTMASS = True
-    ACTIVATE_Gravity = False
-    MOVEMENT_DURATION = 0.4  # in seconds
+    ACTIVATE_Gravity = True
+    MOVEMENT_DURATION = 0.45  # in seconds
     MOVEMENT_LENGTH = 20  # in cm
-    NUM_ITER = 400
-    EFFORT_R = 1
-    SMOOTH_R = .12
+    NUM_ITER = 450
+    EFFORT_R = 10
+    SMOOTH_R = 1
     OPTS = {
-        
         "print_time": 0,
-        "ipopt.tol": 1e-2,
-        "ipopt.acceptable_tol": .6,
-        "ipopt.max_iter": 1500,
+        "ipopt.tol": 1e-4,
+        "ipopt.acceptable_tol": 1,
+        "ipopt.max_iter": 5000,
     }
     FILENAME = ALL_DIRECTIONS[0] + ".png"
 
@@ -443,7 +492,7 @@ if __name__ == "__main__":
         ending_positions = np.column_stack((LED[(led_dl):], [HEIGHT] * (4 - led_dl)))
     else:
         LED = np.array([-20, -10, 0, 10])
-        DEPTH = 60
+        DEPTH = 55
         starting_positions = np.column_stack(
             ([DEPTH] * (4 - led_dl), LED[: (4 - led_dl)])
         )
@@ -484,10 +533,9 @@ if __name__ == "__main__":
             direction=SIMULATED_MOVEMENT_DIRECTION,
             wp=WP,
             endmass=ENDPOINTMASS,
-            r1 = EFFORT_R,
-            r2 = SMOOTH_R,
-            opts = OPTS
-            
+            r1=EFFORT_R,
+            r2=SMOOTH_R,
+            opts=OPTS,
         )
         X2, Y2, states2 = MPC(
             Duration=MOVEMENT_DURATION,
@@ -497,9 +545,9 @@ if __name__ == "__main__":
             direction=SIMULATED_MOVEMENT_DIRECTION,
             wp=WP,
             endmass=ENDPOINTMASS,
-            r1 = EFFORT_R,
-            r2 = SMOOTH_R,
-            opts = OPTS
+            r1=EFFORT_R,
+            r2=SMOOTH_R,
+            opts=OPTS,
         )
 
         if SIMULATED_MOVEMENT_DIRECTION == "Horizontal":

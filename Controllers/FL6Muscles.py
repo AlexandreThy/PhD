@@ -146,7 +146,7 @@ def Compute_f_new_version(theta, omega, acc, factor):
     return np.array([F1, F2])
 
 
-def sysdyn(x, u, dt, activate_noise, FF, F):
+def sysdyn(x, u, dt, activate_noise, FF, F, ff_power):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
     \ddot{\theta} = M^{-1}(Wout gamma-B \dot{\theta} - C)
@@ -209,7 +209,7 @@ def sysdyn(x, u, dt, activate_noise, FF, F):
         2
     )
     F = (
-        Compute_f_new_version(x[0:2], x[2:4], acc, 0.3)
+        Compute_f_new_version(x[0:2], x[2:4], acc, ff_power)
         if FF == True
         else np.array([0, 0])
     )
@@ -421,6 +421,7 @@ def FL_6muscles(
     Num_iter=300,
     Delay=0.06,
     FF=True,
+    ff_power=0.3,
 ):
     """Simulates an eight-condition reaching task with control gains and neural network dynamics."""
 
@@ -451,7 +452,7 @@ def FL_6muscles(
         estimated_state, sigma = estdyn(
             estimated_state, true_state, v, dt, Activate_Noise, kdelay, sigma
         )
-        new_state, F = sysdyn(true_state[:6], u, dt, Activate_Noise, FF, F)
+        new_state, F = sysdyn(true_state[:6], u, dt, Activate_Noise, FF, F, ff_power)
         true_state = np.concatenate((new_state, true_state[:-6]))
 
         all_true_states[j + 1, :] = true_state[:6]

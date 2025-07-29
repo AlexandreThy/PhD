@@ -625,6 +625,7 @@ def DLQG_6Muscles(
     plotEstimation=False,
     ClassicLQG=False,
     FF=False,
+    ff_power=0.3,
 ):
 
     dt = Duration / Num_iter
@@ -683,7 +684,7 @@ def DLQG_6Muscles(
         else:
             acc = np.zeros(2)
         F = (
-            Compute_f_new_version(x[0:2], x[2:4], acc, 0.3)
+            Compute_f_new_version(x[0:2], x[2:4], acc, ff_power)
             if FF == True
             else np.array([0, 0])
         )

@@ -460,7 +460,7 @@ def Kalman(Omega_measure, Omega_sens, A, sigma, H):
 
 def step1(x0, u, Duration):
     K = np.shape(u)[0] + 1
-    dt = Duration / (K - 1)
+    dt = Duration / (K)
     newx = np.zeros((K, len(x0)))
     newx[0] = np.copy(x0)
 
@@ -558,9 +558,21 @@ def step4(l, L, K, A, B):
 
 
 def step5(
-    x0, l, L, Duration, Noise, A, B, Num_steps, bestu, kdelay, motornoise_variance, FF
+    x0,
+    l,
+    L,
+    Duration,
+    Noise,
+    A,
+    B,
+    Num_steps,
+    bestu,
+    kdelay,
+    motornoise_variance,
+    FF,
+    ff_power,
 ):
-    dt = Duration / (Num_steps - 1)
+    dt = Duration / (Num_steps)
     Num_Var = len(x0)
 
     x0 = np.tile(x0, kdelay + 1)
@@ -582,7 +594,7 @@ def step5(
         else:
             acc = np.zeros(2)
         F = (
-            Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 0.3)
+            Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, ff_power)
             if FF == True
             else np.array([0, 0])
         )
@@ -617,7 +629,9 @@ def step5(
         if Noise:
             y += np.random.normal(0, 1e-2, len(y))
 
-        xhat[i + 1] = Extended_A @ xhat[i] + Extended_B @ deltau + K @ (y - H @ xhat[i])
+        xhat[i + 1] = (Extended_A @ xhat[i] + Extended_B @ deltau) + K @ (
+            y - H @ xhat[i]
+        )
     return newx[:, :Num_Var]
 
 
@@ -642,6 +656,7 @@ def ILQG(
     eps=1e-4,
     print_iterations=True,
     FF=False,
+    ff_power=0.3,
 ):
     """
     Parameters :
@@ -693,7 +708,7 @@ def ILQG(
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
 
         if (
-            np.max(np.abs(u_incr)) < 1e-5
+            np.max(np.abs(u_incr)) < 1e-14
         ):  # If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
             x = step5(
                 x0,
@@ -708,6 +723,7 @@ def ILQG(
                 kdelay,
                 motornoise_variance,
                 FF,
+                ff_power,
             )
             X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
             Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
@@ -723,7 +739,6 @@ def ILQG(
         )  # Compute the control gains improvement (feedforward and feedback)
         u_incr = step4(l, L, K, A, B)  # Compute the command sequence improvement
         u += u_incr  # Improves the command sequence
-
     return X, Y, x, u
 
 
