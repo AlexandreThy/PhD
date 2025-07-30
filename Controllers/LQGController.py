@@ -303,7 +303,7 @@ def BestLQG(
 
         xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
         # print(xhat[:8])
-        acc = np.linalg.solve(M, ((x[[2, 5]]) - C - Bdyn @ omega)) + F
+        acc = np.linalg.solve(M, ((x[[2, 5]]) - C - Bvisc @ omega)) + F
         omega += dt * acc
         x_new = np.array(
             [
@@ -471,13 +471,13 @@ def Linearization_6dof(dt, x, u):
 
     d_accel_theta1 = Minv @ (Moment_Arm @ (u * (dfldts * fv + fl * dfvdts)))
     d_accel_dtheta1 = Minv @ (
-        Moment_Arm @ (u * dfvdos * fl) - dCdos - Bdyn @ np.array([1, 0])
+        Moment_Arm @ (u * dfvdos * fl) - dCdos - Bvisc @ np.array([1, 0])
     )
     d_accel_theta2 = -Minv @ (
-        dM @ Minv @ (Moment_Arm @ (u * fl * fv) - C - Bdyn @ dtheta)
+        dM @ Minv @ (Moment_Arm @ (u * fl * fv) - C - Bvisc @ dtheta)
     ) + Minv @ (Moment_Arm @ (u * (dfldte * fv + fl * dfvdte)) - dCdte)
     d_accel_dtheta2 = Minv @ (
-        Moment_Arm @ (u * dfvdoe * fl) - dCdoe - Bdyn @ np.array([0, 1])
+        Moment_Arm @ (u * dfvdoe * fl) - dCdoe - Bvisc @ np.array([0, 1])
     )
 
     # Construct the Jacobian matrix
@@ -549,7 +549,7 @@ def f(x, u):
         (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
         (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
-    theta = Minv @ (A @ (u * fl * ff_v) - Bdyn @ x[2:4] - C)
+    theta = Minv @ (A @ (u * fl * ff_v) - Bvisc @ x[2:4] - C)
 
     return np.array([[x[2], x[3], theta[0], theta[1], 0, 0]])
 

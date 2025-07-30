@@ -22,7 +22,7 @@ a1 = I1 + I2 + m2 * l1 * l1
 a2 = m2 * l1 * s2
 a3 = I2
 
-Bvisc = np.array([[0.05, 0.025], [0.025, 0.05]])
+Bvisc = np.array([[0.15, 0.025], [0.025, 0.15]])
 
 # newton functions are used to implement a newton-raphson method that computes the joint angles given a desired cartesian position.
 

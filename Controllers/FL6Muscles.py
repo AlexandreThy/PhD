@@ -17,7 +17,7 @@ a1 = I1 + I2 + m2 * l1 * l1
 a2 = m2 * l1 * s2
 a3 = I2
 
-Bdyn = np.array([[0.05, 0.025], [0.025, 0.05]])
+Bvisc = np.array([[0.15, 0.025], [0.025, 0.15]])
 
 
 def newton(f, Df, epsilon, max_iter, X, Y, x0=np.array([0.8, 1.5])):
@@ -205,7 +205,7 @@ def sysdyn(x, u, dt, activate_noise, FF, F, ff_power,motornoise_variance):
         (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
         (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
-    acc = (np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + F).reshape(
+    acc = (np.linalg.solve(M, (A @ (u * fl * ff_v) - Bvisc @ (x[2:4]) - C)) + F).reshape(
         2
     )
     F = (
@@ -215,7 +215,7 @@ def sysdyn(x, u, dt, activate_noise, FF, F, ff_power,motornoise_variance):
     )
     noise = np.random.normal(0, np.sqrt(motornoise_variance), 2) if activate_noise else np.zeros(2)
     newx[2:4] += (
-        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bdyn @ (x[2:4]) - C)) + noise
+        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Bvisc @ (x[2:4]) - C)) + noise
     )
     if FF == True:
         newx[2:4] += dt * F
@@ -400,7 +400,7 @@ def compute_nonlinear_command(L, x):
         (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
     # print(v.shape, C.shape, M.shape, Bdyn.shape, np.linalg.pinv(A).shape)
-    U = np.linalg.pinv(A) @ (M @ linear_command + C + Bdyn @ x[2:4])
+    U = np.linalg.pinv(A) @ (M @ linear_command + C + Bvisc @ x[2:4])
     u = np.zeros(6)
     for i in range(6):
         u[i] = U[i] / (fl[i] * ff_v[i])
