@@ -165,12 +165,12 @@ def compute_next_state(x, u, dt, activate_noise, FF, F, ff_power, motornoise_var
     return newx, F
 
 
-def NoiseAndCovMatrix(M=np.identity(2), N=6, kdelay=0, motornoise_variance=1e-3):
+def NoiseAndCovMatrix(M=np.identity(2), N=8, kdelay=0, motornoise_variance=1e-3):
 
     SigmaMotor = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
     SigmaSense = np.diag(np.ones(N) * 1e-4)
 
-    for i in range(4):
+    for i in range(2,4):
 
         SigmaMotor[i, i] = motornoise_variance
 
@@ -198,27 +198,29 @@ def next_state_estimate(
     Returns:
         [x_{t+1},gamma_{t+1}]
     """
-    H = np.zeros((6, (delay + 1) * 6))
-    H[:, delay * 6 :] = np.identity(6)
+    H = np.zeros((8, (delay + 1) * 8))
+    H[:, delay * 8 :] = np.identity(8)
 
     A_basic = np.array(
         [
-            [1, 0, dt, 0, 0, 0],
-            [0, 1, 0, dt, 0, 0],
-            [0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 1],
+            [1, 0, dt, 0, 0, 0, 0, 0],
+            [0, 1, 0, dt, 0, 0 , 0, 0],
+            [0, 0, 1, 0, 0, 0 , 0, 0],
+            [0, 0, 0, 1, 0, 0 , 0, 0],
+            [0, 0, 0, 0, 1, 0 , 0, 0],
+            [0, 0, 0, 0, 0, 1 , 0, 0],
+            [0, 0, 0, 0, 0, 0 , 1, 0],
+            [0, 0, 0, 0, 0, 0 , 0, 1],
         ]
     )
-    B_basic = np.zeros((6, 2))
+    B_basic = np.zeros((8, 2))
     B_basic[2, 0] = dt
-    B_basic[3, 1] = dt
-    A = np.zeros(((delay + 1) * 6, (delay + 1) * 6))
-    A[:6, :6] = A_basic
-    A[6:, :-6] = np.identity((delay) * 6)
-    B = np.zeros(((delay + 1) * 6, 2))
-    B[:6] = B_basic
+    B_basic [3, 1] = dt
+    A = np.zeros(((delay + 1) * 8, (delay + 1) * 8))
+    A[:8, :8] = A_basic
+    A[8:, :-8] = np.identity((delay) * 8)
+    B = np.zeros(((delay + 1) * 8, 2))
+    B[:8] = B_basic
 
     Omega_motor, Omega_measure, sensorynoise = NoiseAndCovMatrix(
         kdelay=delay, motornoise_variance=motornoise_variance
@@ -232,37 +234,86 @@ def next_state_estimate(
     next_est_x = A @ est_x + B @ u + K @ (y - H @ est_x)
     return next_est_x, sigma
 
+def compute_path(x0,xf,wp,percent):
+    #percent = compute_percent(x0,xf)
+    xtarget = x0 + percent*(xf-x0)
+    ts,te= compute_angles_from_cartesian(xtarget[0],xtarget[1])
+    ts0,te0 = compute_angles_from_cartesian(x0[0],x0[1])
+    k = (te-te0)/(ts-ts0)
+    Qk=np.zeros((8,8))
+
+    Qk[0,0] = k*k
+    Qk[0,6] = -k*k
+    Qk[6,0] = -k*k
+    Qk[6,6] = k*k
+    Qk[1,1] = 1
+    Qk[1,7] = -1
+    Qk[7,1] = -1
+    Qk[7,7] = 1
+    Qk[0,1] = -k 
+    Qk[1,0] = -k 
+    Qk[0,7] = k 
+    Qk[7,0] = k 
+    Qk[1,6] = k 
+    Qk[6,0] = k
+    Qk[6,7] = -k
+    Qk[7,6] = -k
+
+    return Qk*wp
+
+def ToCartesian(s,e):
+    X = np.cos(s + e) * 33 + np.cos(s) * 30
+    Y = np.sin(s + e) * 33 + np.sin(s) * 30
+
+    return X, Y
+
+def compute_percent(x0,xf):
+    ts,te= compute_angles_from_cartesian(xf[0],xf[1])
+    ts0,te0 = compute_angles_from_cartesian(x0[0],x0[1])
+    te_incr,ts_incr = (te0 + .001*(te-te0)),(ts0 + .001*(ts-ts0))
+    x_incr,y_incr = ToCartesian(ts_incr,te_incr)
+    angle_objective = np.arctan2(xf[1]-x0[1],xf[0]-x0[0])*180/pi
+    actual_angle = np.arctan2(y_incr-x0[1],x_incr-x0[0])*180/pi
+    percent = 1 if abs(angle_objective-actual_angle)<30 else .7
+    print(percent,abs(angle_objective-actual_angle))
+    return percent
+
+    
 
 def compute_linear_control_gains(
-    Num_iter, Duration, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1]
+    Num_iter, Duration, Qk, taupath, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1],
 ):
     dt = Duration / Num_iter
-    Num_Var = 6
+    Num_Var = 8
 
     R = np.diag(np.ones(2)) * motor_cost
     w1, w2, w3, w4 = cost_weights
     Q = np.array(
         [
-            [w1, 0, 0, 0, -w1, 0],
-            [0, w2, 0, 0, 0, -w2],
-            [0, 0, w3, 0, 0, 0],
-            [0, 0, 0, w4, 0, 0],
-            [-w1, 0, 0, 0, w1, 0],
-            [0, -w2, 0, 0, 0, w2],
+            [w1, 0, 0, 0, -w1, 0, 0 ,0],
+            [0, w2, 0, 0, 0, -w2, 0, 0],
+            [0, 0, w3, 0, 0, 0, 0, 0],
+            [0, 0, 0, w4, 0, 0, 0, 0],
+            [-w1, 0, 0, 0, w1, 0, 0, 0],
+            [0, -w2, 0, 0, 0, w2, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
         ]
     )
 
     A = np.array(
         [
-            [1, 0, dt, 0, 0, 0],
-            [0, 1, 0, dt, 0, 0],
-            [0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 1],
+            [1, 0, dt, 0, 0, 0, 0, 0],
+            [0, 1, 0, dt, 0, 0 , 0, 0],
+            [0, 0, 1, 0, 0, 0 , 0, 0],
+            [0, 0, 0, 1, 0, 0 , 0, 0],
+            [0, 0, 0, 0, 1, 0 , 0, 0],
+            [0, 0, 0, 0, 0, 1 , 0, 0],
+            [0, 0, 0, 0, 0, 0 , 1, 0],
+            [0, 0, 0, 0, 0, 0 , 0, 1],
         ]
     )
-    B = np.zeros((6, 2))
+    B = np.zeros((8, 2))
     B[2, 0] = dt
     B[3, 1] = dt
 
@@ -271,7 +322,7 @@ def compute_linear_control_gains(
 
     for k in range(Num_iter - 1):
         L[Num_iter - 2 - k] = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
-        S = A.T @ S @ (A - B @ L[Num_iter - 2 - k])
+        S = Qk*np.exp(-k*dt/(taupath)) + A.T @ S @ (A - B @ L[Num_iter - 2 - k])
     return L
 
 
@@ -339,33 +390,36 @@ def simulate_FL(
     Activate_Noise=False,
     Num_iter=300,
     Delay=0.06,
-    FF=True,
+    FF=False,
     ff_power=0.3,
     motornoise_variance=1e-3,
+    wp = 0, # set to 4*1e-3 if active
+    taupath = .04,
+    percent = .75
 ):
-
     dt = Duration / Num_iter
     kdelay = int(Delay / dt)
+    Qk = compute_path(np.array(starting_point),np.array(targets),wp,percent)
     L = compute_linear_control_gains(
-        Num_iter, Duration, motor_cost=r, cost_weights=[w1, w2, w3, w4]
+        Num_iter, Duration, Qk, taupath, motor_cost=r, cost_weights=[w1, w2, w3, w4],
     )
     num_states = 4
 
-    all_true_states = np.zeros((Num_iter, num_states + 2))
-    all_estimated_states = np.zeros((Num_iter, (num_states + 2)))
+    all_true_states = np.zeros((Num_iter, num_states + 4))
+    all_estimated_states = np.zeros((Num_iter, (num_states + 4)))
     all_commands = np.zeros((Num_iter - 1, 6))
     st1, st2 = compute_angles_from_cartesian(starting_point[0], starting_point[1])
 
     tg1, tg2 = compute_angles_from_cartesian(targets[0], targets[1])
-    x0 = np.array([st1, st2, 0, 0, tg1, tg2])
+    x0 = np.array([st1, st2, 0, 0, tg1, tg2, st1, st2])
     x0_with_delay = np.tile(x0, kdelay + 1)
     true_state, estimated_state = x0_with_delay, x0_with_delay
     all_true_states[0, :] = np.copy(x0)
     all_estimated_states[0, :] = np.copy(x0)
-    sigma = np.zeros((6 * (kdelay + 1), 6 * (kdelay + 1)))
+    sigma = np.zeros((8 * (kdelay + 1), 8 * (kdelay + 1)))
     F = np.zeros(2)
     for j in range(Num_iter - 1):
-        u, v = nonlinear_transform_command(L[j], estimated_state[:6])
+        u, v = nonlinear_transform_command(L[j], estimated_state[:8])
         estimated_state, sigma = next_state_estimate(
             estimated_state,
             true_state,
@@ -377,12 +431,12 @@ def simulate_FL(
             motornoise_variance,
         )
         new_state, F = compute_next_state(
-            true_state[:6], u, dt, Activate_Noise, FF, F, ff_power, motornoise_variance
+            true_state[:8], u, dt, Activate_Noise, FF, F, ff_power, motornoise_variance
         )
-        true_state = np.concatenate((new_state, true_state[:-6]))
+        true_state = np.concatenate((new_state, true_state[:-8]))
 
-        all_true_states[j + 1, :] = true_state[:6]
-        all_estimated_states[j + 1, :] = estimated_state[:6]
+        all_true_states[j + 1, :] = true_state[:8]
+        all_estimated_states[j + 1, :] = estimated_state[:8]
         all_commands[j] = u
 
     s, e = all_true_states[:, 0], all_true_states[:, 1]
