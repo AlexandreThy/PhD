@@ -32,7 +32,7 @@ def get_colors_from_colormap(N, cmap_name):
     Returns:
         List of N RGB tuples.
     """
-    colormap = cm.get_cmap(cmap_name, N)  # Get colormap with N discrete levels
+    colormap = plt.get_cmap(cmap_name, N)  # Get colormap with N discrete levels
     colors = [colormap(i) for i in range(N)]  # Extract N colors
     return colors
 
@@ -161,19 +161,19 @@ def noiseandcovmatrix(N=6, kdelay=0, Var=1e-6):
 
 def LEQG(
     duration=0.5,
-    w1=1e4,
-    w2=1e4,
+    w1=1e2,
+    w2=1e2,
     w3=1,
     w4=1,
-    r1=1e-4,
-    r2=1e-4,
+    r1=1e-3,
+    r2=1e-3,
     target_coordinates=[0, 55],
     starting_coordinates=[0, 20],
-    plot=True,
     time_delay=0.06,
     number_of_iterations=50,
     activate_noise=False,
     theta=0,
+    noise_variance=1e-3 * 4,
 ):
     """
     Parameters
@@ -274,7 +274,7 @@ def LEQG(
         dt, np.array([pi / 4, 0, 0, pi / 2, 0, 0])
     )
     Omega_sens, Omega_measure, motor_noise, measure_noise = noiseandcovmatrix(
-        num_var, steps_delay, Var=1e-3
+        num_var, steps_delay, Var=noise_variance
     )
 
     P = np.zeros(
@@ -288,6 +288,7 @@ def LEQG(
             np.identity(num_var * (steps_delay + 1))
             - theta * Omega_sens @ P[number_of_iterations - 1 - i]
         )
+
         K[number_of_iterations - 2 - i] = (
             np.linalg.inv(R + B.T @ P_tilde @ B) @ B.T @ P_tilde @ A
         )
@@ -310,7 +311,7 @@ def LEQG(
         )
 
         _, _, motor_noise, measure_noise = noiseandcovmatrix(
-            num_var, steps_delay, Var=1e-3
+            num_var, steps_delay, Var=noise_variance
         )
 
         y_traj[k] = (C @ x).flatten()
@@ -331,27 +332,12 @@ def LEQG(
     X = np.cos(x_traj[:, 0] + x_traj[:, 3]) * 33 + np.cos(x_traj[:, 0]) * 30
     Y = np.sin(x_traj[:, 0] + x_traj[:, 3]) * 33 + np.sin(x_traj[:, 0]) * 30
 
-    if plot:
-        color = get_colors_from_colormap(4, "viridis")[int(np.log10(theta) + 1)]
-        label = rf"$\theta$ = {round(theta, 2)}"
-
-        plt.plot(
-            X + (np.log10(theta) + 1) * 25, Y, color=color, label=label, linewidth=0.4
-        )
-        plt.axis("equal")
-        plt.scatter(
-            [target_coordinates[0] + (np.log10(theta) + 1) * 25],
-            [target_coordinates[1]],
-            color="grey",
-            s=200,
-            marker="s",
-        )
-
     output = {}
     output["X"] = X
     output["Y"] = Y
     output["u"] = u
     output["state"] = x_traj
+    output["gains"] = K
 
     return output
 
@@ -361,67 +347,89 @@ def centeroutreaching(
     num_targets=8,
     starting_point=np.array([0, 30]),
     activate_noise=False,
-    num_sim=0,
+    num_sim=1,
 ):
-    for theta in [0.1, 1, 10]:
-        for _ in range(num_sim):
-            for angles in np.linspace(0, 2 * pi, num_targets + 1)[:-1]:
-
+    fig, ax = plt.subplots(3)
+    idx = 0
+    for theta in np.array([1, 100, 3000]):
+        idx += 1
+        Traj = np.zeros((num_sim, 8, 2, 50))
+        Gains = np.zeros((num_sim, 8, 8, 2, 49))
+        for i in range(num_sim):
+            for j, angles in enumerate(np.linspace(0, 2 * pi, num_targets + 1)[:-1]):
+                target_coordinates = starting_point + np.array(
+                    [movement_length * cos(angles), movement_length * sin(angles)]
+                )
                 sol = LEQG(
                     starting_coordinates=starting_point,
-                    target_coordinates=starting_point
-                    + np.array(
-                        [movement_length * cos(angles), movement_length * sin(angles)]
-                    ),
+                    target_coordinates=target_coordinates,
                     activate_noise=activate_noise,
                     theta=theta,
+                    time_delay=0,
                 )
-    handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    plt.legend(
-        by_label.values(),
-        by_label.keys(),
-        fontsize=14,
-        title="",
-        title_fontsize=12,
-        frameon=True,
-        shadow=True,
-        fancybox=True,
-        loc="upper left",
-    )
-    ax = plt.gca()
-    ax.set_yticks([])
-    ax.set_xticks([])
-    ax.set_xlabel("")
-    ax.set_ylabel("")
-    for side in ["left", "right", "bottom", "top"]:
-        ax.spines[side].set_visible(False)
+                Traj[i, j, 0] = sol["X"]
+                Traj[i, j, 1] = sol["Y"]
+                Gains[i, j] = sol["gains"].T[:8]
+                for k in range(2):
+                    ax[k].scatter(
+                        [target_coordinates[0] + (np.log10(theta) + 1) * 25],
+                        [target_coordinates[1]],
+                        color="grey",
+                        s=200,
+                        marker="s",
+                    )
 
-    plt.plot(
-        np.linspace(
-            starting_point[0] - 5 - movement_length,
-            starting_point[0] - movement_length,
-            100,
-        ),
-        np.ones(100) * (starting_point[1] - 5 - movement_length),
-        color="black",
-    )
-    plt.plot(
-        np.ones(100) * (starting_point[0] - 5 - movement_length),
-        np.linspace(
-            starting_point[1] - 5 - movement_length,
-            starting_point[1] - movement_length,
-            100,
-        ),
-        color="black",
-    )
-    plt.text(
-        starting_point[0] - movement_length - 5 + 1,
-        starting_point[1] - movement_length + 1 - 5,
-        "5 cm",
-        fontsize=12,
-    )
-    plt.savefig("LEQG_centerout_reaching.pdf", dpi=300)
+        color = get_colors_from_colormap(4, "viridis")[idx]
+        label = rf"$\theta$ = {round(theta, 2)}"
+        for j in range(8):
+            ax[0].plot(
+                np.mean(Traj[:, j, 0, :], axis=0) + (np.log10(theta) + 1) * 25,
+                np.mean(Traj[:, j, 1, :], axis=0),
+                color=color,
+                label=label,
+                linewidth=3,
+            )
+        ax[0].set_aspect("equal")
+
+        ax[0].set_yticks([])
+        ax[0].set_xticks([])
+        ax[0].set_xlabel("")
+        ax[0].set_ylabel("")
+        for side in ["left", "right", "bottom", "top"]:
+            ax[0].spines[side].set_visible(False)
+        for i in range(num_sim):
+            for j in range(8):
+                ax[1].plot(
+                    Traj[i, j, 0, :] + (np.log10(theta) + 1) * 25,
+                    Traj[i, j, 1, :],
+                    color=color,
+                    label=label,
+                    linewidth=0.4,
+                )
+            ax[1].set_aspect("equal")
+            ax[1].scatter(
+                [target_coordinates[0] + (np.log10(theta) + 1) * 25],
+                [target_coordinates[1]],
+                color="grey",
+                s=200,
+                marker="s",
+            )
+
+        ax[1].set_yticks([])
+        ax[1].set_xticks([])
+        ax[1].set_xlabel("")
+        ax[1].set_ylabel("")
+        for side in ["left", "right", "bottom", "top"]:
+            ax[1].spines[side].set_visible(False)
+        for i in range(6):
+            for j in range(2):
+                ax[2].plot(
+                    np.linspace(0, 0.5, 50)[:-1],
+                    np.mean(Gains[:, 0, i, j, :], axis=0) + (np.log10(theta) + 1) * 250,
+                    color=color,
+                    label=label,
+                    linewidth=1,
+                )
     plt.show()
 
 
@@ -462,47 +470,60 @@ def longmovement(
     activate_noise=False,
     num_sim=0,
 ):
-    for theta in [0.1, 1, 10]:
-        for _ in range(num_sim):
-            for movement in [longmovement_1(), longmovement_2()]:
+    fig, ax = plt.subplots(2)
+    idx = 0
+    for theta in [1, 100, 3000]:
+        Traj = np.zeros((num_sim, 2, 2, 50))
+        color = get_colors_from_colormap(4, "viridis")[idx]
+        idx += 1
+        for i in range(num_sim):
+            for j, movement in enumerate([longmovement_1(), longmovement_2()]):
                 starting_point, target_point = movement
                 sol = LEQG(
+                    time_delay=0,
                     starting_coordinates=starting_point,
                     target_coordinates=target_point,
                     activate_noise=activate_noise,
                     theta=theta,
+                    number_of_iterations=50,
                 )
-    handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    plt.legend(
-        by_label.values(),
-        by_label.keys(),
-        fontsize=14,
-        title="",
-        title_fontsize=12,
-        frameon=True,
-        shadow=True,
-        fancybox=True,
-        loc="upper left",
-    )
-    ax = plt.gca()
-    ax.set_yticks([])
-    ax.set_xticks([])
-    ax.set_xlabel("")
-    ax.set_ylabel("")
-    for side in ["left", "right", "bottom", "top"]:
-        ax.spines[side].set_visible(False)
+                Traj[i, j, 0] = sol["X"]
+                Traj[i, j, 1] = sol["Y"]
+                for k in range(2):
+                    ax[k].scatter(
+                        [target_point[0] + (np.log10(theta) + 1) * 60],
+                        [target_point[1]],
+                        color="grey",
+                        s=200,
+                        marker="s",
+                    )
+                ax[0].plot(
+                    sol["X"] + (np.log10(theta) + 1) * 60,
+                    sol["Y"],
+                    color=color,
+                    linewidth=0.4,
+                )
+        for j in range(2):
+            ax[1].plot(
+                np.mean(Traj[:, j, 0, :], axis=0) + (np.log10(theta) + 1) * 60,
+                np.mean(Traj[:, j, 1, :], axis=0),
+                color=color,
+                linewidth=3,
+            )
 
-    plt.text(
-        starting_point[0] - movement_length - 5 + 1,
-        starting_point[1] - movement_length + 1 - 5,
-        "5 cm",
-        fontsize=12,
-    )
+    for i in range(2):
+        ax[i].set_yticks([])
+        ax[i].set_xticks([])
+        ax[i].set_xlabel("")
+        ax[i].set_ylabel("")
+        ax[i].set_aspect("equal")
+        for side in ["left", "right", "bottom", "top"]:
+            ax[i].spines[side].set_visible(False)
+
     plt.savefig("LEQG_long_reaching.pdf", dpi=300)
     plt.show()
 
 
-centeroutreaching(activate_noise=True, num_sim=50)
+centeroutreaching(activate_noise=True, num_sim=30)
 
-longmovement(activate_noise=True, num_sim=50)
+longmovement(activate_noise=True, num_sim=30)
