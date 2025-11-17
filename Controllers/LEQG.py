@@ -173,7 +173,7 @@ def LEQG(
     number_of_iterations=50,
     activate_noise=False,
     theta=0,
-    noise_variance=1e-3 * 4,
+    noise_variance=1e-3,
 ):
     """
     Parameters
@@ -233,7 +233,7 @@ def LEQG(
     )
     num_var = 8
 
-    R = np.array([[r1, 0], [0, r2]])
+    R = np.array([[0, 0], [0,0]])
 
     Q = np.zeros(((steps_delay + 1) * num_var, (steps_delay + 1) * num_var))
     Q[:num_var, :num_var] = np.array(
@@ -271,7 +271,7 @@ def LEQG(
     mu = x0.copy()
 
     A[:num_var, :num_var] = linearization_of_dynamics(
-        dt, np.array([pi / 4, 0, 0, pi / 2, 0, 0])
+        dt, np.array([np.pi/4, 0, 0, np.pi/2, 0, 0])
     )
     Omega_sens, Omega_measure, motor_noise, measure_noise = noiseandcovmatrix(
         num_var, steps_delay, Var=noise_variance
@@ -280,19 +280,30 @@ def LEQG(
     P = np.zeros(
         (number_of_iterations, (steps_delay + 1) * num_var, (steps_delay + 1) * num_var)
     )
-    P[-1] = Q
+    P[-1] = Q + 1e-8 * np.identity((steps_delay + 1) * num_var)
     K = np.zeros((number_of_iterations - 1, 2, num_var * (steps_delay + 1)))
+    Qk = np.zeros(((steps_delay + 1) * num_var, (steps_delay + 1) * num_var))+ 1e-8 * np.identity((steps_delay + 1) * num_var)
+    Qk[:num_var,:num_var] = np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, .01*I1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, .01*I2, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+        ]
+    )
     for i in range(number_of_iterations - 1):
 
-        P_tilde = P[number_of_iterations - 1 - i] @ np.linalg.inv(
-            np.identity(num_var * (steps_delay + 1))
-            - theta * Omega_sens @ P[number_of_iterations - 1 - i]
+        P_tilde = np.linalg.inv(np.linalg.inv(P[number_of_iterations - 1 - i]) - theta * Omega_sens
         )
 
         K[number_of_iterations - 2 - i] = (
             np.linalg.inv(R + B.T @ P_tilde @ B) @ B.T @ P_tilde @ A
         )
-        P[number_of_iterations - 2 - i] = (
+        P[number_of_iterations - 2 - i] = Qk+(
             A.T @ P_tilde @ (A - B @ K[number_of_iterations - 2 - i])
         )
 
@@ -349,7 +360,7 @@ def centeroutreaching(
     activate_noise=False,
     num_sim=1,
 ):
-    fig, ax = plt.subplots(3)
+    fig, ax = plt.subplots(2,figsize = (12,8))
     idx = 0
     for theta in np.array([1, 100, 3000]):
         idx += 1
@@ -365,7 +376,6 @@ def centeroutreaching(
                     target_coordinates=target_coordinates,
                     activate_noise=activate_noise,
                     theta=theta,
-                    time_delay=0,
                 )
                 Traj[i, j, 0] = sol["X"]
                 Traj[i, j, 1] = sol["Y"]
@@ -421,15 +431,7 @@ def centeroutreaching(
         ax[1].set_ylabel("")
         for side in ["left", "right", "bottom", "top"]:
             ax[1].spines[side].set_visible(False)
-        for i in range(6):
-            for j in range(2):
-                ax[2].plot(
-                    np.linspace(0, 0.5, 50)[:-1],
-                    np.mean(Gains[:, 0, i, j, :], axis=0) + (np.log10(theta) + 1) * 250,
-                    color=color,
-                    label=label,
-                    linewidth=1,
-                )
+    plt.savefig("LEQG_center_out_reaching.png", dpi=300)
     plt.show()
 
 
@@ -470,17 +472,17 @@ def longmovement(
     activate_noise=False,
     num_sim=0,
 ):
-    fig, ax = plt.subplots(2)
+    Targets = [longmovement_1(), longmovement_2(),[[5,20],[-5,50]],[[-5,20],[15,50]]] 
+    fig, ax = plt.subplots(2,figsize = (12,8))
     idx = 0
-    for theta in [1, 100, 3000]:
-        Traj = np.zeros((num_sim, 2, 2, 50))
+    for theta in [1, 100, 10000]:
+        Traj = np.zeros((num_sim, len(Targets), 2, 50))
         color = get_colors_from_colormap(4, "viridis")[idx]
         idx += 1
         for i in range(num_sim):
-            for j, movement in enumerate([longmovement_1(), longmovement_2()]):
+            for j, movement in enumerate(Targets):
                 starting_point, target_point = movement
                 sol = LEQG(
-                    time_delay=0,
                     starting_coordinates=starting_point,
                     target_coordinates=target_point,
                     activate_noise=activate_noise,
@@ -503,7 +505,7 @@ def longmovement(
                     color=color,
                     linewidth=0.4,
                 )
-        for j in range(2):
+        for j in range(len(Targets)):
             ax[1].plot(
                 np.mean(Traj[:, j, 0, :], axis=0) + (np.log10(theta) + 1) * 60,
                 np.mean(Traj[:, j, 1, :], axis=0),
@@ -519,8 +521,9 @@ def longmovement(
         ax[i].set_aspect("equal")
         for side in ["left", "right", "bottom", "top"]:
             ax[i].spines[side].set_visible(False)
+        ax[i].set_ylim(0, 70)
 
-    plt.savefig("LEQG_long_reaching.pdf", dpi=300)
+    plt.savefig("LEQG_long_reaching.png", dpi=300)
     plt.show()
 
 
