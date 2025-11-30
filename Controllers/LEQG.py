@@ -159,20 +159,27 @@ def noiseandcovmatrix(N=6, kdelay=0, Var=1e-6):
     )
 
 
+def is_sdp(A, tol=1e-10):
+
+    # Check eigenvalues >= 0
+    eigenvalues = np.linalg.eigvalsh(A)  # for symmetric matrices
+    return np.all(eigenvalues >= -tol)
+
+
 def LEQG(
     duration=0.5,
     w1=1e2,
     w2=1e2,
     w3=1,
     w4=1,
-    r1=1e-2,
+    r1=1e-5,
     target_coordinates=[0, 55],
     starting_coordinates=[0, 20],
     time_delay=0.06,
     number_of_iterations=50,
     activate_noise=False,
     theta=0,
-    noise_variance=1e-3,
+    noise_variance=8e-3,
 ):
     """
     Parameters
@@ -232,7 +239,7 @@ def LEQG(
     )
     num_var = 8
 
-    R_cost = np.array([[r1, 0], [0,r1]])
+    R_cost = np.array([[r1, 0], [0, r1]])
 
     Q = np.zeros(((steps_delay + 1) * num_var, (steps_delay + 1) * num_var))
     Q[:num_var, :num_var] = np.array(
@@ -263,8 +270,8 @@ def LEQG(
     xhat_traj = np.zeros((number_of_iterations, num_var))
     y_traj = np.zeros((number_of_iterations - 1, num_var))
 
-    x_traj[0] = x0[:num_var].flatten()
-    xhat_traj[0] = x0[:num_var].flatten()
+    x_traj[0] = x0[:num_var].copy()
+    xhat_traj[0] = x0[:num_var].copy()
 
     x = x0.copy()
     mu = x0.copy()
@@ -272,53 +279,82 @@ def LEQG(
     A[:num_var, :num_var] = linearization_of_dynamics(
         dt, np.array([st1, 0, 0, st2, 0, 0])
     )
-    Omega_sens, Omega_measure, motor_noise, measure_noise = noiseandcovmatrix(
+    Omega_motor, Omega_measure, motor_noise, measure_noise = noiseandcovmatrix(
         num_var, steps_delay, Var=noise_variance
     )
+
+    Omega_motor += 1e-6 * np.identity((steps_delay + 1) * num_var)
 
     P = np.zeros(
         (number_of_iterations, (steps_delay + 1) * num_var, (steps_delay + 1) * num_var)
     )
-    P[-1] = Q + 1e-12 * np.identity((steps_delay + 1) * num_var)
+    P[-1] = Q + 1e-6 * np.identity((steps_delay + 1) * num_var)
     K = np.zeros((number_of_iterations - 1, 2, num_var * (steps_delay + 1)))
-    Qk = np.zeros(((steps_delay + 1) * num_var, (steps_delay + 1) * num_var))+ 1e-8 * np.identity((steps_delay + 1) * num_var)
-    Qk[:num_var,:num_var] = np.array(
-        [
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, .002*I1, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, .002*I2, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-        ]
+    Qk = np.zeros(
+        ((steps_delay + 1) * num_var, (steps_delay + 1) * num_var)
+    ) + 1e-6 * np.identity((steps_delay + 1) * num_var)
+    Qk[:num_var, :num_var] += (
+        np.array(
+            [
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0.02 * I1, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0.02 * I2, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0],
+            ]
+        )
+        * 1e-2
     )
+    Test_cond = True
     for i in range(number_of_iterations - 1):
 
-        P_tilde = np.linalg.inv(np.linalg.inv(P[number_of_iterations - 1 - i]) - theta * Omega_sens
+        P_tilde = np.linalg.inv(
+            np.linalg.inv(P[number_of_iterations - 1 - i]) - theta * Omega_motor
         )
 
-        K[number_of_iterations - 2 - i] = (
+        K[number_of_iterations - 2 - i] = -(
             np.linalg.inv(R_cost + B.T @ P_tilde @ B) @ B.T @ P_tilde @ A
         )
-        P[number_of_iterations - 2 - i] = Qk+(
-            A.T @ P_tilde @ (A - B @ K[number_of_iterations - 2 - i])
+        P[number_of_iterations - 2 - i] = (
+            Qk
+            + A.T @ P_tilde @ A
+            - (A.T @ P_tilde.T @ B)
+            @ np.linalg.inv(R_cost + B.T @ P_tilde @ B)
+            @ B.T
+            @ P_tilde
+            @ A
         )
+
+        if (
+            is_sdp(np.linalg.inv(P[number_of_iterations - 2 - i]) - theta * Omega_motor)
+            == False
+        ):
+            Test_cond = False
+
+    if Test_cond == False:
+        print("risk-resistance condition non satisfied for theta :", theta)
 
     R = np.identity(num_var * (steps_delay + 1)) * 1e-12
-
+    Test_cond_2 = True
     for k in range(number_of_iterations - 1):
 
-        u = -K[k] @ (np.identity(num_var * (steps_delay + 1)) - theta * R @ P[k]) @ mu
-
-        R_tilde  = np.linalg.inv(np.linalg.inv(R)-theta*Qk)
-        H = (A @ R_tilde @ C.T) @ np.linalg.inv(Omega_measure + C @ R_tilde @ C.T)
+        u = K[k] @ (np.identity(num_var * (steps_delay + 1)) - theta * R @ P[k]) @ mu
+        R_tilde = np.linalg.inv(np.linalg.inv(R) - theta * Qk)
+        H = (A @ R_tilde.T @ C.T) @ np.linalg.inv(Omega_measure + C @ R_tilde @ C.T)
+        mu_tilde = R_tilde @ np.linalg.inv(R) @ mu
         R = (
-            Omega_sens
-            + A @ R_tilde @ A.T
-            - A @ R_tilde @ C.T @ np.linalg.inv(Omega_measure + C @ R_tilde @ C.T) @ C @ R_tilde.T @ A.T
+            Omega_motor
+            + (A @ R_tilde @ A.T)
+            - (A @ R_tilde @ C.T)
+            @ np.linalg.inv(Omega_measure + C @ R_tilde @ C.T)
+            @ (C @ R_tilde.T @ A.T)
         )
+
+        if is_sdp(np.linalg.inv(R) - theta * Qk) == False:
+            Test_cond_2 = False
 
         _, _, motor_noise, measure_noise = noiseandcovmatrix(
             num_var, steps_delay, Var=noise_variance
@@ -329,7 +365,7 @@ def LEQG(
         if activate_noise == True:
             y_traj[k] += measure_noise
 
-        mu = A @ mu + B @ u + H @ (y_traj[k] - C @ mu)
+        mu = A @ mu_tilde + B @ u + H @ (y_traj[k] - C @ mu_tilde)
         x = A @ x + B @ u
 
         if activate_noise:
@@ -338,6 +374,9 @@ def LEQG(
 
         xhat_traj[k + 1] = mu[:num_var].flatten()
         x_traj[k + 1] = x[:num_var].flatten()
+
+    if Test_cond_2 == False:
+        print("Estimate condition non satisfied for theta :", theta)
 
     X = np.cos(x_traj[:, 0] + x_traj[:, 3]) * 33 + np.cos(x_traj[:, 0]) * 30
     Y = np.sin(x_traj[:, 0] + x_traj[:, 3]) * 33 + np.sin(x_traj[:, 0]) * 30
@@ -359,9 +398,9 @@ def centeroutreaching(
     activate_noise=False,
     num_sim=1,
 ):
-    fig, ax = plt.subplots(2,figsize = (12,8))
+    fig, ax = plt.subplots(2, figsize=(12, 8))
     idx = 0
-    for theta in np.array([-100,0, 1000]):
+    for theta in np.array([-100, 0, 1000]):
         idx += 1
         Traj = np.zeros((num_sim, 8, 2, 50))
         Gains = np.zeros((num_sim, 8, 8, 2, 49))
@@ -375,14 +414,14 @@ def centeroutreaching(
                     target_coordinates=target_coordinates,
                     activate_noise=activate_noise,
                     theta=theta,
-                    time_delay=0
+                    time_delay=0,
                 )
                 Traj[i, j, 0] = sol["X"]
                 Traj[i, j, 1] = sol["Y"]
                 Gains[i, j] = sol["gains"].T[:8]
                 for k in range(2):
                     ax[k].scatter(
-                        [target_coordinates[0] + (idx+1) * 25],
+                        [target_coordinates[0] + (idx + 1) * 25],
                         [target_coordinates[1]],
                         color="grey",
                         s=200,
@@ -393,7 +432,7 @@ def centeroutreaching(
         label = rf"$\theta$ = {round(theta, 2)}"
         for j in range(8):
             ax[0].plot(
-                np.mean(Traj[:, j, 0, :], axis=0) + (idx+1)  * 25,
+                np.mean(Traj[:, j, 0, :], axis=0) + (idx + 1) * 25,
                 np.mean(Traj[:, j, 1, :], axis=0),
                 color=color,
                 label=label,
@@ -410,7 +449,7 @@ def centeroutreaching(
         for i in range(num_sim):
             for j in range(8):
                 ax[1].plot(
-                    Traj[i, j, 0, :] + (idx+1)  * 25,
+                    Traj[i, j, 0, :] + (idx + 1) * 25,
                     Traj[i, j, 1, :],
                     color=color,
                     label=label,
@@ -418,7 +457,7 @@ def centeroutreaching(
                 )
             ax[1].set_aspect("equal")
             ax[1].scatter(
-                [target_coordinates[0] + (idx+1)  * 25],
+                [target_coordinates[0] + (idx + 1) * 25],
                 [target_coordinates[1]],
                 color="grey",
                 s=200,
@@ -472,15 +511,15 @@ def longmovement(
     activate_noise=False,
     num_sim=0,
 ):
-    Targets = [longmovement_1(), longmovement_2()] 
-    fig, ax = plt.subplots(2,figsize = (12,8))
+    Targets = [longmovement_1(), longmovement_2()]
+    fig, ax = plt.subplots(2, figsize=(12, 12))
     idx = 0
 
-    num_iter = 100
+    num_iter = 50
 
-    for theta in [-.01,0,.01]:
+    for theta in [0, 10, 100, 200]:
         Traj = np.zeros((num_sim, len(Targets), 2, num_iter))
-        color = get_colors_from_colormap(4, "viridis")[idx]
+        color = get_colors_from_colormap(8, "viridis")[idx]
         idx += 1
         for i in range(num_sim):
             for j, movement in enumerate(Targets):
@@ -491,31 +530,54 @@ def longmovement(
                     activate_noise=activate_noise,
                     theta=theta,
                     number_of_iterations=num_iter,
-                    time_delay = 0
+                    time_delay=0.06,
                 )
                 Traj[i, j, 0] = sol["X"]
                 Traj[i, j, 1] = sol["Y"]
-                for k in range(2):
-                    ax[k].scatter(
-                        [target_point[0] + (idx-1) * 60],
-                        [target_point[1]],
-                        color="grey",
-                        s=200,
-                        marker="s",
-                    )
+                ax[0].scatter(
+                    [starting_point[0] + (idx - 1) * 80],
+                    [starting_point[1]],
+                    color="grey",
+                    s=80,
+                    marker="o",
+                )
+                ax[1].scatter(
+                    [starting_point[0] + j * 80],
+                    [starting_point[1]],
+                    color="grey",
+                    s=80,
+                    marker="o",
+                )
+                ax[0].scatter(
+                    [target_point[0] + (idx - 1) * 80],
+                    [target_point[1]],
+                    color="grey",
+                    s=80,
+                    marker="s",
+                )
                 ax[0].plot(
-                    sol["X"] + (idx-1)  * 60,
+                    sol["X"] + (idx - 1) * 80,
                     sol["Y"],
                     color=color,
                     linewidth=0.2,
                 )
+                ax[1].scatter(
+                    [target_point[0] + j * 80],
+                    [target_point[1]],
+                    color="grey",
+                    s=200,
+                    marker="s",
+                )
         for j in range(len(Targets)):
+            label = r"$\theta =$" + str(theta) if j == 0 else ""
             ax[1].plot(
-                np.mean(Traj[:, j, 0, :], axis=0) + (idx-1) * 60,
+                np.mean(Traj[:, j, 0, :], axis=0) + j * 80,
                 np.mean(Traj[:, j, 1, :], axis=0),
                 color=color,
-                linewidth=3,
+                linewidth=2,
+                label=label,
             )
+        ax[1].legend(loc="lower center")
 
     for i in range(2):
         ax[i].set_yticks([])
@@ -525,12 +587,12 @@ def longmovement(
         ax[i].set_aspect("equal")
         for side in ["left", "right", "bottom", "top"]:
             ax[i].spines[side].set_visible(False)
-        ax[i].set_ylim(0, 70)
+        ax[0].set_ylim(0, 70)
 
-    plt.savefig("LEQG_long_reaching.png", dpi=300)
+    # plt.savefig("LEQG_.svg", dpi=300)
     plt.show()
 
 
-#centeroutreaching(activate_noise=True, num_sim=60)
+# centeroutreaching(activate_noise=True, num_sim=60)
 
-longmovement(activate_noise=True, num_sim=60)
+longmovement(activate_noise=True, num_sim=10)
