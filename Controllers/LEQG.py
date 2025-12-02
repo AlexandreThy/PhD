@@ -593,6 +593,6 @@ def longmovement(
     plt.show()
 
 
-# centeroutreaching(activate_noise=True, num_sim=60)
+centeroutreaching(activate_noise=True, num_sim=60)
 
 longmovement(activate_noise=True, num_sim=10)
