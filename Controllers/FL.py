@@ -42,8 +42,25 @@ def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     elbow_angle = np.pi - np.arccos((l1**2 + l2**2 - r_squared) / (2 * l1 * l2))
     return shoulder_angle, elbow_angle
 
+def compute_forcefield(theta, omega, coefficient):
+    """
+    Compute the joint angles acceleration resulting from a lateral
+    velocity-dependent forcefield.
 
-def compute_forcefield(theta, omega, acc, coefficient):
+    Args:
+        theta : current joint angles
+        omega : current joint angular velocities
+        acc : current joint angular accelerations
+        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
+
+    """
+    D = np.array([[0,13*coefficient],[0,0]])
+    Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
+                            [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
+    
+    return -Jacobian.T @ D @ Jacobian @ omega 
+
+def compute_forcefield_old(theta, omega, acc, coefficient):
     """
     Compute the joint angles acceleration resulting from a lateral
     velocity-dependent forcefield.
@@ -152,15 +169,14 @@ def compute_next_state(x, u, dt, activate_noise, FF, F, ff_power, motornoise_var
     ).reshape(2)
     F = np.zeros(2)
     if FF == True:
-        F = compute_forcefield(x[0:2], x[2:4], acc, ff_power)
-        newx[2:4] += dt * F
+        F = compute_forcefield(x[0:2], x[2:4], ff_power)
     noise = (
         np.random.normal(0, np.sqrt(motornoise_variance), 2)
         if activate_noise
         else np.zeros(2)
     )
     newx[2:4] += (
-        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Viscous @ (x[2:4]) - C)) + noise
+        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Viscous @ (x[2:4]) - C + F)) + noise
     )
     return newx, F
 

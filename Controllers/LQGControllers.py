@@ -1,7 +1,70 @@
 from Helpers.Linearization import *
 from Helpers.Environment import *
 
+def compute_forcefield(theta, omega, coefficient):
+    """
+    Compute the joint angles acceleration resulting from a lateral
+    velocity-dependent forcefield.
 
+    Args:
+        theta : current joint angles
+        omega : current joint angular velocities
+        acc : current joint angular accelerations
+        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
+
+    """
+    D = np.array([[0,13*coefficient],[0,0]])
+    Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
+                            [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
+    
+    return -Jacobian.T @ D @ Jacobian @ omega 
+
+def compute_forcefield_old(theta, omega, acc, coefficient):
+    """
+    Compute the joint angles acceleration resulting from a lateral
+    velocity-dependent forcefield.
+
+    Args:
+        theta : current joint angles
+        omega : current joint angular velocities
+        acc : current joint angular accelerations
+        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
+
+    """
+    t0, t1 = theta
+    o0, o1 = omega
+    sin_t0, cos_t0 = np.sin(t0), np.cos(t0)
+    sin_t01, cos_t01 = np.sin(t0 + t1), np.cos(t0 + t1)
+
+    fe = -33 * sin_t01
+    fs = fe - 30 * sin_t0
+    ge = 33 * cos_t01
+    gs = ge + 30 * cos_t0
+
+    fse = -33 * cos_t01
+    gse = -33 * sin_t01
+    fee = fse
+    fss = fse - 30 * cos_t0
+    gee = fe
+    gss = fs
+
+    xddot = (
+        13 * (gs * o0 + ge * o1) * coefficient
+        + fss * o0 * o0
+        + 2 * fse * o0 * o1
+        + fee * o1 * o1
+        + fs * acc[0]
+        + fe * acc[1]
+    )
+    yddot = (
+        gss * o0 * o0 + 2 * gse * o0 * o1 + gee * o1 * o1 + gs * acc[0] + ge * acc[1]
+    )
+
+    gamma = xddot - fss * o0 * o0 - 2 * fse * o0 * o1 - fee * o1 * o1
+    nu = yddot - gss * o0 * o0 - 2 * gse * o0 * o1 - gee * o1 * o1
+    F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
+    F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
+    return np.array([F1, F2])
 def LQG(
     Duration=0.6,
     w1=1e8,
@@ -501,7 +564,7 @@ def Linearization_6dof(dt, x, u):
     return FinalA
 
 
-def f(x, u):
+def f(x, u, F = 0):
     C = np.array(
         [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
     )
@@ -549,7 +612,7 @@ def f(x, u):
         (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
         (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
-    theta = Minv @ (A @ (u * fl * ff_v) - Bdyn @ x[2:4] - C)
+    theta = Minv @ (A @ (u * fl * ff_v) - Bdyn @ x[2:4] - C + F)
 
     return np.array([[x[2], x[3], theta[0], theta[1], 0, 0]])
 
@@ -680,18 +743,19 @@ def DLQG_6Muscles(
     u = np.zeros(6)
     for k in range(Num_iter - 1):
         xcopy = np.copy(x)
+        #xcopy[2:4] = 0
         if k != 0:
             acc = (f(x[:Num_Var], u)[:, 2:4] + F).reshape(2)
         else:
             acc = np.zeros(2)
         F = (
-            Compute_f_new_version(x[0:2], x[2:4], acc, ff_power)
+            compute_forcefield(x[0:2], x[2:4], ff_power)
             if FF == True
             else np.array([0, 0])
         )
 
-        A[:Num_Var, :Num_Var] = Linearization_6dof(dt, xcopy, 0)
-        B[:4] = dt * fu(xcopy, u)
+        A[:Num_Var, :Num_Var] = Linearization_6dof(dt, xcopy,0)
+        B[:4] = dt * fu(xcopy,0)
 
         S = Q
         for _ in range(Num_iter - 1 - k):
@@ -714,8 +778,7 @@ def DLQG_6Muscles(
 
         xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
 
-        x_new = (x[:Num_Var] + dt * (f(x, u))).reshape(6)
-        x_new[2:4] += dt * F
+        x_new = (x[:Num_Var] + dt * (f(x, u, F))).reshape(6)
 
         # Concatenate with remaining x values
         x = np.concatenate((x_new, x[:-Num_Var]))

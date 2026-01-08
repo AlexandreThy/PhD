@@ -42,19 +42,7 @@ def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     elbow_angle = np.pi - np.arccos((l1**2 + l2**2 - r_squared) / (2 * l1 * l2))
     return shoulder_angle, elbow_angle
 
-
-def compute_forcefield(theta, omega, acc, coefficient):
-    """
-    Compute the joint angles acceleration resulting from a lateral
-    velocity-dependent forcefield.
-
-    Args:
-        theta : current joint angles
-        omega : current joint angular velocities
-        acc : current joint angular accelerations
-        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
-
-    """
+def compute_forcefield_old(theta, omega, acc, coefficient):
     t0, t1 = theta
     o0, o1 = omega
     sin_t0, cos_t0 = np.sin(t0), np.cos(t0)
@@ -89,6 +77,24 @@ def compute_forcefield(theta, omega, acc, coefficient):
     F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
     F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
     return np.array([F1, F2])
+
+def compute_forcefield(theta, omega, coefficient):
+    """
+    Compute the joint angles acceleration resulting from a lateral
+    velocity-dependent forcefield.
+
+    Args:
+        theta : current joint angles
+        omega : current joint angular velocities
+        acc : current joint angular accelerations
+        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
+
+    """
+    D = np.array([[0,13*coefficient],[0,0]])
+    Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
+                            [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
+    
+    return -Jacobian.T @ D @ Jacobian @ omega 
 
 
 def get_linearized_dynamics(x, u):
@@ -224,7 +230,7 @@ def get_linearized_dynamics(x, u):
     return A
 
 
-def f(x, u):
+def f(x, u, F = 0):
     C = np.array(
         [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
     )
@@ -272,7 +278,7 @@ def f(x, u):
         (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
         (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
-    theta = Minv @ (A @ (u * fl * ff_v) - Viscous @ x[2:4] - C)
+    theta = Minv @ (A @ (u * fl * ff_v) - Viscous @ x[2:4] - C + F)
 
     return np.array([[x[2], x[3], theta[0], theta[1]]])
 
@@ -507,7 +513,7 @@ def step5(
         else:
             acc = np.zeros(2)
         F = (
-            compute_forcefield(newx[i, 0:2], newx[i, 2:4], acc, ff_power)
+            compute_forcefield(newx[i, 0:2], newx[i, 2:4], ff_power)
             if FF == True
             else np.array([0, 0])
         )
@@ -526,12 +532,11 @@ def step5(
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
 
         passed_newx = np.copy(newx[i, :-Num_Var])
-        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u)
-        newx[i + 1, 2:4] += dt * F
+        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u, F)
         newx[i + 1, Num_Var:] = passed_newx
 
         passed_xref = np.copy(xref[i, :-Num_Var])
-        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], bestu[i])
+        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], bestu[i], F = 0)
         xref[i + 1, Num_Var:] = passed_xref
 
         if Noise:
