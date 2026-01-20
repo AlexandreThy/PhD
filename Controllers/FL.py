@@ -54,7 +54,7 @@ def compute_forcefield(theta, omega, coefficient):
         coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
 
     """
-    D = np.array([[0,13*coefficient],[0,0]])
+    D = np.array([[0,coefficient],[0,0]])
     Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
                             [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
     

@@ -156,7 +156,7 @@ def step5(
                 acc = np.zeros(2)
             else:
                 acc = Compute_acc(newx[i], F)
-            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, .3)
+            F = Compute_f_corrected_version(newx[i, 0:2], newx[i, 2:4], acc, .3)
             if Side == "Left":
                 F *= -1
 
@@ -811,7 +811,7 @@ def step5_muscle(
                 acc = np.zeros(2)
             else:
                 acc = Compute_acc_muscle(newx[i], u, F)
-            F = Compute_f_new_version(newx[i, 0:2], newx[i, 2:4], acc, 0.3)
+            F = Compute_f_corrected_version(newx[i, 0:2], newx[i, 2:4], acc, 0.3)
             if Side == "Left":
                 F *= -1
 

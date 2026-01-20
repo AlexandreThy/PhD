@@ -162,6 +162,12 @@ def pre_Compute(theta, omega):
     gss = fs
     return fs, fe, gs, ge, fss, fse, fee, gss, gse, gee
 
+def Compute_f_corrected_version(theta, omega, factor):
+    D = np.array([[0,13],[0,0]])
+    Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
+                            [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
+    
+    return Jacobian.T @ D @ Jacobian @ omega 
 
 def Compute_f_new_version(theta, omega, acc, factor):
     fs, fe, gs, ge, fss, fse, fee, gss, gse, gee = pre_Compute(theta, omega)
