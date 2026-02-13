@@ -1,6 +1,7 @@
 from Helpers.Linearization import *
 from Helpers.Environment import *
 
+
 def compute_forcefield(theta, omega, coefficient):
     """
     Compute the joint angles acceleration resulting from a lateral
@@ -13,11 +14,22 @@ def compute_forcefield(theta, omega, coefficient):
         coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
 
     """
-    D = np.array([[0,coefficient],[0,0]])
-    Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
-                            [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
-    
-    return -Jacobian.T @ D @ Jacobian @ omega 
+    D = np.array([[0, coefficient], [0, 0]])
+    Jacobian = np.array(
+        [
+            [
+                -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0]),
+                -33 * np.sin(theta[0] + theta[1]),
+            ],
+            [
+                33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0]),
+                33 * np.cos(theta[0] + theta[1]),
+            ],
+        ]
+    )
+
+    return -Jacobian.T @ D @ Jacobian @ omega
+
 
 def compute_forcefield_old(theta, omega, acc, coefficient):
     """
@@ -65,6 +77,8 @@ def compute_forcefield_old(theta, omega, acc, coefficient):
     F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
     F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
     return np.array([F1, F2])
+
+
 def LQG(
     Duration=0.6,
     w1=1e8,
@@ -85,7 +99,7 @@ def LQG(
     newtondfunc=newtondf,
     Num_iter=300,
     Activate_Noise=False,
-    motornoise_variance = 1e-3
+    motornoise_variance=1e-3,
 ):
 
     dt = Duration / Num_iter
@@ -564,7 +578,7 @@ def Linearization_6dof(dt, x, u):
     return FinalA
 
 
-def f(x, u, F = 0):
+def f(x, u, F=0):
     C = np.array(
         [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
     )
@@ -617,11 +631,7 @@ def f(x, u, F = 0):
     return np.array([[x[2], x[3], theta[0], theta[1], 0, 0]])
 
 
-def fx(x, u):
-    return Linearization_6dof(x, u)
-
-
-def fu(x, u):
+def fu(dt, x, u):
     Denominator = a3 * (a1 - a3) - a2**2 * np.cos(x[1]) ** 2
     Minv = np.array(
         [
@@ -670,7 +680,7 @@ def fu(x, u):
         du = np.zeros(6)
         du[i] = 1
         sol[2:, i] = Minv @ (A @ (du * fl * fv))
-    return sol
+    return dt * sol
 
 
 def DLQG_6Muscles(
@@ -727,10 +737,10 @@ def DLQG_6Muscles(
 
     B = np.zeros(((kdelay + 1) * Num_Var, 6))
 
-    array_x = np.zeros((Num_iter, Num_Var))
-    array_xhat = np.zeros((Num_iter, Num_Var))
-    array_u = np.zeros((Num_iter - 1, 6))
-    y = np.zeros((Num_iter - 1, Num_Var))
+    array_x = np.zeros((Num_iter + 1, Num_Var))
+    array_xhat = np.zeros((Num_iter + 1, Num_Var))
+    array_u = np.zeros((Num_iter, 6))
+    y = np.zeros((Num_iter, Num_Var))
 
     array_x[0] = x0.flatten()
     array_xhat[0] = x0.flatten()
@@ -741,9 +751,9 @@ def DLQG_6Muscles(
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
     J = 0
     u = np.zeros(6)
-    for k in range(Num_iter - 1):
+    for k in range(Num_iter):
         xcopy = np.copy(x)
-        #xcopy[2:4] = 0
+        # xcopy[2:4] = 0
         if k != 0:
             acc = (f(x[:Num_Var], u)[:, 2:4] + F).reshape(2)
         else:
@@ -754,11 +764,11 @@ def DLQG_6Muscles(
             else np.array([0, 0])
         )
 
-        A[:Num_Var, :Num_Var] = Linearization_6dof(dt, xcopy,0)
-        B[:4] = dt * fu(xcopy,0)
+        A[:Num_Var, :Num_Var] = Linearization_6dof(dt, xcopy, 0)
+        B[:4] = fu(dt, xcopy, 0)
 
         S = Q
-        for _ in range(Num_iter - 1 - k):
+        for _ in range(Num_iter - k):
             L = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
             S = A.T @ S @ (A - B @ L)
         u = -L @ xhat

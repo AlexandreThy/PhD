@@ -42,6 +42,7 @@ def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     elbow_angle = np.pi - np.arccos((l1**2 + l2**2 - r_squared) / (2 * l1 * l2))
     return shoulder_angle, elbow_angle
 
+
 def compute_forcefield_old(theta, omega, acc, coefficient):
     t0, t1 = theta
     o0, o1 = omega
@@ -78,6 +79,7 @@ def compute_forcefield_old(theta, omega, acc, coefficient):
     F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
     return np.array([F1, F2])
 
+
 def compute_forcefield(theta, omega, coefficient):
     """
     Compute the joint angles acceleration resulting from a lateral
@@ -90,11 +92,21 @@ def compute_forcefield(theta, omega, coefficient):
         coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
 
     """
-    D = np.array([[0,coefficient],[0,0]])
-    Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
-                            [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
-    
-    return -Jacobian.T @ D @ Jacobian @ omega 
+    D = np.array([[0, coefficient], [0, 0]])
+    Jacobian = np.array(
+        [
+            [
+                -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0]),
+                -33 * np.sin(theta[0] + theta[1]),
+            ],
+            [
+                33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0]),
+                33 * np.cos(theta[0] + theta[1]),
+            ],
+        ]
+    )
+
+    return -Jacobian.T @ D @ Jacobian @ omega
 
 
 def get_linearized_dynamics(x, u):
@@ -230,7 +242,7 @@ def get_linearized_dynamics(x, u):
     return A
 
 
-def f(x, u, F = 0):
+def f(x, u, F=0):
     C = np.array(
         [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
     )
@@ -382,27 +394,27 @@ def Kalman(Omega_measure, Omega_sens, A, sigma, H):
 
 
 def step1(x0, u, Duration):
-    K = np.shape(u)[0] + 1
+    K = np.shape(u)[0]
     dt = Duration / (K)
-    newx = np.zeros((K, len(x0)))
+    newx = np.zeros((K + 1, len(x0)))
     newx[0] = np.copy(x0)
 
-    for i in range(K - 1):
+    for i in range(K):
         newx[i + 1] = newx[i] + dt * f(newx[i], u[i])
 
     return newx
 
 
 def step2(x, u, Duration, w1, w2, r1, xtarg):
-    K = np.shape(u)[0] + 1
+    K = np.shape(u)[0]
     dt = Duration / K
     n, m = len(x[0]), len(u[0])
 
-    A, B = np.zeros((K - 1, n, n)), np.zeros((K - 1, n, m))
-    q, qbold = np.zeros(K), np.zeros((K, n))
-    r, Q, R = np.zeros((K - 1, m)), np.zeros((K, n, n)), np.zeros((K - 1, m, m))
+    A, B = np.zeros((K, n, n)), np.zeros((K, n, m))
+    q, qbold = np.zeros(K + 1), np.zeros((K + 1, n))
+    r, Q, R = np.zeros((K, m)), np.zeros((K + 1, n, n)), np.zeros((K, m, m))
 
-    for i in range(K - 1):
+    for i in range(K):
         A[i] = np.identity(n) + dt * fx(x[i], u[i])
         B[i] = dt * fu(x[i], u[i])
         q[i] = dt * l(x[i], u[i], r1, xtarg, w1, w2)
@@ -420,19 +432,19 @@ def step2(x, u, Duration, w1, w2, r1, xtarg):
 
 
 def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
-    K = A.shape[0] + 1
+    K = A.shape[0]
     n, m = np.shape(B[0])
-    S = np.zeros((K, n, n))
-    s = np.zeros(K)
-    sbold = np.zeros((K, n))
-    l = np.zeros((K - 1, m))
-    L = np.zeros((K - 1, m, n))
+    S = np.zeros((K + 1, n, n))
+    s = np.zeros(K + 1)
+    sbold = np.zeros((K + 1, n))
+    l = np.zeros((K, m))
+    L = np.zeros((K, m, n))
 
     S[-1] = Q[-1]
     s[-1] = q[-1]
     sbold[-1] = qbold[-1]
 
-    for k in np.arange(K - 2, -1, -1):
+    for k in np.arange(K - 1, -1, -1):
         temp1, temp2, temp3 = 0, 0, 0
 
         for i in range(m):
@@ -467,9 +479,9 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
 def step4(l, L, K, A, B):
     m, n = L[0].shape
     x = np.zeros(n)
-    u_incr = np.zeros((K - 1, m))
+    u_incr = np.zeros((K, m))
 
-    for k in range(K - 1):
+    for k in range(K):
         u_incr[k] = l[k] + L[k] @ x
         x = A[k] @ x + B[k] @ u_incr[k]
 
@@ -495,11 +507,11 @@ def step5(
     Num_Var = len(x0)
 
     x0 = np.tile(x0, kdelay + 1)
-    xref = np.zeros((Num_steps, Num_Var * (kdelay + 1)))
+    xref = np.zeros((Num_steps + 1, Num_Var * (kdelay + 1)))
     xref[0] = np.copy(x0)
-    newx = np.zeros((Num_steps, Num_Var * (kdelay + 1)))
+    newx = np.zeros((Num_steps + 1, Num_Var * (kdelay + 1)))
     newx[0] = np.copy(x0)
-    xhat = np.zeros((Num_steps, Num_Var * (kdelay + 1)))
+    xhat = np.zeros((Num_steps + 1, Num_Var * (kdelay + 1)))
 
     H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
     H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
@@ -507,7 +519,7 @@ def step5(
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
     Omega_measure = np.diag(np.ones(4)) * 1e-4
     F = 0
-    for i in range(Num_steps - 1):
+    for i in range(Num_steps):
         if i != 0:
             acc = (f(newx[i, :Num_Var], u)[:, 2:4] + F).reshape(2)
         else:
@@ -536,7 +548,9 @@ def step5(
         newx[i + 1, Num_Var:] = passed_newx
 
         passed_xref = np.copy(xref[i, :-Num_Var])
-        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(xref[i, :Num_Var], bestu[i], F = 0)
+        xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(
+            xref[i, :Num_Var], bestu[i], F=0
+        )
         xref[i + 1, Num_Var:] = passed_xref
 
         if Noise:
@@ -592,13 +606,13 @@ def simulate_ILQG(
 
     x0 = np.array([st1, st2, 0, 0])
     m, n = 6, 4
-    u = np.zeros((K - 1, m))
+    u = np.zeros((K, m))
     dt = Duration / K
     kdelay = int(delay / dt)
 
-    cbold = np.zeros((K - 1, m, n))
-    C = np.zeros((K - 1, m, n, m))
-    for i in range(K - 1):
+    cbold = np.zeros((K, m, n))
+    C = np.zeros((K, m, n, m))
+    for i in range(K):
         for j in range(2):
             cbold[i, j, 2 + j] = sqrt(motornoise_variance)
 

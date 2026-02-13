@@ -42,6 +42,7 @@ def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     elbow_angle = np.pi - np.arccos((l1**2 + l2**2 - r_squared) / (2 * l1 * l2))
     return shoulder_angle, elbow_angle
 
+
 def compute_forcefield(theta, omega, coefficient):
     """
     Compute the joint angles acceleration resulting from a lateral
@@ -54,11 +55,22 @@ def compute_forcefield(theta, omega, coefficient):
         coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
 
     """
-    D = np.array([[0,coefficient],[0,0]])
-    Jacobian = np.array([[-33*np.sin(theta[0]+theta[1])-30*np.sin(theta[0]), -33*np.sin(theta[0]+theta[1])],
-                            [33*np.cos(theta[0]+theta[1])+30*np.cos(theta[0]), 33*np.cos(theta[0]+theta[1])]])
-    
-    return -Jacobian.T @ D @ Jacobian @ omega 
+    D = np.array([[0, coefficient], [0, 0]])
+    Jacobian = np.array(
+        [
+            [
+                -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0]),
+                -33 * np.sin(theta[0] + theta[1]),
+            ],
+            [
+                33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0]),
+                33 * np.cos(theta[0] + theta[1]),
+            ],
+        ]
+    )
+
+    return -Jacobian.T @ D @ Jacobian @ omega
+
 
 def compute_forcefield_old(theta, omega, acc, coefficient):
     """
@@ -176,7 +188,8 @@ def compute_next_state(x, u, dt, activate_noise, FF, F, ff_power, motornoise_var
         else np.zeros(2)
     )
     newx[2:4] += (
-        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Viscous @ (x[2:4]) - C + F)) + noise
+        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Viscous @ (x[2:4]) - C + F))
+        + noise
     )
     return newx, F
 
@@ -186,7 +199,7 @@ def NoiseAndCovMatrix(M=np.identity(2), N=8, kdelay=0, motornoise_variance=1e-3)
     SigmaMotor = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
     SigmaSense = np.diag(np.ones(N) * 1e-4)
 
-    for i in range(2,4):
+    for i in range(2, 4):
 
         SigmaMotor[i, i] = motornoise_variance
 
@@ -220,18 +233,18 @@ def next_state_estimate(
     A_basic = np.array(
         [
             [1, 0, dt, 0, 0, 0, 0, 0],
-            [0, 1, 0, dt, 0, 0 , 0, 0],
-            [0, 0, 1, 0, 0, 0 , 0, 0],
-            [0, 0, 0, 1, 0, 0 , 0, 0],
-            [0, 0, 0, 0, 1, 0 , 0, 0],
-            [0, 0, 0, 0, 0, 1 , 0, 0],
-            [0, 0, 0, 0, 0, 0 , 1, 0],
-            [0, 0, 0, 0, 0, 0 , 0, 1],
+            [0, 1, 0, dt, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
         ]
     )
     B_basic = np.zeros((8, 2))
     B_basic[2, 0] = dt
-    B_basic [3, 1] = dt
+    B_basic[3, 1] = dt
     A = np.zeros(((delay + 1) * 8, (delay + 1) * 8))
     A[:8, :8] = A_basic
     A[8:, :-8] = np.identity((delay) * 8)
@@ -250,54 +263,61 @@ def next_state_estimate(
     next_est_x = A @ est_x + B @ u + K @ (y - H @ est_x)
     return next_est_x, sigma
 
-def compute_path(x0,xf,wp,percent):
-    #percent = compute_percent(x0,xf)
-    xtarget = x0 + percent*(xf-x0)
-    ts,te= compute_angles_from_cartesian(xtarget[0],xtarget[1])
-    ts0,te0 = compute_angles_from_cartesian(x0[0],x0[1])
-    k = (te-te0)/(ts-ts0)
-    Qk=np.zeros((8,8))
 
-    Qk[0,0] = k*k
-    Qk[0,6] = -k*k
-    Qk[6,0] = -k*k
-    Qk[6,6] = k*k
-    Qk[1,1] = 1
-    Qk[1,7] = -1
-    Qk[7,1] = -1
-    Qk[7,7] = 1
-    Qk[0,1] = -k 
-    Qk[1,0] = -k 
-    Qk[0,7] = k 
-    Qk[7,0] = k 
-    Qk[1,6] = k 
-    Qk[6,0] = k
-    Qk[6,7] = -k
-    Qk[7,6] = -k
+def compute_path(x0, xf, wp, percent):
+    # percent = compute_percent(x0,xf)
+    xtarget = x0 + percent * (xf - x0)
+    ts, te = compute_angles_from_cartesian(xtarget[0], xtarget[1])
+    ts0, te0 = compute_angles_from_cartesian(x0[0], x0[1])
+    k = (te - te0) / (ts - ts0)
+    Qk = np.zeros((8, 8))
 
-    return Qk*wp
+    Qk[0, 0] = k * k
+    Qk[0, 6] = -k * k
+    Qk[6, 0] = -k * k
+    Qk[6, 6] = k * k
+    Qk[1, 1] = 1
+    Qk[1, 7] = -1
+    Qk[7, 1] = -1
+    Qk[7, 7] = 1
+    Qk[0, 1] = -k
+    Qk[1, 0] = -k
+    Qk[0, 7] = k
+    Qk[7, 0] = k
+    Qk[1, 6] = k
+    Qk[6, 0] = k
+    Qk[6, 7] = -k
+    Qk[7, 6] = -k
 
-def ToCartesian(s,e):
+    return Qk * wp
+
+
+def ToCartesian(s, e):
     X = np.cos(s + e) * 33 + np.cos(s) * 30
     Y = np.sin(s + e) * 33 + np.sin(s) * 30
 
     return X, Y
 
-def compute_percent(x0,xf):
-    ts,te= compute_angles_from_cartesian(xf[0],xf[1])
-    ts0,te0 = compute_angles_from_cartesian(x0[0],x0[1])
-    te_incr,ts_incr = (te0 + .001*(te-te0)),(ts0 + .001*(ts-ts0))
-    x_incr,y_incr = ToCartesian(ts_incr,te_incr)
-    angle_objective = np.arctan2(xf[1]-x0[1],xf[0]-x0[0])*180/pi
-    actual_angle = np.arctan2(y_incr-x0[1],x_incr-x0[0])*180/pi
-    percent = 1 if abs(angle_objective-actual_angle)<30 else .7
-    print(percent,abs(angle_objective-actual_angle))
+
+def compute_percent(x0, xf):
+    ts, te = compute_angles_from_cartesian(xf[0], xf[1])
+    ts0, te0 = compute_angles_from_cartesian(x0[0], x0[1])
+    te_incr, ts_incr = (te0 + 0.001 * (te - te0)), (ts0 + 0.001 * (ts - ts0))
+    x_incr, y_incr = ToCartesian(ts_incr, te_incr)
+    angle_objective = np.arctan2(xf[1] - x0[1], xf[0] - x0[0]) * 180 / pi
+    actual_angle = np.arctan2(y_incr - x0[1], x_incr - x0[0]) * 180 / pi
+    percent = 1 if abs(angle_objective - actual_angle) < 30 else 0.7
+    print(percent, abs(angle_objective - actual_angle))
     return percent
 
-    
 
 def compute_linear_control_gains(
-    Num_iter, Duration, Qk, taupath, motor_cost=1e-4, cost_weights=[1e4, 1e4, 1, 1],
+    Num_iter,
+    Duration,
+    Qk,
+    taupath,
+    motor_cost=1e-4,
+    cost_weights=[1e4, 1e4, 1, 1],
 ):
     dt = Duration / Num_iter
     Num_Var = 8
@@ -306,7 +326,7 @@ def compute_linear_control_gains(
     w1, w2, w3, w4 = cost_weights
     Q = np.array(
         [
-            [w1, 0, 0, 0, -w1, 0, 0 ,0],
+            [w1, 0, 0, 0, -w1, 0, 0, 0],
             [0, w2, 0, 0, 0, -w2, 0, 0],
             [0, 0, w3, 0, 0, 0, 0, 0],
             [0, 0, 0, w4, 0, 0, 0, 0],
@@ -320,13 +340,13 @@ def compute_linear_control_gains(
     A = np.array(
         [
             [1, 0, dt, 0, 0, 0, 0, 0],
-            [0, 1, 0, dt, 0, 0 , 0, 0],
-            [0, 0, 1, 0, 0, 0 , 0, 0],
-            [0, 0, 0, 1, 0, 0 , 0, 0],
-            [0, 0, 0, 0, 1, 0 , 0, 0],
-            [0, 0, 0, 0, 0, 1 , 0, 0],
-            [0, 0, 0, 0, 0, 0 , 1, 0],
-            [0, 0, 0, 0, 0, 0 , 0, 1],
+            [0, 1, 0, dt, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
         ]
     )
     B = np.zeros((8, 2))
@@ -334,11 +354,11 @@ def compute_linear_control_gains(
     B[3, 1] = dt
 
     S = Q
-    L = np.zeros((Num_iter - 1, 2, Num_Var))
+    L = np.zeros((Num_iter, 2, Num_Var))
 
-    for k in range(Num_iter - 1):
-        L[Num_iter - 2 - k] = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
-        S = Qk*np.exp(-k*dt/(taupath)) + A.T @ S @ (A - B @ L[Num_iter - 2 - k])
+    for k in range(Num_iter):
+        L[Num_iter - 1 - k] = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
+        S = Qk * np.exp(-k * dt / (taupath)) + A.T @ S @ (A - B @ L[Num_iter - 1 - k])
     return L
 
 
@@ -409,21 +429,26 @@ def simulate_FL(
     FF=False,
     ff_power=0.3,
     motornoise_variance=1e-3,
-    wp = 0, # set to 4*1e-3 if active
-    taupath = .04,
-    percent = .75
+    wp=0,  # set to 4*1e-3 if active
+    taupath=0.04,
+    percent=0.75,
 ):
     dt = Duration / Num_iter
     kdelay = int(Delay / dt)
-    Qk = compute_path(np.array(starting_point),np.array(targets),wp,percent)
+    Qk = compute_path(np.array(starting_point), np.array(targets), wp, percent)
     L = compute_linear_control_gains(
-        Num_iter, Duration, Qk, taupath, motor_cost=r, cost_weights=[w1, w2, w3, w4],
+        Num_iter,
+        Duration,
+        Qk,
+        taupath,
+        motor_cost=r,
+        cost_weights=[w1, w2, w3, w4],
     )
     num_states = 4
 
-    all_true_states = np.zeros((Num_iter, num_states + 4))
-    all_estimated_states = np.zeros((Num_iter, (num_states + 4)))
-    all_commands = np.zeros((Num_iter - 1, 6))
+    all_true_states = np.zeros((Num_iter + 1, num_states + 4))
+    all_estimated_states = np.zeros((Num_iter + 1, (num_states + 4)))
+    all_commands = np.zeros((Num_iter, 6))
     st1, st2 = compute_angles_from_cartesian(starting_point[0], starting_point[1])
 
     tg1, tg2 = compute_angles_from_cartesian(targets[0], targets[1])
@@ -434,7 +459,7 @@ def simulate_FL(
     all_estimated_states[0, :] = np.copy(x0)
     sigma = np.zeros((8 * (kdelay + 1), 8 * (kdelay + 1)))
     F = np.zeros(2)
-    for j in range(Num_iter - 1):
+    for j in range(Num_iter):
         u, v = nonlinear_transform_command(L[j], estimated_state[:8])
         estimated_state, sigma = next_state_estimate(
             estimated_state,
