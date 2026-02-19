@@ -493,7 +493,7 @@ if __name__ == "__main__":
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
     ax.set_title("Nonlinearity Index vs Cost Function", fontsize=13)
     ax.set_yticks([])
-    plt.savefig("Corr_Plots_1_Noisy.png", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_1_Noisy.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
     E_ILQG_mean = np.mean(E_ILQG, axis=(0))
@@ -556,7 +556,7 @@ if __name__ == "__main__":
     ax.set_yticks([])
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
     ax.set_title("Peak Joint Power vs Cost Function", fontsize=13)
-    plt.savefig("Corr_Plots_2_Noisy.png", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_2_Noisy.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
     angles = np.linspace(0, 2 * pi, 9)[:-1]
@@ -621,17 +621,17 @@ if __name__ == "__main__":
         ax[i].set_ylabel("Nonlinearity Index")
         ax[i].grid(True)
 
-    plt.savefig("Corr_Plots_3_Noisy.png", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_3_Noisy.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
-    fig, ax = plt.subplots(2, figsize=(8, 8))
+    fig, ax = plt.subplots(2, figsize=(4, 8))
 
     ax[0].scatter(
         cost,
         E_ILQG_mean,
         marker="o",
         color=colors[0],
-        linewidth=2,
+        s=40,
         label="Peak Joint Power " + legend[0],
     )
 
@@ -640,7 +640,7 @@ if __name__ == "__main__":
         E_FL_mean,
         marker="o",
         color=colors[1],
-        linewidth=2,
+        s=40,
         label="Peak Joint Power " + legend[1],
     )
 
@@ -683,5 +683,5 @@ if __name__ == "__main__":
         ax[i].set_ylabel("Peak Joint Power")
         ax[i].grid(True)
 
-    plt.savefig("Corr_Plots_4_Noisy.png", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_4_Noisy.svg", dpi=300, bbox_inches="tight")
     plt.show()
