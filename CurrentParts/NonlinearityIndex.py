@@ -10,16 +10,16 @@ from matplotlib import gridspec
 
 
 XST = 0
-YST = 45
+YST = 40
 st = [XST, YST]
 MovementTime = 0.4
 NUM_ITERATIONS = 40
 dt = 0.01
 Time = np.linspace(0, MovementTime * 1000, NUM_ITERATIONS)
-MN = 1e-3
-WP = 100
-WV = 0.05
-WR = 0.1
+MN = 5e-4
+WP = 20000
+WV = 1
+WR = .5
 WR_FL = 1e-8
 colors = ["#009E73", "#0072B2", "#E69F00"]
 legend = ["ILQG", "FL", "DLQG"]
@@ -364,19 +364,20 @@ def simulate_traj(num_sim, noise):
 
         for move, angles in enumerate(np.linspace(0, 2 * pi, 9)[:-1]):
 
-            tg = [cos(angles) * 15, 45 + sin(angles) * 15]
+            tg = [st[0]+cos(angles) * 15, st[1]+sin(angles) * 15]
 
             _, _, data_ilqg, command_ilqg = simulate_ILQG(
                 MovementTime,
-                100,
-                0.05,
-                0.1,
+                WP,
+                WV,
+                WR,
                 tg,
                 st,
                 NUM_ITERATIONS,
                 delay=0.06,
                 Noise=noise,
                 print_iterations=False,
+                motornoise_variance=MN,
             )
             N_ILQG[num_sim, move, :] = compute_nl_index(data_ilqg, command_ilqg)
             E_ILQG[num_sim, move, :] = compute_effort(data_ilqg, command_ilqg)
@@ -394,6 +395,7 @@ def simulate_traj(num_sim, noise):
                 targets=tg,
                 Delay=0.06,
                 Activate_Noise=noise,
+                motornoise_variance=MN,
             )
 
             N_FL[num_sim, move, :] = compute_nl_index(data_FL[:, :4], command_FL)
@@ -411,6 +413,7 @@ def simulate_traj(num_sim, noise):
                 plot=False,
                 Delay=0.06,
                 Activate_Noise=noise,
+                motornoise_variance=MN,
             )
             N_DLQG[num_sim, move, :] = compute_nl_index(
                 data_DLQG.T[:, :4], command_DLQG
@@ -636,14 +639,14 @@ if __name__ == "__main__":
     plt.savefig("Corr_Plots_3_Noisy.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
-    fig, ax = plt.subplots(2, figsize=(8, 8))
+    fig, ax = plt.subplots(2, figsize=(4, 8))
 
     ax[0].scatter(
         cost,
         E_ILQG_mean[:8],
         marker="o",
         color=colors[0],
-        linewidth=2,
+        s=40,
         label="Peak Joint Power " + legend[0],
     )
 
@@ -652,7 +655,7 @@ if __name__ == "__main__":
         E_FL_mean[:8],
         marker="o",
         color=colors[1],
-        linewidth=2,
+        s=40,
         label="Peak Joint Power " + legend[1],
     )
 

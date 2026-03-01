@@ -753,11 +753,6 @@ def DLQG_6Muscles(
     u = np.zeros(6)
     for k in range(Num_iter):
         xcopy = np.copy(x)
-        # xcopy[2:4] = 0
-        if k != 0:
-            acc = (f(x[:Num_Var], u)[:, 2:4] + F).reshape(2)
-        else:
-            acc = np.zeros(2)
         F = (
             compute_forcefield(x[0:2], x[2:4], ff_power)
             if FF == True

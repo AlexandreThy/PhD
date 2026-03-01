@@ -285,7 +285,7 @@ def compute_path(x0, xf, wp, percent):
     Qk[0, 7] = k
     Qk[7, 0] = k
     Qk[1, 6] = k
-    Qk[6, 0] = k
+    Qk[6, 1] = k
     Qk[6, 7] = -k
     Qk[7, 6] = -k
 
