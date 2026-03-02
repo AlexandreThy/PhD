@@ -19,7 +19,7 @@ Time = np.linspace(0, MovementTime * 1000, NUM_ITERATIONS)
 MN = 5e-4
 WP = 20000
 WV = 1
-WR = .5
+WR = 0.5
 WR_FL = 1e-8
 colors = ["#009E73", "#0072B2", "#E69F00"]
 legend = ["ILQG", "FL", "DLQG"]
@@ -336,7 +336,7 @@ def compute_effort(x, u):
     return N
 
 
-def compute_correlation(x):
+def compute_correlation(x, i):
 
     y = np.load("Costdata.npz")["my_array"]
     result = scipy.stats.linregress(y[:8, 2], x)
@@ -364,7 +364,7 @@ def simulate_traj(num_sim, noise):
 
         for move, angles in enumerate(np.linspace(0, 2 * pi, 9)[:-1]):
 
-            tg = [st[0]+cos(angles) * 15, st[1]+sin(angles) * 15]
+            tg = [st[0] + cos(angles) * 15, st[1] + sin(angles) * 15]
 
             _, _, data_ilqg, command_ilqg = simulate_ILQG(
                 MovementTime,
@@ -430,8 +430,12 @@ def simulate_traj(num_sim, noise):
     )
 
 
+def append_last(arr):
+    return np.append(arr, arr[0])
+
+
 if __name__ == "__main__":
-    NUM_SIM = 100
+    NUM_SIM = 5
     NOISE = True
     N_ILQG, N_FL, N_DLQG, E_ILQG, E_FL, E_DLQG = simulate_traj(NUM_SIM, NOISE)
 
@@ -439,44 +443,67 @@ if __name__ == "__main__":
     N_FL_mean = np.mean(N_FL, axis=(0, 2))
     N_DLQG_mean = np.mean(N_DLQG, axis=(0, 2))
 
+    N_ILQG_mean = append_last(N_ILQG_mean)
+    N_FL_mean = append_last(N_FL_mean)
+    N_DLQG_mean = append_last(N_DLQG_mean)
+
+    E_ILQG_mean = np.mean(E_ILQG, axis=(0))
+    E_FL_mean = np.mean(E_FL, axis=(0))
+    E_DLQG_mean = np.mean(E_DLQG, axis=(0))
+
+    E_ILQG_mean = append_last(E_ILQG_mean)
+    E_FL_mean = append_last(E_FL_mean)
+    E_DLQG_mean = append_last(E_DLQG_mean)
+
+    cost, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation(
+        N_ILQG_mean[:8], 0
+    )
+    _, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation(N_FL_mean[:8], 1)
+    _, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation(N_DLQG_mean[:8], 2)
+
+    _, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation(E_ILQG_mean[:8], 0)
+    _, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation(E_FL_mean[:8], 1)
+    _, e_rdlqg, e_slope_dlqg, e_intercept_dlqg = compute_correlation(E_DLQG_mean[:8], 2)
+
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(8, 8))
-    ax.bar(
-        np.linspace(0, 2 * pi, 9)[:-1] - 0.2,
-        N_ILQG_mean / np.max(N_ILQG_mean),
-        width=0.2,
-        color=colors[0],
-        label="NL Index " + legend[0],
-        edgecolor="black",
-    )
-    ax.bar(
-        np.linspace(0, 2 * pi, 9)[:-1],
-        N_FL_mean / np.max(N_FL_mean),
-        width=0.2,
-        color=colors[1],
-        label="NL Index " + legend[1],
-        edgecolor="black",
-    )
-    # ax.bar(
-    #    np.linspace(0, 2 * pi, 9)[:-1] + 0.2,
-    #    N_DLQG_mean,
-    #    width=0.2,
-    #    color=colors[2],
-    #    label=legend[2],
-    #    edgecolor="black",
-    # )
-    cost, rfl, _, _ = compute_correlation(N_FL_mean)
-    _, rilqg, _, _ = compute_correlation(N_ILQG_mean)
+
     ax.plot(
         np.linspace(0, 2 * pi, 9),
-        cost / np.max(cost),
-        color=colors[2],
-        linewidth=4,
-        label="Cost DLQG",
+        N_ILQG_mean / np.max(N_ILQG_mean),
+        color=colors[0],
     )
+    ax.plot(
+        np.linspace(0, 2 * pi, 9),
+        N_FL_mean / np.max(N_FL_mean),
+        color=colors[1],
+    )
+
+    ax.plot(
+        np.linspace(0, 2 * pi, 9),
+        N_DLQG_mean / np.max(N_DLQG_mean),
+        color=colors[2],
+    )
+
+    ax.scatter(
+        np.linspace(0, 2 * pi, 9),
+        N_ILQG_mean / np.max(N_ILQG_mean),
+        color=colors[0],
+    )
+    ax.scatter(
+        np.linspace(0, 2 * pi, 9),
+        N_FL_mean / np.max(N_FL_mean),
+        color=colors[1],
+    )
+    ax.scatter(
+        np.linspace(0, 2 * pi, 9),
+        N_DLQG_mean / np.max(N_DLQG_mean),
+        color=colors[2],
+    )
+
     ax.text(
         0,
         1.1,
-        f"FL : r² = {rfl:.2f}",
+        f"FL : r² = {n_rfl:.2f}",
         ha="center",
         va="center",
         transform=ax.transAxes,
@@ -485,75 +512,65 @@ if __name__ == "__main__":
     ax.text(
         0,
         1.05,
-        f"ILQG : r² = {rilqg:.2f}",
+        f"ILQG : r² = {n_rilqg:.2f}",
+        ha="center",
+        va="center",
+        transform=ax.transAxes,
+        fontsize=12,
+    )
+    ax.text(
+        0,
+        1.00,
+        f"DLQG : r² = {n_rdlqg:.2f}",
         ha="center",
         va="center",
         transform=ax.transAxes,
         fontsize=12,
     )
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
-    ax.set_title("Nonlinearity Index vs Cost Function", fontsize=13)
-    ax.set_yticks([])
+    ax.set_title("Peak Nonlinearity Index vs Cost Function", fontsize=13)
     plt.savefig("Corr_Plots_1_Noisy.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
-    E_ILQG_mean = np.mean(E_ILQG, axis=(0))
-    E_FL_mean = np.mean(E_FL, axis=(0))
-    E_DLQG_mean = np.mean(E_DLQG, axis=(0))
-
-    E_ILQG_mean = np.append(E_ILQG_mean, [E_ILQG_mean[0]])
-    E_FL_mean = np.append(E_FL_mean, [E_FL_mean[0]])
-    E_DLQG_mean = np.append(E_DLQG_mean, [E_DLQG_mean[0]])
-
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(8, 8))
+
     ax.plot(
         np.linspace(0, 2 * pi, 9),
         E_ILQG_mean / np.max(E_ILQG_mean),
         color=colors[0],
-        label="Peak Joint Power " + legend[0],
     )
     ax.plot(
         np.linspace(0, 2 * pi, 9),
         E_FL_mean / np.max(E_FL_mean),
         color=colors[1],
-        label="Peak Joint Power " + legend[1],
+    )
+
+    ax.plot(
+        np.linspace(0, 2 * pi, 9),
+        E_DLQG_mean / np.max(E_DLQG_mean),
+        color=colors[2],
     )
 
     ax.scatter(
         np.linspace(0, 2 * pi, 9),
         E_ILQG_mean / np.max(E_ILQG_mean),
         color=colors[0],
-        label="Peak Joint Power " + legend[0],
     )
     ax.scatter(
         np.linspace(0, 2 * pi, 9),
         E_FL_mean / np.max(E_FL_mean),
         color=colors[1],
-        label="Peak Joint Power " + legend[1],
     )
-    # ax.bar(
-    #    np.linspace(0, 2 * pi, 9)[:-1] + 0.2,
-    #    E_DLQG_mean,
-    #    width=0.2,
-    #    color=colors[2],
-    #    label=legend[2],
-    #    edgecolor="black",
-    # )
-    # ax.plot(
-    #    np.linspace(0, 2 * pi, 9),
-    #    cost / np.max(cost),
-    #    color=colors[2],
-    #    linewidth=4,
-    #    label="Cost DLQG",
-    # )
-
-    _, rfl, _, _ = compute_correlation(E_FL_mean[:8])
-    _, rilqg, _, _ = compute_correlation(E_ILQG_mean[:8])
+    ax.scatter(
+        np.linspace(0, 2 * pi, 9),
+        E_DLQG_mean / np.max(E_DLQG_mean),
+        color=colors[2],
+    )
 
     ax.text(
         0,
         1.1,
-        f"FL : r² = {rfl:.2f}",
+        f"FL : r² = {e_rfl:.2f}",
         ha="center",
         va="center",
         transform=ax.transAxes,
@@ -562,13 +579,21 @@ if __name__ == "__main__":
     ax.text(
         0,
         1.05,
-        f"ILQG : r² = {rilqg:.2f}",
+        f"ILQG : r² = {e_rilqg:.2f}",
         ha="center",
         va="center",
         transform=ax.transAxes,
         fontsize=12,
     )
-    ax.set_yticks([])
+    ax.text(
+        0,
+        1.00,
+        f"DLQG : r² = {e_rdlqg:.2f}",
+        ha="center",
+        va="center",
+        transform=ax.transAxes,
+        fontsize=12,
+    )
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
     ax.set_title("Peak Joint Power vs Cost Function", fontsize=13)
     plt.savefig("Corr_Plots_2_Noisy.svg", dpi=300, bbox_inches="tight")
@@ -577,60 +602,85 @@ if __name__ == "__main__":
     angles = np.linspace(0, 2 * pi, 9)[:-1]
     angles_deg = np.degrees(angles)
 
-    fig, ax = plt.subplots(2, figsize=(8, 8))
-    cost, rfl, slopefl, interceptfl = compute_correlation(N_FL_mean)
-    _, rilqg, slopeilqg, interceptilqg = compute_correlation(N_ILQG_mean)
+    fig, ax = plt.subplots(3, figsize=(8, 8))
+
     cost = cost[:8]
     ax[0].scatter(
         cost,
-        N_ILQG_mean,
+        N_ILQG_mean[:8],
         marker="o",
         color=colors[0],
         linewidth=2,
         label="NL Index " + legend[0],
     )
 
-    ax[1].plot(
-        cost,
-        slopefl * cost + interceptfl,
-        color=colors[1],
-        linestyle="--",
-        label="FL Fit",
-    )
-    ax[0].plot(
-        cost,
-        slopeilqg * cost + interceptilqg,
-        color=colors[0],
-        linestyle="--",
-        label="ILQG Fit",
-    )
-
     ax[1].scatter(
         cost,
-        N_FL_mean,
+        N_FL_mean[:8],
         marker="o",
         color=colors[1],
         linewidth=2,
         label="NL Index " + legend[1],
     )
 
+    ax[2].scatter(
+        cost,
+        N_DLQG_mean[:8],
+        marker="o",
+        color=colors[2],
+        linewidth=2,
+        label="NL Index " + legend[2],
+    )
+
+    ax[0].plot(
+        cost,
+        n_slope_ilqg * cost + n_intercept_ilqg,
+        color=colors[0],
+        linestyle="--",
+        label="ILQG Fit",
+    )
+
+    ax[1].plot(
+        cost,
+        n_slope_fl * cost + n_intercept_fl,
+        color=colors[1],
+        linestyle="--",
+        label="FL Fit",
+    )
+
+    ax[2].plot(
+        cost,
+        n_slope_dlqg * cost + n_intercept_dlqg,
+        color=colors[2],
+        linestyle="--",
+        label="DLQG Fit",
+    )
+
     ax[1].text(
         0.02,
         0.9,
-        f"FL : r² = {rfl:.2f}",
+        f"FL : r² = {n_rfl:.2f}",
         transform=ax[1].transAxes,
+        fontsize=12,
+    )
+
+    ax[2].text(
+        0.02,
+        0.9,
+        f"DLQG : r² = {n_rdlqg:.2f}",
+        transform=ax[2].transAxes,
         fontsize=12,
     )
 
     ax[0].text(
         0.02,
         0.90,
-        f"ILQG : r² = {rilqg:.2f}",
+        f"ILQG : r² = {n_rilqg:.2f}",
         transform=ax[0].transAxes,
         fontsize=12,
     )
 
-    for i in range(2):
+    for i in range(3):
 
         ax[i].set_xlabel("DLQG Movement Cost")
         ax[i].set_ylabel("Nonlinearity Index")
@@ -639,15 +689,16 @@ if __name__ == "__main__":
     plt.savefig("Corr_Plots_3_Noisy.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
-    fig, ax = plt.subplots(2, figsize=(4, 8))
+    fig, ax = plt.subplots(3, figsize=(8, 8))
 
+    cost = cost[:8]
     ax[0].scatter(
         cost,
         E_ILQG_mean[:8],
         marker="o",
         color=colors[0],
-        s=40,
-        label="Peak Joint Power " + legend[0],
+        linewidth=2,
+        label="NL Index " + legend[0],
     )
 
     ax[1].scatter(
@@ -655,47 +706,71 @@ if __name__ == "__main__":
         E_FL_mean[:8],
         marker="o",
         color=colors[1],
-        s=40,
-        label="Peak Joint Power " + legend[1],
+        linewidth=2,
+        label="NL Index " + legend[1],
     )
 
-    _, rfl, slopefl, interceptfl = compute_correlation(E_FL_mean[:8])
-    _, rilqg, slopeilqg, interceptilqg = compute_correlation(E_ILQG_mean[:8])
-
-    ax[1].plot(
+    ax[2].scatter(
         cost,
-        slopefl * cost + interceptfl,
-        color=colors[1],
-        linestyle="--",
-        label="FL Fit",
+        E_DLQG_mean[:8],
+        marker="o",
+        color=colors[2],
+        linewidth=2,
+        label="NL Index " + legend[2],
     )
+
     ax[0].plot(
         cost,
-        slopeilqg * cost + interceptilqg,
+        e_slope_ilqg * cost + e_intercept_ilqg,
         color=colors[0],
         linestyle="--",
         label="ILQG Fit",
     )
 
+    ax[1].plot(
+        cost,
+        e_slope_fl * cost + e_intercept_fl,
+        color=colors[1],
+        linestyle="--",
+        label="FL Fit",
+    )
+
+    ax[2].plot(
+        cost,
+        e_slope_dlqg * cost + e_intercept_dlqg,
+        color=colors[2],
+        linestyle="--",
+        label="DLQG Fit",
+    )
+
     ax[1].text(
         0.02,
         0.9,
-        f"FL : r² = {rfl:.2f}",
+        f"FL : r² = {e_rfl:.2f}",
         transform=ax[1].transAxes,
+        fontsize=12,
+    )
+
+    ax[2].text(
+        0.02,
+        0.9,
+        f"DLQG : r² = {e_rdlqg:.2f}",
+        transform=ax[2].transAxes,
         fontsize=12,
     )
 
     ax[0].text(
         0.02,
         0.90,
-        f"ILQG : r² = {rilqg:.2f}",
+        f"ILQG : r² = {e_rilqg:.2f}",
         transform=ax[0].transAxes,
         fontsize=12,
     )
 
-    for i in range(2):
+    for i in range(3):
+
         ax[i].set_xlabel("DLQG Movement Cost")
-        ax[i].set_ylabel("Peak Joint Power")
+        ax[i].set_ylabel("Peak Joint Power Index")
         ax[i].grid(True)
 
     plt.savefig("Corr_Plots_4_Noisy.svg", dpi=300, bbox_inches="tight")
