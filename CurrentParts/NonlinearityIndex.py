@@ -340,6 +340,7 @@ def compute_correlation(x, i):
 
     y = np.load("Costdata.npz")["my_array"]
     result = scipy.stats.linregress(y[:8, 2], x)
+    #print(y[:8,i])
 
     slope = result.slope
     intercept = result.intercept
@@ -424,9 +425,9 @@ def simulate_traj(num_sim, noise):
         N_ILQG,
         N_FL,
         N_DLQG,
-        np.max(E_ILQG, axis=2),
-        np.max(E_FL, axis=2),
-        np.max(E_DLQG, axis=2),
+        E_ILQG,
+        E_FL,
+        E_DLQG
     )
 
 
@@ -435,10 +436,10 @@ def append_last(arr):
 
 
 if __name__ == "__main__":
-    NUM_SIM = 5
+    NUM_SIM = 20
     NOISE = True
     N_ILQG, N_FL, N_DLQG, E_ILQG, E_FL, E_DLQG = simulate_traj(NUM_SIM, NOISE)
-
+    
     N_ILQG_mean = np.mean(N_ILQG, axis=(0, 2))
     N_FL_mean = np.mean(N_FL, axis=(0, 2))
     N_DLQG_mean = np.mean(N_DLQG, axis=(0, 2))
@@ -451,13 +452,15 @@ if __name__ == "__main__":
     E_FL_mean = np.mean(E_FL, axis=(0))
     E_DLQG_mean = np.mean(E_DLQG, axis=(0))
 
+    E_ILQG_mean = np.max(E_ILQG_mean, axis=(1))
+    E_FL_mean = np.max(E_FL_mean, axis=(1))
+    E_DLQG_mean = np.max(E_DLQG_mean, axis=(1))
+
     E_ILQG_mean = append_last(E_ILQG_mean)
     E_FL_mean = append_last(E_FL_mean)
     E_DLQG_mean = append_last(E_DLQG_mean)
 
-    cost, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation(
-        N_ILQG_mean[:8], 0
-    )
+    cost, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation(N_ILQG_mean[:8], 0)
     _, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation(N_FL_mean[:8], 1)
     _, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation(N_DLQG_mean[:8], 2)
 
