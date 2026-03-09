@@ -350,6 +350,18 @@ def compute_correlation(x, i):
 
     return y[:, 2], r2, slope, intercept
 
+def compute_correlation_ati(x, i):
+
+    y = np.load("Costdata.npz")["my_array"]
+    result = scipy.stats.linregress(y[:8, i], x)
+    #print(y[:8,i])
+
+    slope = result.slope
+    intercept = result.intercept
+    r = result.rvalue
+    r2 = r**2
+    return y[:, i], r2, slope, intercept
+
 
 def simulate_traj(num_sim, noise):
 
@@ -422,9 +434,9 @@ def simulate_traj(num_sim, noise):
             E_DLQG[num_sim, move, :] = compute_effort(data_DLQG.T[:, :4], command_DLQG)
 
     return (
-        N_ILQG,
-        N_FL,
-        N_DLQG,
+        E_ILQG,
+        E_FL,
+        E_DLQG,
         E_ILQG,
         E_FL,
         E_DLQG
@@ -436,7 +448,7 @@ def append_last(arr):
 
 
 if __name__ == "__main__":
-    NUM_SIM = 20
+    NUM_SIM = 100
     NOISE = True
     N_ILQG, N_FL, N_DLQG, E_ILQG, E_FL, E_DLQG = simulate_traj(NUM_SIM, NOISE)
     
@@ -460,9 +472,9 @@ if __name__ == "__main__":
     E_FL_mean = append_last(E_FL_mean)
     E_DLQG_mean = append_last(E_DLQG_mean)
 
-    cost, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation(N_ILQG_mean[:8], 0)
-    _, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation(N_FL_mean[:8], 1)
-    _, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation(N_DLQG_mean[:8], 2)
+    cost, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation_ati(N_ILQG_mean[:8], 0)
+    _, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation_ati(N_FL_mean[:8], 1)
+    _, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation_ati(N_DLQG_mean[:8], 2)
 
     _, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation(E_ILQG_mean[:8], 0)
     _, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation(E_FL_mean[:8], 1)
