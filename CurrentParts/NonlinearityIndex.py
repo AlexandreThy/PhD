@@ -45,7 +45,7 @@ def time_derivative(data, dt):
     return derivative
 
 
-def compute_torque(x, u, F=0):
+def compute_torque(x, u):
     A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
 
     l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
@@ -82,252 +82,6 @@ def compute_torque(x, u, F=0):
 
     return A @ (u * fl * ff_v)
 
-
-def f(x, u, F=0):
-    C = np.array(
-        [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
-    )
-
-    Denominator = a3 * (a1 - a3) - a2**2 * np.cos(x[1]) ** 2
-    Minv = np.array(
-        [
-            [a3 / Denominator, (-a2 * np.cos(x[1]) - a3) / Denominator],
-            [
-                (-a2 * np.cos(x[1]) - a3) / Denominator,
-                (2 * a2 * np.cos(x[1]) + a1) / Denominator,
-            ],
-        ]
-    )
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-
-    ff_v = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
-    ang_acc = Minv @ (A @ (u * fl * ff_v) - Bdyn @ x[2:4] - C + F)
-
-    return np.array([[x[2], x[3], ang_acc[0], ang_acc[1], 0, 0]])
-
-
-def dfdx(x, u):
-
-    theta1, theta2, dtheta1, dtheta2 = x[:4]
-    C = np.array(
-        [
-            -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.sin(theta2),
-            dtheta1**2 * a2 * np.sin(theta2),
-        ]
-    )
-
-    dCdte = np.array(
-        [
-            -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.cos(theta2),
-            dtheta1**2 * a2 * np.cos(theta2),
-        ]
-    )
-    dCdos = np.array(
-        [-dtheta2 * 2 * a2 * np.sin(theta2), 2 * dtheta1 * a2 * np.sin(theta2)]
-    )
-    dCdoe = np.array([(-2 * dtheta1 - 2 * dtheta2) * a2 * np.sin(theta2), 0])
-
-    # Inertia matrix
-    M = np.array(
-        [
-            [a1 + 2 * a2 * np.cos(theta2), a3 + a2 * np.cos(theta2)],
-            [a3 + a2 * np.cos(theta2), a3],
-        ]
-    )
-
-    Minv = np.linalg.inv(M)
-
-    dM = np.array(
-        [[-2 * a2 * np.sin(theta2), -a2 * np.sin(theta2)], [-a2 * np.sin(theta2), 0]]
-    )
-
-    Moment_Arm = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = (
-        1
-        + Moment_Arm[0] * (theta0[0] - x[0]) / l0
-        + Moment_Arm[1] * (theta0[1] - x[1]) / l0
-    )
-    dldts = -Moment_Arm[0] / l0
-    dldte = -Moment_Arm[1] / l0
-
-    v = Moment_Arm[0] * (-x[2]) / l0 + Moment_Arm[1] * (-x[3]) / l0
-    dvdos = -Moment_Arm[0] / l0
-    dvdoe = -Moment_Arm[1] / l0
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-
-    dfldl = fl * np.sign((l**1.55 - 1) / 0.81) * (1.55 * l**0.55 / 0.81)
-    fv = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
-    dfvdl = np.where(v <= 0, 0, v * (-4.21 + 5.34 * l) / (0.62 + v))
-
-    dfvdv = np.where(
-        v <= 0,
-        7.39 * (1 + 0.96) / (-7.39 + 0.96 * v) ** 2,
-        -0.62 * (-3.12 + 4.21 * l - 2.67 * l**2 + 1) / (0.62 + v) ** 2,
-    )
-
-    dfldts = dfldl * dldts
-    dfldte = dfldl * dldte
-    dfvdts = dfvdl * dldts
-    dfvdte = dfvdl * dldte
-    dfvdos = dfvdv * dvdos
-    dfvdoe = dfvdv * dvdoe
-
-    # Compute acceleration dependencies
-    dtheta = np.array([dtheta1, dtheta2])
-
-    d_accel_theta1 = Minv @ (Moment_Arm @ (u * (dfldts * fv + fl * dfvdts)))
-    d_accel_dtheta1 = Minv @ (
-        Moment_Arm @ (u * dfvdos * fl) - dCdos - Bdyn @ np.array([1, 0])
-    )
-    d_accel_theta2 = -Minv @ (
-        dM @ Minv @ (Moment_Arm @ (u * fl * fv) - C - Bdyn @ dtheta)
-    ) + Minv @ (Moment_Arm @ (u * (dfldte * fv + fl * dfvdte)) - dCdte)
-    d_accel_dtheta2 = Minv @ (
-        Moment_Arm @ (u * dfvdoe * fl) - dCdoe - Bdyn @ np.array([0, 1])
-    )
-
-    # Construct the Jacobian matrix
-    A = np.zeros((4, 4))
-
-    A[0, 2] = 1
-    A[1, 3] = 1
-
-    # Acceleration contributions
-    A[2, 0] = d_accel_theta1[0]
-    A[2, 2] = d_accel_dtheta1[0]
-    A[2, 1] = d_accel_theta2[0]
-    A[2, 3] = d_accel_dtheta2[0]
-
-    A[3, 0] = d_accel_theta1[1]
-    A[3, 2] = d_accel_dtheta1[1]
-    A[3, 1] = d_accel_theta2[1]
-    A[3, 3] = d_accel_dtheta2[1]
-    return A
-
-
-def dfdu(x, u):
-    Denominator = a3 * (a1 - a3) - a2**2 * np.cos(x[1]) ** 2
-    Minv = np.array(
-        [
-            [a3 / Denominator, (-a2 * np.cos(x[1]) - a3) / Denominator],
-            [
-                (-a2 * np.cos(x[1]) - a3) / Denominator,
-                (2 * a2 * np.cos(x[1]) + a1) / Denominator,
-            ],
-        ]
-    )
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-    # Equation (6): fl(l)
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-    # Equation (7): ff_v(l, v)
-    fv = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
-    B = np.zeros((4, 6))
-    for i in range(6):
-        du = np.zeros(6)
-        du[i] = 1
-        B[2:, i] = Minv @ (A @ (du * fl * fv))
-    return B
-
-
-def compute_nl_index(x, u, neglect_u=True):
-
-    N = np.zeros(x.shape[0] - 1)
-    for i in range(1, x.shape[0]):
-        uforlin = np.zeros(6) if neglect_u else u[i - 1]
-        x_true = x[i]
-        x_pred = (
-            x[i - 1]
-            + dt * dfdx(x[i - 1], uforlin) @ x[i - 1]
-            + dt * dfdu(x[i - 1], uforlin) @ u[i - 1]
-        )
-        N[i - 1] = np.linalg.norm(x_true[2:4] - x_pred[2:4])
-    return N
-
-
 def compute_effort(x, u):
     N = np.zeros(x.shape[0] - 1)
     for i in range(x.shape[0] - 1):
@@ -336,38 +90,32 @@ def compute_effort(x, u):
     return N
 
 
-def compute_correlation(x, i):
+def compute_correlation_peak_joint_torque(x, controller=2):
 
     y = np.load("Costdata.npz")["my_array"]
-    result = scipy.stats.linregress(y[:8, 2], x)
-    #print(y[:8,i])
+    result = scipy.stats.linregress(y[:8, controller], x)
 
     slope = result.slope
     intercept = result.intercept
     r = result.rvalue
     r2 = r**2
-    print(r2)
 
-    return y[:, 2], r2, slope, intercept
+    return y[:, controller], r2, slope, intercept
 
-def compute_correlation_ati(x, i):
+def compute_correlation_motor_cost(x, controller=2):
 
-    y = np.load("Costdata.npz")["my_array"]
-    result = scipy.stats.linregress(y[:8, i], x)
-    #print(y[:8,i])
+    y = np.load("Costr.npz")["my_array"]
+    result = scipy.stats.linregress(y[:8, controller], x)
 
     slope = result.slope
     intercept = result.intercept
     r = result.rvalue
     r2 = r**2
-    return y[:, i], r2, slope, intercept
+
+    return y[:, controller], r2, slope, intercept
 
 
 def simulate_traj(num_sim, noise):
-
-    N_FL = np.zeros((NUM_SIM, 8, NUM_ITERATIONS))
-    N_DLQG = np.zeros((NUM_SIM, 8, NUM_ITERATIONS))
-    N_ILQG = np.zeros((NUM_SIM, 8, NUM_ITERATIONS))
 
     E_ILQG = np.zeros((NUM_SIM, 8, NUM_ITERATIONS))
     E_DLQG = np.zeros((NUM_SIM, 8, NUM_ITERATIONS))
@@ -392,7 +140,7 @@ def simulate_traj(num_sim, noise):
                 print_iterations=False,
                 motornoise_variance=MN,
             )
-            N_ILQG[num_sim, move, :] = compute_nl_index(data_ilqg, command_ilqg)
+
             E_ILQG[num_sim, move, :] = compute_effort(data_ilqg, command_ilqg)
 
             _, _, data_FL, command_FL = simulate_FL(
@@ -411,8 +159,8 @@ def simulate_traj(num_sim, noise):
                 motornoise_variance=MN,
             )
 
-            N_FL[num_sim, move, :] = compute_nl_index(data_FL[:, :4], command_FL)
             E_FL[num_sim, move, :] = compute_effort(data_FL[:, :4], command_FL)
+
             _, _, command_DLQG, data_DLQG = DLQG_6Muscles(
                 w1=WP,
                 w2=WP,
@@ -428,18 +176,13 @@ def simulate_traj(num_sim, noise):
                 Activate_Noise=noise,
                 motornoise_variance=MN,
             )
-            N_DLQG[num_sim, move, :] = compute_nl_index(
-                data_DLQG.T[:, :4], command_DLQG
-            )
+
             E_DLQG[num_sim, move, :] = compute_effort(data_DLQG.T[:, :4], command_DLQG)
 
     return (
         E_ILQG,
         E_FL,
         E_DLQG,
-        E_ILQG,
-        E_FL,
-        E_DLQG
     )
 
 
@@ -450,68 +193,60 @@ def append_last(arr):
 if __name__ == "__main__":
     NUM_SIM = 100
     NOISE = True
-    N_ILQG, N_FL, N_DLQG, E_ILQG, E_FL, E_DLQG = simulate_traj(NUM_SIM, NOISE)
-    
-    N_ILQG_mean = np.mean(N_ILQG, axis=(0, 2))
-    N_FL_mean = np.mean(N_FL, axis=(0, 2))
-    N_DLQG_mean = np.mean(N_DLQG, axis=(0, 2))
+    peak_joint_torque_ILQG, peak_joint_torque_FL, peak_joint_torque_DLQG= simulate_traj(NUM_SIM, NOISE)
 
-    N_ILQG_mean = append_last(N_ILQG_mean)
-    N_FL_mean = append_last(N_FL_mean)
-    N_DLQG_mean = append_last(N_DLQG_mean)
+    peak_joint_torque_ILQG_mean = np.mean(peak_joint_torque_ILQG, axis=(0))
+    peak_joint_torque_FL_mean = np.mean(peak_joint_torque_FL, axis=(0))
+    peak_joint_torque_DLQG_mean = np.mean(peak_joint_torque_DLQG, axis=(0))
 
-    E_ILQG_mean = np.mean(E_ILQG, axis=(0))
-    E_FL_mean = np.mean(E_FL, axis=(0))
-    E_DLQG_mean = np.mean(E_DLQG, axis=(0))
+    peak_joint_torque_ILQG_mean = np.max(peak_joint_torque_ILQG_mean, axis=(1))
+    peak_joint_torque_FL_mean = np.max(peak_joint_torque_FL_mean, axis=(1))
+    peak_joint_torque_DLQG_mean = np.max(peak_joint_torque_DLQG_mean, axis=(1))
 
-    E_ILQG_mean = np.max(E_ILQG_mean, axis=(1))
-    E_FL_mean = np.max(E_FL_mean, axis=(1))
-    E_DLQG_mean = np.max(E_DLQG_mean, axis=(1))
+    peak_joint_torque_ILQG_mean = append_last(peak_joint_torque_ILQG_mean)
+    peak_joint_torque_FL_mean = append_last(peak_joint_torque_FL_mean)
+    peak_joint_torque_DLQG_mean = append_last(peak_joint_torque_DLQG_mean)
 
-    E_ILQG_mean = append_last(E_ILQG_mean)
-    E_FL_mean = append_last(E_FL_mean)
-    E_DLQG_mean = append_last(E_DLQG_mean)
+    motorcost_ilqg, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation_motor_cost(peak_joint_torque_ILQG_mean[:8], i=2)
+    motorcost_fl, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation_motor_cost(peak_joint_torque_FL_mean[:8], i=2)
+    motorcost_dlqg, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation_motor_cost(peak_joint_torque_DLQG_mean[:8], i=2)
 
-    cost, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation_ati(N_ILQG_mean[:8], 0)
-    _, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation_ati(N_FL_mean[:8], 1)
-    _, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation_ati(N_DLQG_mean[:8], 2)
-
-    _, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation(E_ILQG_mean[:8], 0)
-    _, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation(E_FL_mean[:8], 1)
-    _, e_rdlqg, e_slope_dlqg, e_intercept_dlqg = compute_correlation(E_DLQG_mean[:8], 2)
+    cost_ilqg, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation_peak_joint_torque(peak_joint_torque_ILQG_mean[:8], i=2)
+    cost_fl, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation_peak_joint_torque(peak_joint_torque_FL_mean[:8], i=2)
+    cost_dlqg, e_rdlqg, e_slope_dlqg, e_intercept_dlqg = compute_correlation_peak_joint_torque(peak_joint_torque_DLQG_mean[:8], i=2)
 
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(8, 8))
 
     ax.plot(
         np.linspace(0, 2 * pi, 9),
-        N_ILQG_mean / np.max(N_ILQG_mean),
+        peak_joint_torque_ILQG_mean,
         color=colors[0],
     )
     ax.plot(
         np.linspace(0, 2 * pi, 9),
-        N_FL_mean / np.max(N_FL_mean),
+        peak_joint_torque_FL_mean,
         color=colors[1],
     )
 
     ax.plot(
         np.linspace(0, 2 * pi, 9),
-        N_DLQG_mean / np.max(N_DLQG_mean),
+        peak_joint_torque_DLQG_mean,
         color=colors[2],
     )
 
     ax.scatter(
         np.linspace(0, 2 * pi, 9),
-        N_ILQG_mean / np.max(N_ILQG_mean),
+        peak_joint_torque_ILQG_mean,
         color=colors[0],
     )
     ax.scatter(
         np.linspace(0, 2 * pi, 9),
-        N_FL_mean / np.max(N_FL_mean),
+        peak_joint_torque_FL_mean,
         color=colors[1],
     )
     ax.scatter(
         np.linspace(0, 2 * pi, 9),
-        N_DLQG_mean / np.max(N_DLQG_mean),
+        peak_joint_torque_DLQG_mean,
         color=colors[2],
     )
 
@@ -544,85 +279,19 @@ if __name__ == "__main__":
     )
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
     ax.set_title("Peak Nonlinearity Index vs Cost Function", fontsize=13)
-    plt.savefig("Corr_Plots_1_Noisy.svg", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_1DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
-    fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(8, 8))
-
-    ax.plot(
-        np.linspace(0, 2 * pi, 9),
-        E_ILQG_mean / np.max(E_ILQG_mean),
-        color=colors[0],
-    )
-    ax.plot(
-        np.linspace(0, 2 * pi, 9),
-        E_FL_mean / np.max(E_FL_mean),
-        color=colors[1],
-    )
-
-    ax.plot(
-        np.linspace(0, 2 * pi, 9),
-        E_DLQG_mean / np.max(E_DLQG_mean),
-        color=colors[2],
-    )
-
-    ax.scatter(
-        np.linspace(0, 2 * pi, 9),
-        E_ILQG_mean / np.max(E_ILQG_mean),
-        color=colors[0],
-    )
-    ax.scatter(
-        np.linspace(0, 2 * pi, 9),
-        E_FL_mean / np.max(E_FL_mean),
-        color=colors[1],
-    )
-    ax.scatter(
-        np.linspace(0, 2 * pi, 9),
-        E_DLQG_mean / np.max(E_DLQG_mean),
-        color=colors[2],
-    )
-
-    ax.text(
-        0,
-        1.1,
-        f"FL : r² = {e_rfl:.2f}",
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-        fontsize=12,
-    )
-    ax.text(
-        0,
-        1.05,
-        f"ILQG : r² = {e_rilqg:.2f}",
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-        fontsize=12,
-    )
-    ax.text(
-        0,
-        1.00,
-        f"DLQG : r² = {e_rdlqg:.2f}",
-        ha="center",
-        va="center",
-        transform=ax.transAxes,
-        fontsize=12,
-    )
-    ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
-    ax.set_title("Peak Joint Power vs Cost Function", fontsize=13)
-    plt.savefig("Corr_Plots_2_Noisy.svg", dpi=300, bbox_inches="tight")
-    plt.show()
 
     angles = np.linspace(0, 2 * pi, 9)[:-1]
     angles_deg = np.degrees(angles)
 
     fig, ax = plt.subplots(3, figsize=(8, 8))
 
-    cost = cost[:8]
+    
     ax[0].scatter(
-        cost,
-        N_ILQG_mean[:8],
+        motorcost_ilqg[:8],
+        peak_joint_torque_ILQG_mean[:8],
         marker="o",
         color=colors[0],
         linewidth=2,
@@ -630,8 +299,8 @@ if __name__ == "__main__":
     )
 
     ax[1].scatter(
-        cost,
-        N_FL_mean[:8],
+        motorcost_fl[:8],
+        peak_joint_torque_FL_mean[:8],
         marker="o",
         color=colors[1],
         linewidth=2,
@@ -639,8 +308,8 @@ if __name__ == "__main__":
     )
 
     ax[2].scatter(
-        cost,
-        N_DLQG_mean[:8],
+        motorcost_dlqg[:8],
+        peak_joint_torque_DLQG_mean[:8],
         marker="o",
         color=colors[2],
         linewidth=2,
@@ -648,24 +317,24 @@ if __name__ == "__main__":
     )
 
     ax[0].plot(
-        cost,
-        n_slope_ilqg * cost + n_intercept_ilqg,
+        motorcost_ilqg[:8],
+        n_slope_ilqg * motorcost_ilqg[:8] + n_intercept_ilqg,
         color=colors[0],
         linestyle="--",
         label="ILQG Fit",
     )
 
     ax[1].plot(
-        cost,
-        n_slope_fl * cost + n_intercept_fl,
+        motorcost_fl[:8],
+        n_slope_fl * motorcost_fl[:8] + n_intercept_fl,
         color=colors[1],
         linestyle="--",
         label="FL Fit",
     )
 
     ax[2].plot(
-        cost,
-        n_slope_dlqg * cost + n_intercept_dlqg,
+        motorcost_dlqg[:8],
+        n_slope_dlqg * motorcost_dlqg[:8] + n_intercept_dlqg,
         color=colors[2],
         linestyle="--",
         label="DLQG Fit",
@@ -697,19 +366,17 @@ if __name__ == "__main__":
 
     for i in range(3):
 
-        ax[i].set_xlabel("DLQG Movement Cost")
-        ax[i].set_ylabel("Nonlinearity Index")
+        ax[i].set_xlabel("DLQG Motor Cost")
+        ax[i].set_ylabel("Peak Joint Power Index")
         ax[i].grid(True)
 
-    plt.savefig("Corr_Plots_3_Noisy.svg", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_2DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
-
     fig, ax = plt.subplots(3, figsize=(8, 8))
 
-    cost = cost[:8]
     ax[0].scatter(
-        cost,
-        E_ILQG_mean[:8],
+        cost_ilqg[:8],
+        peak_joint_torque_ILQG_mean[:8],
         marker="o",
         color=colors[0],
         linewidth=2,
@@ -717,8 +384,8 @@ if __name__ == "__main__":
     )
 
     ax[1].scatter(
-        cost,
-        E_FL_mean[:8],
+        cost_fl[:8],
+        peak_joint_torque_FL_mean[:8],
         marker="o",
         color=colors[1],
         linewidth=2,
@@ -726,8 +393,8 @@ if __name__ == "__main__":
     )
 
     ax[2].scatter(
-        cost,
-        E_DLQG_mean[:8],
+        cost_dlqg[:8],
+        peak_joint_torque_DLQG_mean[:8],
         marker="o",
         color=colors[2],
         linewidth=2,
@@ -735,24 +402,24 @@ if __name__ == "__main__":
     )
 
     ax[0].plot(
-        cost,
-        e_slope_ilqg * cost + e_intercept_ilqg,
+        cost_ilqg[:8],
+        e_slope_ilqg * cost_ilqg[:8] + e_intercept_ilqg,
         color=colors[0],
         linestyle="--",
         label="ILQG Fit",
     )
 
     ax[1].plot(
-        cost,
-        e_slope_fl * cost + e_intercept_fl,
+        cost_fl[:8],
+        e_slope_fl * cost_fl[:8] + e_intercept_fl,
         color=colors[1],
         linestyle="--",
         label="FL Fit",
     )
 
     ax[2].plot(
-        cost,
-        e_slope_dlqg * cost + e_intercept_dlqg,
+        cost_dlqg[:8],
+        e_slope_dlqg * cost_dlqg[:8] + e_intercept_dlqg,
         color=colors[2],
         linestyle="--",
         label="DLQG Fit",
@@ -784,9 +451,9 @@ if __name__ == "__main__":
 
     for i in range(3):
 
-        ax[i].set_xlabel("DLQG Movement Cost")
+        ax[i].set_xlabel("DLQG Cost")
         ax[i].set_ylabel("Peak Joint Power Index")
         ax[i].grid(True)
 
-    plt.savefig("Corr_Plots_4_Noisy.svg", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_3DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
