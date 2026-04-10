@@ -207,13 +207,13 @@ if __name__ == "__main__":
     peak_joint_torque_FL_mean = append_last(peak_joint_torque_FL_mean)
     peak_joint_torque_DLQG_mean = append_last(peak_joint_torque_DLQG_mean)
 
-    motorcost_ilqg, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation_motor_cost(peak_joint_torque_ILQG_mean[:8], i=2)
-    motorcost_fl, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation_motor_cost(peak_joint_torque_FL_mean[:8], i=2)
-    motorcost_dlqg, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation_motor_cost(peak_joint_torque_DLQG_mean[:8], i=2)
+    motorcost_ilqg, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation_motor_cost(peak_joint_torque_ILQG_mean[:8], controller=2)
+    motorcost_fl, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation_motor_cost(peak_joint_torque_FL_mean[:8], controller=2)
+    motorcost_dlqg, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation_motor_cost(peak_joint_torque_DLQG_mean[:8], controller=2)
 
-    cost_ilqg, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation_peak_joint_torque(peak_joint_torque_ILQG_mean[:8], i=2)
-    cost_fl, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation_peak_joint_torque(peak_joint_torque_FL_mean[:8], i=2)
-    cost_dlqg, e_rdlqg, e_slope_dlqg, e_intercept_dlqg = compute_correlation_peak_joint_torque(peak_joint_torque_DLQG_mean[:8], i=2)
+    cost_ilqg, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation_peak_joint_torque(peak_joint_torque_ILQG_mean[:8], controller=2)
+    cost_fl, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation_peak_joint_torque(peak_joint_torque_FL_mean[:8], controller=2)
+    cost_dlqg, e_rdlqg, e_slope_dlqg, e_intercept_dlqg = compute_correlation_peak_joint_torque(peak_joint_torque_DLQG_mean[:8], controller=2)
 
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(8, 8))
 
