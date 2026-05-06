@@ -86,7 +86,8 @@ def compute_effort(x, u):
     N = np.zeros(x.shape[0] - 1)
     for i in range(x.shape[0] - 1):
         torque = compute_torque(x[i], u[i])
-        N[i] = torque[0] * x[i, 2] + torque[1] * x[i, 3]
+        #N[i] = torque[0] * x[i, 2] + torque[1] * x[i, 3]
+        N[i] = np.linalg.norm(torque)
     return N
 
 
@@ -195,13 +196,9 @@ if __name__ == "__main__":
     NOISE = True
     peak_joint_torque_ILQG, peak_joint_torque_FL, peak_joint_torque_DLQG= simulate_traj(NUM_SIM, NOISE)
 
-    peak_joint_torque_ILQG_mean = np.mean(peak_joint_torque_ILQG, axis=(0))
-    peak_joint_torque_FL_mean = np.mean(peak_joint_torque_FL, axis=(0))
-    peak_joint_torque_DLQG_mean = np.mean(peak_joint_torque_DLQG, axis=(0))
-
-    peak_joint_torque_ILQG_mean = np.max(peak_joint_torque_ILQG_mean, axis=(1))
-    peak_joint_torque_FL_mean = np.max(peak_joint_torque_FL_mean, axis=(1))
-    peak_joint_torque_DLQG_mean = np.max(peak_joint_torque_DLQG_mean, axis=(1))
+    peak_joint_torque_ILQG_mean = np.mean(peak_joint_torque_ILQG, axis=(0,1))
+    peak_joint_torque_FL_mean = np.mean(peak_joint_torque_FL, axis=(0,1))
+    peak_joint_torque_DLQG_mean = np.mean(peak_joint_torque_DLQG, axis=(0,1))
 
     peak_joint_torque_ILQG_mean = append_last(peak_joint_torque_ILQG_mean)
     peak_joint_torque_FL_mean = append_last(peak_joint_torque_FL_mean)
@@ -279,7 +276,7 @@ if __name__ == "__main__":
     )
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
     ax.set_title("Peak Nonlinearity Index vs Cost Function", fontsize=13)
-    plt.savefig("Corr_Plots_1DLQG.svg", dpi=300, bbox_inches="tight")
+    #plt.savefig("Corr_Plots_1DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
 
@@ -370,7 +367,7 @@ if __name__ == "__main__":
         ax[i].set_ylabel("Peak Joint Power Index")
         ax[i].grid(True)
 
-    plt.savefig("Corr_Plots_2DLQG.svg", dpi=300, bbox_inches="tight")
+    #plt.savefig("Corr_Plots_2DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
     fig, ax = plt.subplots(3, figsize=(8, 8))
 
@@ -455,5 +452,5 @@ if __name__ == "__main__":
         ax[i].set_ylabel("Peak Joint Power Index")
         ax[i].grid(True)
 
-    plt.savefig("Corr_Plots_3DLQG.svg", dpi=300, bbox_inches="tight")
+    #plt.savefig("Corr_Plots_3DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
