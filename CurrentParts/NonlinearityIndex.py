@@ -86,8 +86,8 @@ def compute_effort(x, u):
     N = np.zeros(x.shape[0] - 1)
     for i in range(x.shape[0] - 1):
         torque = compute_torque(x[i], u[i])
-        #N[i] = torque[0] * x[i, 2] + torque[1] * x[i, 3]
-        N[i] = np.linalg.norm(torque)
+        N[i] = torque[0] * x[i, 2] + torque[1] * x[i, 3]
+        #N[i] = np.linalg.norm(torque)
     return N
 
 
@@ -196,21 +196,28 @@ if __name__ == "__main__":
     NOISE = True
     peak_joint_torque_ILQG, peak_joint_torque_FL, peak_joint_torque_DLQG= simulate_traj(NUM_SIM, NOISE)
 
-    peak_joint_torque_ILQG_mean = np.mean(peak_joint_torque_ILQG, axis=(0,1))
-    peak_joint_torque_FL_mean = np.mean(peak_joint_torque_FL, axis=(0,1))
-    peak_joint_torque_DLQG_mean = np.mean(peak_joint_torque_DLQG, axis=(0,1))
+
+    peak_joint_torque_ILQG_mean = np.max(peak_joint_torque_ILQG, axis=(2))
+    peak_joint_torque_FL_mean = np.max(peak_joint_torque_FL, axis=(2))
+    peak_joint_torque_DLQG_mean = np.max(peak_joint_torque_DLQG, axis=(2))
+
+    peak_joint_torque_ILQG_mean = np.mean(peak_joint_torque_ILQG_mean, axis=(0))
+    peak_joint_torque_FL_mean = np.mean(peak_joint_torque_FL_mean, axis=(0))
+    peak_joint_torque_DLQG_mean = np.mean(peak_joint_torque_DLQG_mean, axis=(0))
+
+    
 
     peak_joint_torque_ILQG_mean = append_last(peak_joint_torque_ILQG_mean)
     peak_joint_torque_FL_mean = append_last(peak_joint_torque_FL_mean)
     peak_joint_torque_DLQG_mean = append_last(peak_joint_torque_DLQG_mean)
 
-    motorcost_ilqg, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation_motor_cost(peak_joint_torque_ILQG_mean[:8], controller=2)
-    motorcost_fl, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation_motor_cost(peak_joint_torque_FL_mean[:8], controller=2)
-    motorcost_dlqg, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation_motor_cost(peak_joint_torque_DLQG_mean[:8], controller=2)
+    motorcost, n_rilqg, n_slope_ilqg, n_intercept_ilqg = compute_correlation_motor_cost(peak_joint_torque_ILQG_mean[:8], controller=2)
+    _, n_rfl, n_slope_fl, n_intercept_fl = compute_correlation_motor_cost(peak_joint_torque_FL_mean[:8], controller=2)
+    _, n_rdlqg, n_slope_dlqg, n_intercept_dlqg = compute_correlation_motor_cost(peak_joint_torque_DLQG_mean[:8], controller=2)
 
-    cost_ilqg, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation_peak_joint_torque(peak_joint_torque_ILQG_mean[:8], controller=2)
-    cost_fl, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation_peak_joint_torque(peak_joint_torque_FL_mean[:8], controller=2)
-    cost_dlqg, e_rdlqg, e_slope_dlqg, e_intercept_dlqg = compute_correlation_peak_joint_torque(peak_joint_torque_DLQG_mean[:8], controller=2)
+    cost, e_rilqg, e_slope_ilqg, e_intercept_ilqg = compute_correlation_peak_joint_torque(peak_joint_torque_ILQG_mean[:8], controller=2)
+    _, e_rfl, e_slope_fl, e_intercept_fl = compute_correlation_peak_joint_torque(peak_joint_torque_FL_mean[:8], controller=2)
+    _, e_rdlqg, e_slope_dlqg, e_intercept_dlqg = compute_correlation_peak_joint_torque(peak_joint_torque_DLQG_mean[:8], controller=2)
 
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(8, 8))
 
@@ -276,7 +283,7 @@ if __name__ == "__main__":
     )
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
     ax.set_title("Peak Nonlinearity Index vs Cost Function", fontsize=13)
-    #plt.savefig("Corr_Plots_1DLQG.svg", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_1DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
 
 
@@ -287,7 +294,7 @@ if __name__ == "__main__":
 
     
     ax[0].scatter(
-        motorcost_ilqg[:8],
+        motorcost[:8],
         peak_joint_torque_ILQG_mean[:8],
         marker="o",
         color=colors[0],
@@ -296,7 +303,7 @@ if __name__ == "__main__":
     )
 
     ax[1].scatter(
-        motorcost_fl[:8],
+        motorcost[:8],
         peak_joint_torque_FL_mean[:8],
         marker="o",
         color=colors[1],
@@ -305,7 +312,7 @@ if __name__ == "__main__":
     )
 
     ax[2].scatter(
-        motorcost_dlqg[:8],
+        motorcost[:8],
         peak_joint_torque_DLQG_mean[:8],
         marker="o",
         color=colors[2],
@@ -314,24 +321,24 @@ if __name__ == "__main__":
     )
 
     ax[0].plot(
-        motorcost_ilqg[:8],
-        n_slope_ilqg * motorcost_ilqg[:8] + n_intercept_ilqg,
+        motorcost[:8],
+        n_slope_ilqg * motorcost[:8] + n_intercept_ilqg,
         color=colors[0],
         linestyle="--",
         label="ILQG Fit",
     )
 
     ax[1].plot(
-        motorcost_fl[:8],
-        n_slope_fl * motorcost_fl[:8] + n_intercept_fl,
+        motorcost[:8],
+        n_slope_fl * motorcost[:8] + n_intercept_fl,
         color=colors[1],
         linestyle="--",
         label="FL Fit",
     )
 
     ax[2].plot(
-        motorcost_dlqg[:8],
-        n_slope_dlqg * motorcost_dlqg[:8] + n_intercept_dlqg,
+        motorcost[:8],
+        n_slope_dlqg * motorcost[:8] + n_intercept_dlqg,
         color=colors[2],
         linestyle="--",
         label="DLQG Fit",
@@ -367,12 +374,12 @@ if __name__ == "__main__":
         ax[i].set_ylabel("Peak Joint Power Index")
         ax[i].grid(True)
 
-    #plt.savefig("Corr_Plots_2DLQG.svg", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_2DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
     fig, ax = plt.subplots(3, figsize=(8, 8))
 
     ax[0].scatter(
-        cost_ilqg[:8],
+        cost[:8],
         peak_joint_torque_ILQG_mean[:8],
         marker="o",
         color=colors[0],
@@ -381,7 +388,7 @@ if __name__ == "__main__":
     )
 
     ax[1].scatter(
-        cost_fl[:8],
+        cost[:8],
         peak_joint_torque_FL_mean[:8],
         marker="o",
         color=colors[1],
@@ -390,7 +397,7 @@ if __name__ == "__main__":
     )
 
     ax[2].scatter(
-        cost_dlqg[:8],
+        cost[:8],
         peak_joint_torque_DLQG_mean[:8],
         marker="o",
         color=colors[2],
@@ -399,24 +406,24 @@ if __name__ == "__main__":
     )
 
     ax[0].plot(
-        cost_ilqg[:8],
-        e_slope_ilqg * cost_ilqg[:8] + e_intercept_ilqg,
+        cost[:8],
+        e_slope_dlqg * cost[:8] + e_intercept_dlqg,
         color=colors[0],
         linestyle="--",
         label="ILQG Fit",
     )
 
     ax[1].plot(
-        cost_fl[:8],
-        e_slope_fl * cost_fl[:8] + e_intercept_fl,
+        cost[:8],
+        e_slope_fl * cost[:8] + e_intercept_fl,
         color=colors[1],
         linestyle="--",
         label="FL Fit",
     )
 
     ax[2].plot(
-        cost_dlqg[:8],
-        e_slope_dlqg * cost_dlqg[:8] + e_intercept_dlqg,
+        cost[:8],
+        e_slope_dlqg * cost[:8] + e_intercept_dlqg,
         color=colors[2],
         linestyle="--",
         label="DLQG Fit",
@@ -452,5 +459,5 @@ if __name__ == "__main__":
         ax[i].set_ylabel("Peak Joint Power Index")
         ax[i].grid(True)
 
-    #plt.savefig("Corr_Plots_3DLQG.svg", dpi=300, bbox_inches="tight")
+    plt.savefig("Corr_Plots_3DLQG.svg", dpi=300, bbox_inches="tight")
     plt.show()
