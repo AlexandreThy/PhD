@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
-NUM_SIM = 100
+NUM_SIM = 10
 
 WP = 20000
 WV = 1
@@ -27,8 +27,8 @@ def Cost_function(x, u, w1=WP, w2=WV, r=WR, tg=[0,0]):
     return w1*(thetas-target1)**2 + w1*(thetae-target2)**2 + w2*(omegas**2+omegae**2) + np.sum(u*u) * r
 
 # grid of initial conditions
-x_vals = np.linspace(-10, 10, 20)
-y_vals = np.linspace(30, 45, 15)
+x_vals = np.linspace(-10, 10, 10)
+y_vals = np.linspace(30, 45, 8)
 
 # Two target angles: 90° and 315°
 target_angles_deg = [90, 315]
@@ -51,20 +51,19 @@ for ix, x0 in enumerate(x_vals):
 
             for sim in range(NUM_SIM):
 
-                xLQG, yLQG, uDLQG, z = DLQG_6Muscles(
+                xLQG, yLQG, x, u = simulate_FL(
                     w1=WP, w2=WP, w3=WV, w4=WV,
                     Duration=MovementTime,
-                    r1=WR,
+                    r=1e-8,
                     Num_iter=NumIteration,
                     starting_point=st,
                     targets=tg,
-                    plot=False,
                     Delay=0.06,
                     Activate_Noise=NOISE,
                     motornoise_variance=MN
                 )
 
-                costs[sim] = Cost_function(z.T, uDLQG, tg=tg)
+                costs[sim] = Cost_function(x, u, tg=tg)
 
             cost_maps[angle_deg][ix, iy] = np.mean(costs)
 all_values = np.concatenate([cost_maps[a].flatten() for a in target_angles_deg])
@@ -90,7 +89,7 @@ for ax, angle_deg in zip(axes, target_angles_deg):
     ax.set_aspect("equal")
     ax.set_xlabel("Initial x", fontsize=16)
     ax.set_ylabel("Initial y", fontsize=16)
-    ax.set_title(f"DLQG mean cost — {angle_deg}° direction", fontsize=16)
+    ax.set_title(f"FL mean cost — {angle_deg}° direction", fontsize=16)
     ax.set_yticks([30, 35, 40, 45])
     ax.set_xticks([-10, -5, 0, 5, 10])
     ax.set_xticklabels([-10, -5, 0, 5, 10], fontsize=14)
@@ -98,7 +97,8 @@ for ax, angle_deg in zip(axes, target_angles_deg):
 
 # Single shared colorbar on the right
 cbar = fig.colorbar(im, ax=axes, shrink=0.8)
-cbar.set_label("Mean cost (DLQG)", fontsize=14)
+cbar.set_ticks([.5,1,2])
+cbar.set_label("Mean cost (FL)", fontsize=14)
 
-plt.savefig("DLQG_CostMap_90_315.svg", dpi=300)
+plt.savefig("FL_CostMap_90_315.svg", dpi=300)
 plt.show()

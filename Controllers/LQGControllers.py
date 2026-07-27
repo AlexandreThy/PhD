@@ -1,6 +1,55 @@
 from Helpers.Linearization import *
 from Helpers.Environment import *
 
+# Muscle model constants. Hoisted to module level: they used to be rebuilt from
+# nested lists on every call of Linearization_6dof / f / fu, once per timestep.
+MOMENT_ARM = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
+L0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
+THETA0 = np.array(
+    [
+        [
+            2 * pi / 360 * 15,
+            2 * pi / 360 * 4.88,
+            0,
+            0,
+            2 * pi / 360 * 4.5,
+            2 * pi / 360 * 2.12,
+        ],
+        [
+            0,
+            0,
+            2 * pi / 360 * 80.86,
+            2 * pi / 360 * 109.32,
+            2 * pi / 360 * 92.96,
+            2 * pi / 360 * 91.52,
+        ],
+    ]
+)
+# Derivatives of the muscle length / velocity w.r.t. the joint state are constant.
+DLDTS = -MOMENT_ARM[0] / L0
+DLDTE = -MOMENT_ARM[1] / L0
+
+
+def muscle_force_scaling(x):
+    """
+    Force-length and force-velocity multipliers of the six muscles at state x.
+
+    Returns:
+        (l, v, temp, fl, fv) : normalised length, normalised velocity, the
+        (l**1.55 - 1) / 0.81 intermediate, and the two force gains.
+    """
+    l = 1 + MOMENT_ARM[0] * (THETA0[0] - x[0]) / L0 + MOMENT_ARM[1] * (THETA0[1] - x[1]) / L0
+    v = MOMENT_ARM[0] * (-x[2]) / L0 + MOMENT_ARM[1] * (-x[3]) / L0
+
+    temp = (l**1.55 - 1) / 0.81
+    fl = np.exp(-(np.abs(temp) ** 2.12))
+    fv = np.where(
+        v <= 0,
+        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
+        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
+    )
+    return l, v, temp, fl, fv
+
 
 def compute_forcefield(theta, omega, coefficient):
     """
@@ -484,49 +533,18 @@ def Linearization_6dof(dt, x, u):
         [[-2 * a2 * np.sin(theta2), -a2 * np.sin(theta2)], [-a2 * np.sin(theta2), 0]]
     )
 
-    Moment_Arm = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
+    l, v, temp, fl, fv = muscle_force_scaling(x)
+    dldts = DLDTS
+    dldte = DLDTE
+    dvdos = DLDTS
+    dvdoe = DLDTE
 
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = (
-        1
-        + Moment_Arm[0] * (theta0[0] - x[0]) / l0
-        + Moment_Arm[1] * (theta0[1] - x[1]) / l0
-    )
-    dldts = -Moment_Arm[0] / l0
-    dldte = -Moment_Arm[1] / l0
-
-    v = Moment_Arm[0] * (-x[2]) / l0 + Moment_Arm[1] * (-x[3]) / l0
-    dvdos = -Moment_Arm[0] / l0
-    dvdoe = -Moment_Arm[1] / l0
-    # Equation (6): fl(l)
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-
-    dfldl = fl * np.sign((l**1.55 - 1) / 0.81) * (1.55 * l**0.55 / 0.81)
-    # Equation (7): ff_v(l, v)
-    fv = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
+    dfldl = (
+        -fl
+        * 2.12
+        * np.abs(temp)**1.12
+        * np.sign(temp)
+        * (1.55 * l**0.55 / 0.81)
     )
     dfvdl = np.where(v <= 0, 0, v * (-4.21 + 5.34 * l) / (0.62 + v))
 
@@ -546,15 +564,15 @@ def Linearization_6dof(dt, x, u):
     # Compute acceleration dependencies
     dtheta = np.array([dtheta1, dtheta2])
 
-    d_accel_theta1 = Minv @ (Moment_Arm @ (u * (dfldts * fv + fl * dfvdts)))
+    d_accel_theta1 = Minv @ (MOMENT_ARM @ (u * (dfldts * fv + fl * dfvdts)))
     d_accel_dtheta1 = Minv @ (
-        Moment_Arm @ (u * dfvdos * fl) - dCdos - Bdyn @ np.array([1, 0])
+        MOMENT_ARM @ (u * dfvdos * fl) - dCdos - Bdyn @ np.array([1, 0])
     )
     d_accel_theta2 = -Minv @ (
-        dM @ Minv @ (Moment_Arm @ (u * fl * fv) - C - Bdyn @ dtheta)
-    ) + Minv @ (Moment_Arm @ (u * (dfldte * fv + fl * dfvdte)) - dCdte)
+        dM @ Minv @ (MOMENT_ARM @ (u * fl * fv) - C - Bdyn @ dtheta)
+    ) + Minv @ (MOMENT_ARM @ (u * (dfldte * fv + fl * dfvdte)) - dCdte)
     d_accel_dtheta2 = Minv @ (
-        Moment_Arm @ (u * dfvdoe * fl) - dCdoe - Bdyn @ np.array([0, 1])
+        MOMENT_ARM @ (u * dfvdoe * fl) - dCdoe - Bdyn @ np.array([0, 1])
     )
 
     # Construct the Jacobian matrix
@@ -593,40 +611,8 @@ def f(x, u, F=0):
             ],
         ]
     )
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-
-    ff_v = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
-    theta = Minv @ (A @ (u * fl * ff_v) - Bdyn @ x[2:4] - C + F)
+    _, _, _, fl, ff_v = muscle_force_scaling(x)
+    theta = Minv @ (MOMENT_ARM @ (u * fl * ff_v) - Bdyn @ x[2:4] - C + F)
 
     return np.array([[x[2], x[3], theta[0], theta[1], 0, 0]])
 
@@ -642,44 +628,15 @@ def fu(dt, x, u):
             ],
         ]
     )
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-    # Equation (6): fl(l)
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-    # Equation (7): ff_v(l, v)
-    fv = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
+    _, _, _, fl, fv = muscle_force_scaling(x)
+    # Column i is the response to a unit command on muscle i. The one-hot vector
+    # is reused across iterations rather than reallocated.
     sol = np.zeros((4, 6))
+    du = np.zeros(6)
     for i in range(6):
-        du = np.zeros(6)
         du[i] = 1
-        sol[2:, i] = Minv @ (A @ (du * fl * fv))
+        sol[2:, i] = Minv @ (MOMENT_ARM @ (du * fl * fv))
+        du[i] = 0
     return dt * sol
 
 
@@ -751,6 +708,14 @@ def DLQG_6Muscles(
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
     J = 0
     u = np.zeros(6)
+
+    # Constant across timesteps, so built once instead of on every iteration.
+    Omega_motor = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
+    Omega_measure = np.diag(np.ones(Num_Var) * 1e-4)
+    for i in range(2, 4):
+
+        Omega_motor[i, i] = motornoise_variance
+
     for k in range(Num_iter):
         xcopy = np.copy(x)
         F = (
@@ -764,16 +729,14 @@ def DLQG_6Muscles(
 
         S = Q
         for _ in range(Num_iter - k):
-            L = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
+            # B.T @ S is shared with the gain expression below; @ is
+            # left-associative so this is the same product, computed once.
+            BtS = B.T @ S
+            L = np.linalg.inv(R + BtS @ B) @ B.T @ S @ A
             S = A.T @ S @ (A - B @ L)
         u = -L @ xhat
         J += u.T @ R @ u
 
-        Omega_motor = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-        Omega_measure = np.diag(np.ones(Num_Var) * 1e-4)
-        for i in range(2, 4):
-
-            Omega_motor[i, i] = motornoise_variance
         y[k] = (H @ x).flatten()
         if Activate_Noise == True:
             y[k] += np.random.normal(0, 1e-2, Num_Var)

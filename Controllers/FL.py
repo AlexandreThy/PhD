@@ -19,6 +19,52 @@ a3 = I2
 
 Viscous = np.array([[0.05, 0.025], [0.025, 0.05]])
 
+# Muscle model constants. Hoisted to module level: they used to be rebuilt from
+# nested lists on every call of the dynamics, which dominated the runtime.
+MOMENT_ARM = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
+L0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
+THETA0 = np.array(
+    [
+        [
+            2 * pi / 360 * 15,
+            2 * pi / 360 * 4.88,
+            0,
+            0,
+            2 * pi / 360 * 4.5,
+            2 * pi / 360 * 2.12,
+        ],
+        [
+            0,
+            0,
+            2 * pi / 360 * 80.86,
+            2 * pi / 360 * 109.32,
+            2 * pi / 360 * 92.96,
+            2 * pi / 360 * 91.52,
+        ],
+    ]
+)
+# np.linalg.pinv runs an SVD; the argument never changes so it is computed once.
+MOMENT_ARM_PINV = np.linalg.pinv(MOMENT_ARM)
+
+
+def muscle_force_scaling(x):
+    """
+    Force-length and force-velocity multipliers of the six muscles at state x.
+
+    Returns:
+        (fl, ff_v) : the length- and velocity-dependent gains
+    """
+    l = 1 + MOMENT_ARM[0] * (THETA0[0] - x[0]) / L0 + MOMENT_ARM[1] * (THETA0[1] - x[1]) / L0
+    v = MOMENT_ARM[0] * (-x[2]) / L0 + MOMENT_ARM[1] * (-x[3]) / L0
+
+    fl = np.exp(-(np.abs((l**1.55 - 1) / 0.81) ** 2.12))
+    ff_v = np.where(
+        v <= 0,
+        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
+        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
+    )
+    return fl, ff_v
+
 
 def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     """
@@ -146,39 +192,7 @@ def compute_next_state(x, u, dt, activate_noise, FF, F, ff_power, motornoise_var
         ]
     )
     newx[0:2] += dt * x[2:4]
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-    ff_v = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
-    acc = (
-        np.linalg.solve(M, (A @ (u * fl * ff_v) - Viscous @ (x[2:4]) - C)) + F
-    ).reshape(2)
+    fl, ff_v = muscle_force_scaling(x)
     F = np.zeros(2)
     if FF == True:
         F = compute_forcefield(x[0:2], x[2:4], ff_power)
@@ -188,24 +202,76 @@ def compute_next_state(x, u, dt, activate_noise, FF, F, ff_power, motornoise_var
         else np.zeros(2)
     )
     newx[2:4] += (
-        dt * np.linalg.solve(M, (A @ (u * fl * ff_v) - Viscous @ (x[2:4]) - C + F))
+        dt
+        * np.linalg.solve(
+            M, (MOMENT_ARM @ (u * fl * ff_v) - Viscous @ (x[2:4]) - C + F)
+        )
         + noise
     )
     return newx, F
 
 
+_delayed_dynamics_cache = {}
+
+
+def _delayed_dynamics(dt, delay):
+    """
+    Observation and delayed-state dynamics matrices (H, A, B) of the estimator.
+
+    These depend only on dt and the delay, so they are built once per parameter
+    set rather than on every timestep. Returned read-only: callers must not
+    mutate them in place.
+    """
+    key = (dt, delay)
+    cached = _delayed_dynamics_cache.get(key)
+    if cached is not None:
+        return cached
+
+    H = np.zeros((8, (delay + 1) * 8))
+    H[:, delay * 8 :] = np.identity(8)
+
+    A_basic = np.identity(8)
+    A_basic[0, 2] = dt
+    A_basic[1, 3] = dt
+
+    B_basic = np.zeros((8, 2))
+    B_basic[2, 0] = dt
+    B_basic[3, 1] = dt
+
+    A = np.zeros(((delay + 1) * 8, (delay + 1) * 8))
+    A[:8, :8] = A_basic
+    A[8:, :-8] = np.identity((delay) * 8)
+    B = np.zeros(((delay + 1) * 8, 2))
+    B[:8] = B_basic
+
+    cached = (H, A, B)
+    _delayed_dynamics_cache[key] = cached
+    return cached
+
+
+_noise_cov_cache = {}
+
+
 def NoiseAndCovMatrix(M=np.identity(2), N=8, kdelay=0, motornoise_variance=1e-3):
 
-    SigmaMotor = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
-    SigmaSense = np.diag(np.ones(N) * 1e-4)
+    # The two covariance matrices only depend on the arguments, so they are built
+    # once per parameter set instead of on every timestep. They are returned
+    # read-only: callers must not mutate them in place.
+    key = (N, kdelay, motornoise_variance)
+    cached = _noise_cov_cache.get(key)
+    if cached is None:
+        SigmaMotor = np.zeros((N * (kdelay + 1), N * (kdelay + 1)))
+        SigmaSense = np.diag(np.ones(N) * 1e-4)
 
-    for i in range(2, 4):
+        for i in range(2, 4):
 
-        SigmaMotor[i, i] = motornoise_variance
+            SigmaMotor[i, i] = motornoise_variance
 
-    sensorynoise = np.zeros(N)
-    for i in range(N):
-        sensorynoise[i] = np.random.normal(0, 1e-2)
+        cached = (SigmaMotor, SigmaSense)
+        _noise_cov_cache[key] = cached
+    SigmaMotor, SigmaSense = cached
+
+    sensorynoise = np.random.normal(0, 1e-2, N)
 
     return SigmaMotor, SigmaSense, sensorynoise
 
@@ -227,29 +293,7 @@ def next_state_estimate(
     Returns:
         [x_{t+1},gamma_{t+1}]
     """
-    H = np.zeros((8, (delay + 1) * 8))
-    H[:, delay * 8 :] = np.identity(8)
-
-    A_basic = np.array(
-        [
-            [1, 0, dt, 0, 0, 0, 0, 0],
-            [0, 1, 0, dt, 0, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 0, 0, 0, 0],
-            [0, 0, 0, 0, 1, 0, 0, 0],
-            [0, 0, 0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 0, 0, 1],
-        ]
-    )
-    B_basic = np.zeros((8, 2))
-    B_basic[2, 0] = dt
-    B_basic[3, 1] = dt
-    A = np.zeros(((delay + 1) * 8, (delay + 1) * 8))
-    A[:8, :8] = A_basic
-    A[8:, :-8] = np.identity((delay) * 8)
-    B = np.zeros(((delay + 1) * 8, 2))
-    B[:8] = B_basic
+    H, A, B = _delayed_dynamics(dt, delay)
 
     Omega_motor, Omega_measure, sensorynoise = NoiseAndCovMatrix(
         kdelay=delay, motornoise_variance=motornoise_variance
@@ -375,42 +419,10 @@ def nonlinear_transform_command(L, x):
             x[2] ** 2 * a2 * np.sin(x[1]),
         ]
     )
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
+    fl, ff_v = muscle_force_scaling(x)
 
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-    ff_v = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
-
-    U = np.linalg.pinv(A) @ (M @ linear_command + C + Viscous @ x[2:4])
-    u = np.zeros(6)
-    for i in range(6):
-        u[i] = U[i] / (fl[i] * ff_v[i])
+    U = MOMENT_ARM_PINV @ (M @ linear_command + C + Viscous @ x[2:4])
+    u = U / (fl * ff_v)
     return u, linear_command
 
 

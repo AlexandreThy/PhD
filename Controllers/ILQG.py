@@ -19,6 +19,55 @@ a3 = I2
 
 Viscous = np.array([[0.05, 0.025], [0.025, 0.05]])
 
+# Muscle model constants. Hoisted to module level: they used to be rebuilt from
+# nested lists on every call of f / fx / fu, which dominated the runtime.
+MOMENT_ARM = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
+L0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
+THETA0 = np.array(
+    [
+        [
+            2 * pi / 360 * 15,
+            2 * pi / 360 * 4.88,
+            0,
+            0,
+            2 * pi / 360 * 4.5,
+            2 * pi / 360 * 2.12,
+        ],
+        [
+            0,
+            0,
+            2 * pi / 360 * 80.86,
+            2 * pi / 360 * 109.32,
+            2 * pi / 360 * 92.96,
+            2 * pi / 360 * 91.52,
+        ],
+    ]
+)
+# Derivatives of the muscle length / velocity w.r.t. the joint state are constant.
+DLDTS = -MOMENT_ARM[0] / L0
+DLDTE = -MOMENT_ARM[1] / L0
+
+
+def muscle_force_scaling(x):
+    """
+    Force-length and force-velocity multipliers of the six muscles at state x.
+
+    Returns:
+        (l, v, temp, fl, fv) : normalised length, normalised velocity, the
+        (l**1.55 - 1) / 0.81 intermediate, and the two force gains.
+    """
+    l = 1 + MOMENT_ARM[0] * (THETA0[0] - x[0]) / L0 + MOMENT_ARM[1] * (THETA0[1] - x[1]) / L0
+    v = MOMENT_ARM[0] * (-x[2]) / L0 + MOMENT_ARM[1] * (-x[3]) / L0
+
+    temp = (l**1.55 - 1) / 0.81
+    fl = np.exp(-(np.abs(temp) ** 2.12))
+    fv = np.where(
+        v <= 0,
+        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
+        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
+    )
+    return l, v, temp, fl, fv
+
 
 def compute_angles_from_cartesian(x, y, l1=30, l2=33):
     """
@@ -151,47 +200,18 @@ def get_linearized_dynamics(x, u):
         [[-2 * a2 * np.sin(theta2), -a2 * np.sin(theta2)], [-a2 * np.sin(theta2), 0]]
     )
 
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    dldts = -A[0] / l0
-    dldte = -A[1] / l0
-
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-    dvdos = -A[0] / l0
-    dvdoe = -A[1] / l0
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
+    l, v, temp, fl, fv = muscle_force_scaling(x)
+    dldts = DLDTS
+    dldte = DLDTE
+    dvdos = DLDTS
+    dvdoe = DLDTE
 
     dfldl = (
-        np.exp(np.abs((l**1.55 - 1) / 0.81))
-        * np.sign((l**1.55 - 1) / 0.81)
+        -fl
+        * 2.12
+        * np.abs(temp)**1.12
+        * np.sign(temp)
         * (1.55 * l**0.55 / 0.81)
-    )
-    fv = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
     )
     dfvdl = np.where(v <= 0, 0, v * (-4.21 + 5.34 * l) / (0.62 + v))
 
@@ -211,15 +231,15 @@ def get_linearized_dynamics(x, u):
     # Compute acceleration dependencies
     dtheta = np.array([dtheta1, dtheta2])
 
-    d_accel_theta1 = Minv @ (A @ (u * (dfldts * fv + fl * dfvdts)))
+    d_accel_theta1 = Minv @ (MOMENT_ARM @ (u * (dfldts * fv + fl * dfvdts)))
     d_accel_dtheta1 = Minv @ (
-        A @ (u * dfvdos * fl) - dCdos - Viscous @ np.array([1, 0])
+        MOMENT_ARM @ (u * dfvdos * fl) - dCdos - Viscous @ np.array([1, 0])
     )
     d_accel_theta2 = -Minv @ (
-        dM @ Minv @ (A @ (u * fl * fv) - C - Viscous @ dtheta)
-    ) + Minv @ (A @ (u * (dfldte * fv + fl * dfvdte)) - dCdte)
+        dM @ Minv @ (MOMENT_ARM @ (u * fl * fv) - C - Viscous @ dtheta)
+    ) + Minv @ (MOMENT_ARM @ (u * (dfldte * fv + fl * dfvdte)) - dCdte)
     d_accel_dtheta2 = Minv @ (
-        A @ (u * dfvdoe * fl) - dCdoe - Viscous @ np.array([0, 1])
+        MOMENT_ARM @ (u * dfvdoe * fl) - dCdoe - Viscous @ np.array([0, 1])
     )
 
     # Construct the Jacobian matrix
@@ -257,40 +277,8 @@ def f(x, u, F=0):
             ],
         ]
     )
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-
-    ff_v = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
-    theta = Minv @ (A @ (u * fl * ff_v) - Viscous @ x[2:4] - C + F)
+    _, _, _, fl, ff_v = muscle_force_scaling(x)
+    theta = Minv @ (MOMENT_ARM @ (u * fl * ff_v) - Viscous @ x[2:4] - C + F)
 
     return np.array([[x[2], x[3], theta[0], theta[1]]])
 
@@ -310,44 +298,15 @@ def fu(x, u):
             ],
         ]
     )
-    A = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
-
-    l0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
-    theta0 = np.array(
-        [
-            [
-                2 * pi / 360 * 15,
-                2 * pi / 360 * 4.88,
-                0,
-                0,
-                2 * pi / 360 * 4.5,
-                2 * pi / 360 * 2.12,
-            ],
-            [
-                0,
-                0,
-                2 * pi / 360 * 80.86,
-                2 * pi / 360 * 109.32,
-                2 * pi / 360 * 92.96,
-                2 * pi / 360 * 91.52,
-            ],
-        ]
-    )
-    l = 1 + A[0] * (theta0[0] - x[0]) / l0 + A[1] * (theta0[1] - x[1]) / l0
-    v = A[0] * (-x[2]) / l0 + A[1] * (-x[3]) / l0
-    # Equation (6): fl(l)
-    fl = np.exp(np.abs((l**1.55 - 1) / 0.81))
-    # Equation (7): ff_v(l, v)
-    fv = np.where(
-        v <= 0,
-        (-7.39 - v) / (-7.39 + (-3.21 + 4.17) * v),
-        (0.62 - (-3.12 + 4.21 * l - 2.67 * l**2) * v) / (0.62 + v),
-    )
+    _, _, _, fl, fv = muscle_force_scaling(x)
+    # Column i is the response to a unit command on muscle i. The one-hot vector
+    # is reused across iterations rather than reallocated.
     sol = np.zeros((4, 6))
+    du = np.zeros(6)
     for i in range(6):
-        du = np.zeros(6)
         du[i] = 1
-        sol[2:, i] = Minv @ (A @ (du * fl * fv))
+        sol[2:, i] = Minv @ (MOMENT_ARM @ (du * fl * fv))
+        du[i] = 0
     return sol
 
 
@@ -414,14 +373,20 @@ def step2(x, u, Duration, w1, w2, r1, xtarg):
     q, qbold = np.zeros(K + 1), np.zeros((K + 1, n))
     r, Q, R = np.zeros((K, m)), np.zeros((K + 1, n, n)), np.zeros((K, m, m))
 
+    # The state and control cost Hessians do not depend on the timestep, so they
+    # are evaluated once and broadcast instead of rebuilt K times.
+    identity_n = np.identity(n)
+    Q_step = dt * lxx(w1, w2)
+    R_step = dt * luu(x[0], u[0], r1)
+
     for i in range(K):
-        A[i] = np.identity(n) + dt * fx(x[i], u[i])
+        A[i] = identity_n + dt * fx(x[i], u[i])
         B[i] = dt * fu(x[i], u[i])
         q[i] = dt * l(x[i], u[i], r1, xtarg, w1, w2)
         qbold[i] = dt * lx(x[i], u[i], xtarg, w1, w2)
         r[i] = dt * lu(x[i], u[i], r1)
-        Q[i] = dt * lxx(w1, w2)
-        R[i] = dt * luu(x[i], u[i], r1)
+        Q[i] = Q_step
+        R[i] = R_step
 
     q[-1], qbold[-1], Q[-1] = (
         h(x[-1], w1, w2, xtarg),
@@ -444,13 +409,19 @@ def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
     s[-1] = q[-1]
     sbold[-1] = qbold[-1]
 
-    for k in np.arange(K - 1, -1, -1):
+    for k in range(K - 1, -1, -1):
         temp1, temp2, temp3 = 0, 0, 0
 
+        Sk = S[k + 1]
         for i in range(m):
-            temp1 += C[k, i, :, :].T @ S[k + 1] @ cbold[k, i, :]
-            temp2 += C[k, i, :, :].T @ S[k + 1] @ C[k, i, :, :]
-            temp3 += cbold[k, i, :].T @ S[k + 1] @ cbold[k, i, :]
+            Ci = C[k, i, :, :]
+            cboldi = cbold[k, i, :]
+            # C[k,i].T @ S is common to temp1 and temp2; @ is left-associative
+            # so factoring it out leaves both products unchanged.
+            CiTS = Ci.T @ Sk
+            temp1 += CiTS @ cboldi
+            temp2 += CiTS @ Ci
+            temp3 += cboldi.T @ Sk @ cboldi
 
         gbold = r[k] + B[k].T @ sbold[k + 1] + temp1
         G = B[k].T @ S[k + 1] @ A[k]
@@ -518,29 +489,29 @@ def step5(
 
     sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
     Omega_measure = np.diag(np.ones(4)) * 1e-4
+
+    # Allocated once: only the leading block of each varies with the timestep,
+    # the shift block and the noise covariance are constant.
+    Extended_A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
+    Extended_A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
+    Extended_B = np.zeros(((kdelay + 1) * Num_Var, 6))
+    Omega_sens = np.zeros((len(x0), len(x0)))
+    for idx in [2, 3]:
+        Omega_sens[idx, idx] = motornoise_variance
+
     F = 0
     for i in range(Num_steps):
-        if i != 0:
-            acc = (f(newx[i, :Num_Var], u)[:, 2:4] + F).reshape(2)
-        else:
-            acc = np.zeros(2)
         F = (
             compute_forcefield(newx[i, 0:2], newx[i, 2:4], ff_power)
             if FF == True
             else np.array([0, 0])
         )
-        Extended_A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
         Extended_A[:Num_Var, :Num_Var] = A[i]
-        Extended_A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
-        Extended_B = np.zeros(((kdelay + 1) * Num_Var, 6))
         Extended_B[:Num_Var] = B[i]
 
         deltau = l[i] + L[i] @ xhat[i, :Num_Var]
         u = bestu[i] + deltau
 
-        Omega_sens = np.zeros((len(x0), len(x0)))
-        for idx in [2, 3]:
-            Omega_sens[idx, idx] = motornoise_variance
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
 
         passed_newx = np.copy(newx[i, :-Num_Var])
