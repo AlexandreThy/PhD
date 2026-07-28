@@ -15,6 +15,11 @@ Every script shares its parameters, cost function and plotting style through
 | `sensitivity_analysis.py` | 22 | `SensitivityAnalysis.svg` |
 | `large_amplitude_reaching.py` | 24 | `LongMove.svg` |
 | `path_constraint.py` | 25 | `PathConstraint.svg`, `PathConstraintCommands.svg` |
+| `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `DLQG_CostMap_90_315.svg` + `.npz` |
+| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `Corr_Plots_{1,2,3}DLQG.svg` |
+
+`nonlinearity_index.py` correlates against the cost written by
+`centerout_cost_polar.py`, so run that for the 15 cm / 400 ms condition first.
 
 Figures are written to `Final_Code/figures/`.
 
@@ -34,6 +39,35 @@ Common flags:
   worker process is harder to read.
 - `--outdir DIR` where to write the figures.
 - `--no-show` save without opening a window.
+
+## Changes made when porting 2Dir.py and NonlinearityIndex.py
+
+Both now take their weights from `common.py` like every other script. Beyond
+the weights, the following had to change.
+
+`2Dir.py` did not run as written:
+
+- `DLQG_6Muscles(..., r=1e-8, ...)` raised `TypeError`, since the parameter is
+  named `r1`. It now passes `r1 = WR`.
+- `Cost_function(x, u, ...)` referenced `x` and `u`, which are not defined in
+  that scope — the call returns `xLQG, yLQG, uDLQG, z`. It now scores the DLQG
+  state and command.
+- Every title said "iLQG" although the script calls `DLQG_6Muscles`, so the
+  figure and its filename now say DLQG.
+
+`NonlinearityIndex.py`:
+
+- `compute_torque` inlined `fl = exp(+|(l**1.55 - 1) / 0.81|)`, an older
+  force-length curve that *rises* as the muscle leaves its optimal length. The
+  controllers integrate `exp(-|...|**2.12)`, which falls, so the torque did not
+  match the dynamics that produced the trajectory. It now calls
+  `muscle_force_scaling` from `Controllers/ILQG.py`. This changes the numbers;
+  revert that one call to restore the old behaviour.
+- The third figure plotted the DLQG fit on the ILQG panel.
+- The correlations read `Costdata.npz` and `Costr.npz` from the repository root,
+  which hold results from the old weights. They now read
+  `figures/Cfy40_15cm_400ms_cost.npz`, the matching condition at the current
+  weights, and say so if it is missing.
 
 ## Via-path weights and force field strength
 
