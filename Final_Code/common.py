@@ -46,15 +46,19 @@ FIGURE_DIR = Path(__file__).resolve().parent / "figures"
 # ----------------------------------------------------------------------------
 WP = 20000  # position (target) cost weight
 WV = 1  # terminal velocity cost weight
-WR = 0.1  # motor cost of ILQG and DLQG
+WR = 0.01  # motor cost of ILQG and DLQG
 WR_FL = 1e-4  # motor cost of FL
 MOTOR_NOISE = 5e-4  # motor noise variance
 DELAY = 0.06  # sensory feedback delay [s]
 START = [0, 40]  # center-out starting position [cm]
 
-# Path-constraint parameters (FL only)
-WC = 0.01  # weight of the via-path cost
-TAU_PATH = 0.03  # time constant of the via-path cost decay
+# Path-constraint parameters (FL only). WC and TAU_PATH come from a grid search
+# over both: at TAU_PATH = 0.6 (the movement duration, so the constraint acts
+# throughout rather than dying out after ~100 ms) the peak lateral deviation of
+# the long movements falls by 55% between WC = 0 and WC = 3, while the endpoint
+# error stays under 0.03 cm. Past WC ~ 3 the deviation saturates and then grows.
+WC = 3.0  # weight of the via-path cost
+TAU_PATH = 0.6  # time constant of the via-path cost decay
 PERCENT = 0.7  # fraction of the movement the via-path targets
 
 COLORS = ["#009E73", "#0072B2", "#E69F00"]

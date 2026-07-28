@@ -23,7 +23,10 @@ NUM_ITER = 60
 MAX_TRAJECTORIES_SHOWN = 15
 MOVEMENTS = (longmovement_1, longmovement_2)
 MOVEMENT_BY_NUMBER = {1: longmovement_1, 2: longmovement_2}
-WC_SWEEP = (0, 1e-3, 2e-3, 5e-3, 1e-2)
+# Progressive via-path weights. Each step visibly straightens the hand path:
+# the peak lateral deviation of the long movements drops by roughly
+# 0 / 11 / 25 / 44 / 55 percent across these five values at TAU_PATH = 0.6.
+WC_SWEEP = (0, 0.1, 0.3, 1, 3)
 
 FREE_COLOR = "#24C7C7"  # FL without the via-path cost
 PATH_COLOR = "#0072B2"  # FL with the via-path cost
