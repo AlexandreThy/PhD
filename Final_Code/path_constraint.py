@@ -1,9 +1,10 @@
 """
-Effect of the via-path cost on the feedback linearisation controller.
+Effect of the straight-path cost on the feedback linearisation controller.
 
-Compares FL with and without the via-path term on the two long movements,
-sweeps the weight of that term, and breaks the movement cost into its four
-components. Also plots the muscle commands of FL against those of ILQG.
+Compares FL with and without the path term on the two long movements, sweeps
+the weight of that term from unconstrained to a straight hand path, and breaks
+the movement cost into its four components. Also plots the muscle commands of
+FL against those of ILQG.
 
     python Final_Code/path_constraint.py
     python Final_Code/path_constraint.py --num-sim 5 --jobs 1
@@ -12,7 +13,7 @@ components. Also plots the muscle commands of FL against those of ILQG.
 from matplotlib import gridspec
 
 from common import (
-    PERCENT, TAU_PATH, WC, WP, WR, WR_FL, WV, build_parser,
+    TAU_PATH, WC, WP, WR, WR_FL, WV, build_parser, ToCartesian, compute_path,
     compute_angles_from_cartesian, delete_axis, delete_ticks, finish, guarded,
     get_colors_from_colormap, longmovement_1, longmovement_2, np, pi, plt,
     run_fl, run_ilqg, run_tasks, save_figure,
@@ -20,60 +21,33 @@ from common import (
 
 MOVEMENT_TIME = 0.6
 NUM_ITER = 60
-MAX_TRAJECTORIES_SHOWN = 15
-MOVEMENTS = (longmovement_1, longmovement_2)
 MOVEMENT_BY_NUMBER = {1: longmovement_1, 2: longmovement_2}
-# Progressive via-path weights. Each step visibly straightens the hand path:
-# the peak lateral deviation of the long movements drops by roughly
-# 0 / 11 / 25 / 44 / 55 percent across these five values at TAU_PATH = 0.6.
-WC_SWEEP = (0, 0.1, 0.3, 1, 3)
+# Progressive path weights, from unconstrained to straight. At TAU_PATH = 0.15
+# the peak lateral deviation across these five values is 13.6 / 8.0 / 4.7 / 2.2
+# / 0.8 cm for the first long movement and 11.9 / 4.1 / 1.3 / 0.5 / 0.6 cm for
+# the second, on a 58 cm reach.
+WC_SWEEP = (0, 0.002, 0.005, 0.01, 0.1)
 
-FREE_COLOR = "#24C7C7"  # FL without the via-path cost
-PATH_COLOR = "#0072B2"  # FL with the via-path cost
-COMPONENT_COLORS = np.array(["#C78624", "#14445F", "#14C25C", "#B90072"])
+FREE_COLOR = "#0081a7"  # FL without the straight-path cost
+PATH_COLOR = "#f07167" # FL with the straight-path cost
+COMPONENT_COLORS = np.array(["#0081a7", "#00afb9", "#14C25C", "#B90072"])
+HAND_COLORS = np.array(["#0081a7", "#00afb9", "#b67dc3", "#fed9b7","#f07167"])
 MUSCLE_COLORS = np.array(["#C78624", "#14445F", "#14C25C", "#B90072",
                           "#C72424", "#40CAD4"])
 
 
-def ToCartesian(s, e):
-    """Hand position from the shoulder and elbow angles."""
-    return np.cos(s + e) * 33 + np.cos(s) * 30, np.sin(s + e) * 33 + np.sin(s) * 30
-
-
-def compute_path(x0, xf, wc, percent):
-    """
-    Via-path cost matrix penalising deviation from the straight line to xf.
-
-    Mirrors Controllers.FL.compute_path so the cost breakdown below scores the
-    same quantity the controller optimised.
-    """
-    xtarget = x0 + percent * (xf - x0)
-    ts, te = compute_angles_from_cartesian(xtarget[0], xtarget[1])
-    ts0, te0 = compute_angles_from_cartesian(x0[0], x0[1])
-    k = (te - te0) / (ts - ts0)
-
-    Qk = np.zeros((8, 8))
-    Qk[0, 0] = Qk[6, 6] = k * k
-    Qk[0, 6] = Qk[6, 0] = -k * k
-    Qk[1, 1] = Qk[7, 7] = 1
-    Qk[1, 7] = Qk[7, 1] = -1
-    Qk[0, 1] = Qk[1, 0] = -k
-    Qk[0, 7] = Qk[7, 0] = k
-    Qk[1, 6] = Qk[6, 1] = k
-    Qk[6, 7] = Qk[7, 6] = -k
-    return Qk * wc
-
-
 def cost_components(x, u, dt, wc, target):
-    """Split the movement cost into (position, velocity, motor, via-path)."""
+    """Split the movement cost into (position, velocity, motor, path)."""
     target1, target2 = compute_angles_from_cartesian(target[0], target[1])
     start = np.array(ToCartesian(x[0, 0], x[0, 1]))
-    Qkwc = compute_path(start, np.asarray(target), wc, PERCENT)
+    # The controller's own cost matrices, so this scores what it optimised. It
+    # weights step t by exp(-(NUM_ITER - 1 - t) * dt / TAU_PATH), i.e. the decay
+    # runs backwards from the end of the movement.
+    Qkwc = compute_path(start, np.asarray(target), wc, NUM_ITER)
+    decay = np.exp(-(NUM_ITER - 1 - np.arange(NUM_ITER)) * dt / TAU_PATH)
 
-    decay = np.exp(-np.arange(NUM_ITER) * dt / TAU_PATH)
-    # sum_i x_i' Qkwc x_i * decay_i, as one contraction over timesteps
     states = x[:NUM_ITER]
-    path = float(np.sum(np.einsum("ij,jk,ik->i", states, Qkwc, states) * decay))
+    path = float(np.einsum("tj,tjk,tk->t", states, Qkwc, states) @ decay)
 
     thetas, thetae, omegas, omegae = x[-1, :4]
     return (
@@ -85,20 +59,18 @@ def cost_components(x, u, dt, wc, target):
 
 
 def _worker(task):
-    """FL without and with the via-path cost, plus ILQG, for one repetition."""
+    """FL without and with the straight-path cost, plus ILQG, for one repetition."""
     start, target, duration, num_iter, wc = task
     dt = duration / num_iter
 
-    X_free, Y_free, x_free, u_free = guarded(
-        run_fl, "FL without via-path cost", duration, num_iter, start, target, wc=0)
-    X_path, Y_path, x_path, u_path = guarded(
-        run_fl, "FL with via-path cost", duration, num_iter, start, target, wc=wc)
+    _, _, x_free, u_free = guarded(
+        run_fl, "FL without path cost", duration, num_iter, start, target, wc=0)
+    _, _, x_path, u_path = guarded(
+        run_fl, "FL with path cost", duration, num_iter, start, target, wc=wc)
     _, _, _, u_ilqg = guarded(
         run_ilqg, "ILQG", duration, num_iter, start, target)
 
     return {
-        "traj_free": np.array([X_free, Y_free]),
-        "traj_path": np.array([X_path, Y_path]),
         "vel_free": x_free[:, 2:4].T,
         "vel_path": x_path[:, 2:4].T,
         "cmd_free": u_free.T,
@@ -118,14 +90,14 @@ def simulate(movement, num_sim, jobs, wc=WC):
 
 
 def _sweep_worker(task):
-    """Mean trajectory for one via-path weight. Stays top-level."""
+    """Mean trajectory for one path weight. Stays top-level."""
     start, target, duration, num_iter, wc = task
     X, Y, _, _ = run_fl(duration, num_iter, start, target, wc=wc)
     return np.array([X, Y])
 
 
 def sweep_wc(movement, num_sim, jobs):
-    """Mean FL trajectory for each via-path weight in WC_SWEEP."""
+    """Mean FL trajectory for each path weight in WC_SWEEP."""
     start, target = movement()
     tasks = [(start, target, MOVEMENT_TIME, NUM_ITER, wc)
              for wc in WC_SWEEP for _ in range(num_sim)]
@@ -143,17 +115,6 @@ def _mark_endpoints(ax, start, target):
     delete_ticks(ax)
     delete_axis(ax)
     ax.set_aspect("equal")
-
-
-def plot_trajectories(ax, per_movement):
-    for start, target, data in per_movement:
-        shown = min(data["traj_free"].shape[0], MAX_TRAJECTORIES_SHOWN)
-        for rep in range(shown):
-            ax.plot(data["traj_free"][rep, 0], data["traj_free"][rep, 1],
-                    color=FREE_COLOR, linewidth=1)
-            ax.plot(data["traj_path"][rep, 0], data["traj_path"][rep, 1],
-                    color=PATH_COLOR, linewidth=1)
-        _mark_endpoints(ax, start, target)
 
 
 def plot_velocities(ax, data, time):
@@ -175,7 +136,7 @@ def plot_velocities(ax, data, time):
 
 
 def plot_sweep(ax, start, target, mean_trajectories):
-    colors = get_colors_from_colormap(len(WC_SWEEP), "plasma")
+    colors = HAND_COLORS
     for idx in range(len(WC_SWEEP)):
         ax.plot(mean_trajectories[idx, 0], mean_trajectories[idx, 1],
                 color=colors[idx], linewidth=4)
@@ -183,7 +144,7 @@ def plot_sweep(ax, start, target, mean_trajectories):
 
 
 def plot_cost_breakdown(ax, data):
-    """Cost components without the via-path term (left) and with it (right)."""
+    """Cost components without the path term (left) and with it (right)."""
     free = np.mean(data["cost_free"], axis=0)
     path = np.mean(data["cost_path"], axis=0)
     ax.bar(np.arange(0, 4), free, color=COMPONENT_COLORS)
@@ -217,10 +178,10 @@ def main():
                         help="which long movements to simulate (panel order)")
     args = parser.parse_args()
 
+    # One row per long movement for the velocity profiles and for the sweep.
     fig = plt.figure(figsize=(8, 21))
     gs = gridspec.GridSpec(5, 2)
-    ax_traj = fig.add_subplot(gs[0, :])
-    ax_vel = [fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[1, 1])]
+    ax_vel = [fig.add_subplot(gs[0, :]), fig.add_subplot(gs[1, :])]
     ax_sweep = [fig.add_subplot(gs[2, :]), fig.add_subplot(gs[3, :])]
     ax_cost = [fig.add_subplot(gs[4, 0]), fig.add_subplot(gs[4, 1])]
 
@@ -228,7 +189,6 @@ def main():
 
     movements = [MOVEMENT_BY_NUMBER[n] for n in args.movements]
     per_movement = [simulate(m, args.num_sim, args.jobs) for m in movements]
-    plot_trajectories(ax_traj, per_movement)
 
     for idx, (_, _, data) in enumerate(per_movement):
         plot_velocities(ax_vel[idx], data, time)

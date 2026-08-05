@@ -27,8 +27,8 @@ import numpy as np
 from math import cos, pi, sin
 from matplotlib import pyplot as plt
 
-from Controllers.FL import simulate_FL
-from Controllers.ILQG import simulate_ILQG
+from Controllers.FL import ToCartesian, compute_path, simulate_FL
+from Controllers.ILQG import FULL_PLANT, Plant, simulate_ILQG
 from Controllers.LQGControllers import DLQG_6Muscles
 from Helpers.Helpers import (
     compute_angles_from_cartesian,
@@ -46,20 +46,19 @@ FIGURE_DIR = Path(__file__).resolve().parent / "figures"
 # ----------------------------------------------------------------------------
 WP = 20000  # position (target) cost weight
 WV = 1  # terminal velocity cost weight
-WR = 0.01  # motor cost of ILQG and DLQG
-WR_FL = 1e-4  # motor cost of FL
+WR = 0.02  # motor cost of ILQG and DLQG
+WR_FL = 6e-5  # motor cost of FL
 MOTOR_NOISE = 5e-4  # motor noise variance
 DELAY = 0.06  # sensory feedback delay [s]
 START = [0, 40]  # center-out starting position [cm]
 
-# Path-constraint parameters (FL only). WC and TAU_PATH come from a grid search
-# over both: at TAU_PATH = 0.6 (the movement duration, so the constraint acts
-# throughout rather than dying out after ~100 ms) the peak lateral deviation of
-# the long movements falls by 55% between WC = 0 and WC = 3, while the endpoint
-# error stays under 0.03 cm. Past WC ~ 3 the deviation saturates and then grows.
-WC = 3.0  # weight of the via-path cost
-TAU_PATH = 0.6  # time constant of the via-path cost decay
-PERCENT = 0.7  # fraction of the movement the via-path targets
+# Straight-path cost parameters (FL only), from a grid search over both, redone
+# for WR_FL = 6e-5. At TAU_PATH = 0.15 the peak lateral deviation of the long
+# movements falls from 13.6 to 0.8 cm and from 11.9 to 0.6 cm between WC = 0 and
+# WC = 0.1 -- a straight hand path -- while the endpoint error stays under
+# 0.01 cm. Both are saturated past WC ~ 0.1. See Final_Code/README.md.
+WC = 0.1  # weight of the straight-path cost
+TAU_PATH = 0.15  # time constant of the straight-path cost decay
 
 COLORS = ["#009E73", "#0072B2", "#E69F00"]
 LEGEND = ["ILQG", "FL", "DLQG"]
@@ -99,25 +98,29 @@ def Compute_Cartesian_Speed(x, L1=30, L2=33):
 # Controller wrappers
 # ----------------------------------------------------------------------------
 def run_ilqg(duration, num_iter, start, target, noise=True, ff=False, ff_power=0.0,
-             wp=WP, wv=WV, wr=WR, motor_noise=MOTOR_NOISE):
-    """Run ILQG. Returns (X, Y, state, command)."""
+             wp=WP, wv=WV, wr=WR, motor_noise=MOTOR_NOISE, plant=FULL_PLANT):
+    """Run ILQG. Returns (X, Y, state, command).
+
+    `plant` selects which arm nonlinearities are kept; the default keeps all
+    three, so every caller but nonlinearity_ablation.py can ignore it.
+    """
     X, Y, x, u = simulate_ILQG(
         duration, wp, wv, wr, target, start, num_iter,
         delay=DELAY, Noise=noise, print_iterations=False,
-        FF=ff, ff_power=ff_power, motornoise_variance=motor_noise,
+        FF=ff, ff_power=ff_power, motornoise_variance=motor_noise, plant=plant,
     )
     return X, Y, x, u
 
 
 def run_fl(duration, num_iter, start, target, noise=True, ff=False, ff_power=0.0,
            wp=WP, wv=WV, wr=WR_FL, motor_noise=MOTOR_NOISE,
-           wc=0, taupath=TAU_PATH, percent=PERCENT):
+           wc=0, taupath=TAU_PATH):
     """Run the feedback linearisation controller. Returns (X, Y, state, command)."""
     X, Y, x, u = simulate_FL(
         Duration=duration, w1=wp, w2=wp, w3=wv, w4=wv, r=wr,
         Num_iter=num_iter, starting_point=start, targets=target,
         Delay=DELAY, Activate_Noise=noise, FF=ff, ff_power=ff_power,
-        motornoise_variance=motor_noise, wp=wc, taupath=taupath, percent=percent,
+        motornoise_variance=motor_noise, wp=wc, taupath=taupath,
     )
     return X, Y, x, u
 
@@ -166,6 +169,28 @@ def centerout_targets(start=START, amplitude=15, num_targets=8):
     """The `num_targets` center-out targets at `amplitude` cm from `start`."""
     angles = np.linspace(0, 2 * pi, num_targets + 1)[:-1]
     return [[start[0] + cos(a) * amplitude, start[1] + sin(a) * amplitude] for a in angles]
+
+
+def style_polar_axis(ax, radial_ticks, num_targets=8, rmax=None,
+                     radial_fontsize=22, degree_fontsize=17):
+    """
+    Shared look of the center-out polar figures.
+
+    Each direction is named at the outer end of its own radial line, and the
+    radial ticks are the only rings: the rim is dropped so that it cannot be
+    read as one more.
+    """
+    angles = np.linspace(0, 2 * pi, num_targets + 1)[:-1]
+    ax.set_xticks(angles)
+    ax.set_xticklabels([f"{d:.0f}°" for d in np.degrees(angles)],
+                       fontsize=degree_fontsize)
+
+    ax.spines["polar"].set_visible(False)
+    ax.set_yticks(radial_ticks, labels=[f"{t:g}" for t in radial_ticks],
+                  fontsize=radial_fontsize)
+    ax.set_rlabel_position(22.5)  # between two spokes, so the labels stay clear
+    if rmax is not None:
+        ax.set_ylim(0, rmax)
 
 
 # ----------------------------------------------------------------------------

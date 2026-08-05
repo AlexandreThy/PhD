@@ -2,8 +2,8 @@
 Peak joint power index against the movement cost, per reach direction.
 
 For each of eight center-out directions the joint power (torque times angular
-velocity) is taken at its peak over the movement, then correlated with the DLQG
-movement cost and with the DLQG motor cost of the same direction. Ported from
+velocity) is taken at its peak over the movement, then correlated with the total
+DLQG movement cost of the same direction. Ported from
 CurrentParts/NonlinearityIndex.py.
 
 The cost it correlates against comes from centerout_cost_polar.py, so run that
@@ -28,7 +28,7 @@ NUM_ITER = 40
 AMPLITUDE = 15
 NUM_TARGETS = 8
 # Written by centerout_cost_polar.py for the 15 cm / 400 ms condition
-COST_FILE = "Cfy40_15cm_400ms_cost.npz"
+COST_FILE = "Costr.npz"
 # Column of the cost array the correlations use as the x axis
 REFERENCE_CONTROLLER = 2  # DLQG
 
@@ -81,7 +81,8 @@ def simulate(num_sim, jobs, start, amplitude):
     return np.mean(np.max(effort, axis=3), axis=0)  # (direction, controller)
 
 
-def load_costs(outdir):
+def load_total_cost(outdir):
+    """Total movement cost per direction, as written by centerout_cost_polar.py."""
     path = outdir / COST_FILE
     if not path.exists():
         raise SystemExit(
@@ -89,8 +90,7 @@ def load_costs(outdir):
             f"    python Final_Code/centerout_cost_polar.py "
             f"--amplitude 15 --duration 0.4"
         )
-    data = np.load(path)
-    return data["total"], data["motor"]
+    return np.load(path)["my_array"]
 
 
 def regress(cost_column, peak):
@@ -112,8 +112,8 @@ def plot_polar(peak, r2, outdir, num_sim):
                 ha="center", va="center", transform=ax.transAxes, fontsize=12)
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
     ax.set_title(f"Peak joint power index by direction\n"
-                 f"({num_sim} trials, r2 against {LEGEND[REFERENCE_CONTROLLER]} "
-                 f"motor cost)", fontsize=13)
+                 f"({num_sim} trials, r2 against total "
+                 f"{LEGEND[REFERENCE_CONTROLLER]} movement cost)", fontsize=13)
     save_figure(fig, outdir, "Corr_Plots_1DLQG.svg")
 
 
@@ -141,29 +141,23 @@ def main():
     parser = build_parser(__doc__, num_sim_default=100)
     args = parser.parse_args()
 
-    total_cost, motor_cost = load_costs(args.outdir)
+    total_cost = load_total_cost(args.outdir)
     peak = simulate(args.num_sim, args.jobs, START, AMPLITUDE)
 
-    motor_column = motor_cost[:NUM_TARGETS, REFERENCE_CONTROLLER]
     total_column = total_cost[:NUM_TARGETS, REFERENCE_CONTROLLER]
-
-    motor_fits = [regress(motor_column, peak[:, i]) for i in range(NUM_CONTROLLERS)]
     total_fits = [regress(total_column, peak[:, i]) for i in range(NUM_CONTROLLERS)]
 
-    plot_polar(peak, [f[0] for f in motor_fits], args.outdir, args.num_sim)
-    plot_scatter(motor_column, peak, motor_fits,
-                 f"{LEGEND[REFERENCE_CONTROLLER]} motor cost",
-                 "Peak joint power against motor cost",
-                 "Corr_Plots_2DLQG.svg", args.outdir)
+    plot_polar(peak, [f[0] for f in total_fits], args.outdir, args.num_sim)
     plot_scatter(total_column, peak, total_fits,
-                 f"{LEGEND[REFERENCE_CONTROLLER]} movement cost",
+                 f"Total {LEGEND[REFERENCE_CONTROLLER]} movement cost",
                  "Peak joint power against total movement cost",
-                 "Corr_Plots_3DLQG.svg", args.outdir)
+                 "Corr_Plots_2DLQG.svg", args.outdir)
 
-    print("\nr2 against " + LEGEND[REFERENCE_CONTROLLER] + " cost:")
+    print(f"\nr2 of peak joint power against total "
+          f"{LEGEND[REFERENCE_CONTROLLER]} movement cost:")
     for i in range(NUM_CONTROLLERS):
-        print(f"  {LEGEND[i]:5s}  motor cost r2 = {motor_fits[i][0]:.3f}   "
-              f"total cost r2 = {total_fits[i][0]:.3f}")
+        r2, slope, _ = total_fits[i]
+        print(f"  {LEGEND[i]:5s}  r2 = {r2:.3f}   slope = {slope:+.4g}")
 
     finish(not args.no_show)
 

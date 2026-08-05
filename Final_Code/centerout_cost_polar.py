@@ -13,14 +13,14 @@ that differed only in reach amplitude and movement duration.
 from common import (
     COLORS, Cost_function, Cost_r, LEGEND, NUM_CONTROLLERS, START,
     build_parser, centerout_targets, finish, np, plt, run_dlqg, run_fl,
-    run_ilqg, run_tasks, save_figure,
+    run_ilqg, run_tasks, save_figure, style_polar_axis,
 )
 
 NUM_TARGETS = 8
 # (amplitude [cm], duration [s]) reproduced from the notebook
 CONDITIONS = [(15, 0.4), (15, 0.6), (10, 0.4), (10, 0.6), (20, 0.4), (20, 0.6)]
-# Conditions whose radial axis the notebook pinned to these ticks
-YTICKS = {(10, 0.4): [2, 4], (10, 0.6): [2, 4], (20, 0.4): [2, 4]}
+# The only two radial references drawn, on every condition.
+RADIAL_TICKS = (2, 4)
 YLIM = {(15, 0.6): (0, 5)}
 
 
@@ -67,16 +67,12 @@ def plot(amplitude, duration, mean_total, outdir, start):
 
     fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={"projection": "polar"})
     for i in range(NUM_CONTROLLERS):
-        ax.scatter(angles, closed[:, i], color=COLORS[i], s=20, zorder=10)
-        ax.plot(angles, closed[:, i], color=COLORS[i], linewidth=2,
-                linestyle="--", label=LEGEND[i])
-    ax.set_xticklabels([])
+        ax.plot(angles, closed[:, i], color=COLORS[i], linewidth=2.5,
+                label=LEGEND[i])
 
-    key = (amplitude, duration)
-    if key in YTICKS:
-        ax.set_yticks(YTICKS[key])
-    if key in YLIM:
-        ax.set_ylim(*YLIM[key])
+    rmax = YLIM.get((amplitude, duration),
+                    (0, max(max(RADIAL_TICKS), closed.max()) * 1.05))[1]
+    style_polar_axis(ax, RADIAL_TICKS, NUM_TARGETS, rmax)
 
     name = f"Cfy{int(start[1])}_{int(amplitude)}cm_{int(duration * 1000)}ms"
     save_figure(fig, outdir, f"{name}.svg")

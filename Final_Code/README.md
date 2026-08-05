@@ -16,7 +16,9 @@ Every script shares its parameters, cost function and plotting style through
 | `large_amplitude_reaching.py` | 24 | `LongMove.svg` |
 | `path_constraint.py` | 25 | `PathConstraint.svg`, `PathConstraintCommands.svg` |
 | `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `DLQG_CostMap_90_315.svg` + `.npz` |
-| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `Corr_Plots_{1,2,3}DLQG.svg` |
+| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `Corr_Plots_{1,2}DLQG.svg` |
+| `nonlinearity_ablation.py` | from `CurrentParts/Nonlinearities.ipynb` | `NonlinearityAblation.svg` |
+| `centerout_motor_cost.py` | new | `MotorCost_15cm_400ms.svg` + `.npz` |
 
 `nonlinearity_index.py` correlates against the cost written by
 `centerout_cost_polar.py`, so run that for the 15 cm / 400 ms condition first.
@@ -54,6 +56,14 @@ the weights, the following had to change.
   state and command.
 - Every title said "iLQG" although the script calls `DLQG_6Muscles`, so the
   figure and its filename now say DLQG.
+- The starting positions were a cartesian grid of hand positions,
+  `x` in `[-10, 10]` and `y` in `[30, 45]`. Over a grid that narrow in `x`, the
+  hand height and the distance from the shoulder are collinear, and a cubic fit
+  of the cost on either gives the same `R^2` (0.93 for the 90 degree reach), so
+  the figure could not show whether the cost follows the starting *posture* or
+  just the hand position. The grid is now over the two starting joint angles
+  directly — shoulder 10 to 55 deg, elbow 85 to 125 deg — which varies them
+  independently. See below.
 
 `NonlinearityIndex.py`:
 
@@ -68,27 +78,46 @@ the weights, the following had to change.
   which hold results from the old weights. They now read
   `figures/Cfy40_15cm_400ms_cost.npz`, the matching condition at the current
   weights, and say so if it is missing.
+- The peak power index is correlated against the **total** movement cost only.
+  The original also regressed it against the motor cost and drew a third figure
+  for it; that figure is gone, and `Corr_Plots_2DLQG.svg` is now the total-cost
+  scatter that `Corr_Plots_3DLQG.svg` used to hold.
 
-## Via-path weights and force field strength
+## Path-cost weights and force field strength
 
 Both were chosen by sweeping them and measuring the effect, rather than by eye.
 
-**Via-path cost** (`WC`, `TAU_PATH` in `common.py`, `WC_SWEEP` in
-`path_constraint.py`). The old settings (`TAU_PATH = 0.03`, `WC <= 0.01`) moved
-the peak lateral deviation of the long movements by 0.04 percent, which is not
-visible on a plot: the cost decayed away within about 100 ms of a 600 ms
-movement, and the weights were some two orders of magnitude too small. With
-`TAU_PATH = 0.6`, so that the constraint acts throughout the movement, the
-sweep `WC_SWEEP = (0, 0.1, 0.3, 1, 3)` straightens the hand path step by step —
-peak deviation falls by roughly 0, 11, 25, 44 and 55 percent — while the
-endpoint error stays under 0.03 cm.
+**Straight-path cost** (`WC`, `TAU_PATH` in `common.py`, `WC_SWEEP` in
+`path_constraint.py`). `Controllers.FL.compute_path` used to penalise
+`[k*(theta_s - theta_s0) - (theta_e - theta_e0)]**2` — straightness in **joint**
+space, about one fixed line — and no `(WC, TAU_PATH)` pair could straighten the
+hand path with it. A straight joint path maps to a curved hand path: over the
+58 cm long movements every fixed joint-space line still bows 5 to 7 cm, and a
+grid search over both parameters hit exactly that floor, halving the deviation
+at best before it saturated and then grew again.
 
-Past `WC ~ 3` the deviation stops improving and then grows again, so the sweep
-stops there. There is also a floor near 6 cm that no weight can beat:
-`compute_path` penalises `[k*(theta_s - theta_s0) - (theta_e - theta_e0)]**2`,
-which is straightness in **joint** space, and a straight joint path maps to a
-curved hand path. Straightening the hand path further would need the cost
-expressed in cartesian coordinates, which is a different method.
+It now penalises the **cartesian** lateral offset from the start-to-target line,
+linearised about a via point that advances along that line on a minimum-jerk
+profile. That makes the cost matrix time-varying (`compute_path` returns one
+8x8 per timestep) and, being a linear form in the state, it stays an exact LQR
+stage cost — `wp * outer(v, v)`, positive semi-definite. At `TAU_PATH = 0.15`
+the sweep `WC_SWEEP = (0, 0.003, 0.01, 0.03, 0.1)` now runs from unconstrained
+to straight:
+
+| `WC` | 0 | 0.003 | 0.01 | 0.03 | 0.1 |
+| --- | --- | --- | --- | --- | --- |
+| peak deviation, movement 1 | 13.6 cm | 8.0 | 4.7 | 2.2 | 0.8 |
+| peak deviation, movement 2 | 11.9 cm | 4.1 | 1.3 | 0.5 | 0.6 |
+
+The endpoint error is unchanged by the path cost (0.13 to 0.20 cm with motor
+noise on, the same as at `WC = 0`). Both movements are saturated past
+`WC ~ 0.1`; the second straightens sooner than the first, which is why its last
+three sweep curves nearly coincide.
+
+`TAU_PATH` was retuned from 0.2 to 0.15 when `WR_FL` moved to `6e-5`. A cheaper
+motor cost makes the same `WC` bite harder, so holding `TAU_PATH` at 0.2 would
+have pushed the sweep to straight by the third weight and wasted the last two;
+0.15 restores the earlier spacing at the same five weights.
 
 **Force field strength** (`FF_POWER` in `force_field.py`). Picked so the
 controllers rank
@@ -114,6 +143,63 @@ Throughout the window ILQG's lateral excursion is slightly *smaller* than FL's
 yet it costs more, so what ILQG loses under the field is terminal accuracy
 rather than path deviation.
 
+In `FFFV.svg` the two axes are cropped to their own data rather than to a shared
+range. The field costs several times more than it saves, so the cost with it off
+spans about a tenth of the range of the cost with it on; forcing one scale on
+both -- which the shared `[0, limit]` equality line used to do -- pushed all
+three controllers into the left tenth of the plot. The dashed equal-cost line is
+therefore no longer the diagonal.
+
+## Changes made when porting Nonlinearities.ipynb
+
+`nonlinearity_ablation.py` runs the same reach with one or two arm
+nonlinearities removed. The notebook carried its own copy of ILQG so it could
+switch them; `Controllers/ILQG.py` now takes a `Plant` named tuple instead, and
+its default keeps all three, so every other caller is untouched (verified
+bit-identical on three deterministic rollouts, one of them under the field).
+
+Switching one off replaces it with its value at the starting posture: the
+inertia matrix is frozen at the initial elbow angle so `dM` vanishes, the muscle
+force-length and force-velocity gains become 1, and the Coriolis and
+centrifugal torques become 0. It applies to the simulated arm as well as to the
+model ILQG optimises against, matching the notebook — so the figure asks what
+the movement costs when a nonlinearity is *absent*, not what it costs to
+mis-model one.
+
+Beyond the weights, two things differ from the notebook:
+
+- It used `WR = 0.5`, 25x the `WR` in `common.py`, and `FFPOW = 4e-4` against
+  the current `-3e-4`. Both now come from `common.py` and `force_field.py`.
+- Its force-length curve was `exp(+|(l**1.55 - 1) / 0.81|)`, which *rises* as
+  the muscle leaves its optimal length — the same stale curve documented above
+  for `compute_torque`. The controller integrates `exp(-|...|**2.12)`, which
+  falls, so the ablation now scores the dynamics that produced the trajectory.
+
+The notebook's `FFside` argument is not reproduced: the field side is the sign
+of `ff_power`, so `--ff-power 3e-4` gives what it called the other side.
+
+## What the 2-direction cost map shows
+
+Every reach in `DLQG_CostMap_90_315.svg` is the same 15 cm in the same
+direction, so the amplitude and the direction cannot explain any of the
+variation across a panel — only the posture the reach starts from can.
+
+Sampling the joint angles independently separates the two joints, and the
+result is that the cost is close to a function of the **elbow angle** alone:
+across the 85 to 125 degree elbow range the mean cost changes 14-fold for the
+90 degree reach and 8-fold for the 315 degree reach, while the spread over the
+whole 10 to 55 degree shoulder range at a fixed elbow angle is a fraction of
+that. This is why the maps are banded horizontally.
+
+The two directions band in *opposite* senses: extending the arm makes the 90
+degree reach cheaper and the 315 degree reach dearer. A posture change that
+helps one direction hurts the other, which is what rules out reading the effect
+as a plain "some places in the workspace are expensive".
+
+Both ratios are quoted off the mean profile over shoulder angles, not off the
+cheapest and dearest single cells — those are the noisiest estimates on the
+grid and put the ratios near 45 and 33 at 6 trials per cell.
+
 ## Cost function weights
 
 Set once in `common.py` and used by every script:
@@ -126,6 +212,13 @@ appeared as `1e-8` (sensitivity analysis) and `1e-3` (one cost polar cell), and
 the ILQG/DLQG motor cost appeared as `0.5` in two cells. The cost polar cell
 that used FL `r=1e-3` was a duplicate of the `1e-4` one and is not repeated
 here — `centerout_cost_polar.py` covers that condition once.
+
+Note the asymmetry when *scoring*: FL is optimised with `WR_FL` but scored with
+`WR`, like the other two. `Cost_function` defaults to `WR`, so every script that
+compares controllers already does this; the motor bars in
+`Kinematiccenterout.svg` and the cost scatter in `FFFV.svg` are on that common
+yardstick. Scoring each controller under the weights it optimised would compare
+three different quantities.
 
 ## ILQG on `longmovement_2`: line search
 
