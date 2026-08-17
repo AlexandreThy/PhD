@@ -114,7 +114,7 @@ def plot_polar(peak, r2, outdir, num_sim):
     ax.set_title(f"Peak joint power index by direction\n"
                  f"({num_sim} trials, r2 against total "
                  f"{LEGEND[REFERENCE_CONTROLLER]} movement cost)", fontsize=13)
-    save_figure(fig, outdir, "Corr_Plots_1DLQG.svg")
+    save_figure(fig, outdir, "Corr_Plots_motor1.svg")
 
 
 def plot_scatter(cost_column, peak, fits, xlabel, title, filename, outdir):
@@ -151,7 +151,7 @@ def main():
     plot_scatter(total_column, peak, total_fits,
                  f"Total {LEGEND[REFERENCE_CONTROLLER]} movement cost",
                  "Peak joint power against total movement cost",
-                 "Corr_Plots_2DLQG.svg", args.outdir)
+                 "Corr_Plots_motor2.svg", args.outdir)
 
     print(f"\nr2 of peak joint power against total "
           f"{LEGEND[REFERENCE_CONTROLLER]} movement cost:")

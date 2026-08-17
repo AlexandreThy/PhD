@@ -33,14 +33,14 @@ TARGET = [0, 55]
 # The four conditions of the notebook. Coriolis stays nonlinear throughout;
 # --linear-coriolis switches it off in every condition instead.
 CONDITIONS = (
-    ("Linear muscle", dict(muscle=False)),
-    ("Linear inertia", dict(inertia=False)),
-    ("Linear muscle + inertia", dict(muscle=False, inertia=False)),
     ("Full nonlinearities", dict()),
+    ("Linear inertia", dict(inertia=False)),
+    ("Linear muscle", dict(muscle=False)),
+    ("Linear muscle + inertia", dict(muscle=False, inertia=False)),
 )
-COLORS = ["#E63946", "#4ECDC4", "#8380B6", "#009E73"]
+COLORS = ["#009E73", "#e67e86","#808080", "#8d5fd3"]
 # For panels with room to name every box on the axis instead of in a legend.
-SHORT_LABELS = ("Lin.\nmuscle", "Lin.\ninertia", "Lin.\nboth", "Full\nNL")
+SHORT_LABELS = ("Full\nNL", "Lin.\ninertia","Lin.\nmuscle", "Lin.\nboth")
 
 
 def _worker(task):
@@ -132,9 +132,7 @@ def plot_panels(data, outdir, ff_power):
     ax_traj.set_yticks([])
     ax_traj.set_title("Mean hand path", fontsize=13)
     delete_axis(ax_traj)
-    # Drawn to scale the paths leave no free space, so the key goes underneath.
-    ax_traj.legend(fontsize=10, loc="upper center", bbox_to_anchor=(0.5, 0),
-                   ncol=2, frameon=False)
+    _condition_legend(ax_traj)
 
     for i in range(len(CONDITIONS)):
         for joint, linestyle in enumerate(["-", "--"]):

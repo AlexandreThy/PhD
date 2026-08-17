@@ -12,8 +12,8 @@ sqrt(vx**2 + vy**2), and the three terms of the movement cost as grouped bars.
 from matplotlib.lines import Line2D
 
 from common import (
-    COLORS, Compute_Cartesian_Speed, LEGEND, NUM_CONTROLLERS, START, WP, WR, WV,
-    build_parser, compute_angles_from_cartesian, delete_axis, finish, np, pi,
+    COLORS, Compute_Cartesian_Speed, LEGEND, NUM_CONTROLLERS, START,
+    build_parser, cost_components, delete_axis, finish, np, pi,
     plt, run_dlqg, run_fl, run_ilqg, run_tasks, save_figure,
 )
 
@@ -21,25 +21,8 @@ MOVEMENT_TIME = 0.4
 NUM_ITER = 40
 AMPLITUDE = 15
 # The two directions the notebook plotted, in radians
-DIRECTIONS = [0, pi/2]
+DIRECTIONS = [0,pi/2,pi]
 COST_TERMS = ("target\naccuracy", "terminal\nvelocity", "motor")
-
-
-def cost_components(x, u, target):
-    """
-    The three terms of common.Cost_function, kept apart.
-
-    Every controller is scored with the shared WR, including FL, which is
-    *optimised* with the smaller WR_FL. Scoring each one under its own weights
-    would compare three different quantities.
-    """
-    target1, target2 = compute_angles_from_cartesian(target[0], target[1])
-    thetas, thetae, omegas, omegae = x[-1, :4]
-    return (
-        WP * ((thetas - target1) ** 2 + (thetae - target2) ** 2),
-        WV * (omegas**2 + omegae**2),
-        np.sum(u * u) * WR,
-    )
 
 
 def _worker(task):
@@ -54,7 +37,7 @@ def _worker(task):
         # Shoulder and elbow angular velocity of each controller
         "joint_vel": np.array([x[:, 2:4] for _, _, x, _ in runs]),
         "speed": np.array([Compute_Cartesian_Speed(x.T)[2] for _, _, x, _ in runs]),
-        "cost": np.array([cost_components(x, u, target) for _, _, x, u in runs]),
+        "cost": np.array([cost_components(x, u, tg=target) for _, _, x, u in runs]),
     }
 
 
@@ -114,7 +97,7 @@ def plot_cost_panel(ax, costs):
                yerr=errors[controller], color=COLORS[controller],
                error_kw=dict(ecolor="black", lw=1))
 
-    ax.set_yscale("log")
+    #ax.set_yscale("log")
     ax.set_xticks(positions, labels=COST_TERMS)
     ax.tick_params(labelsize=13)
     delete_axis(ax, sides=["top", "right"])

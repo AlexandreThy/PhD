@@ -86,6 +86,24 @@ def Cost_r(x, u, w1=WP, w2=WV, r=WR, tg=(0, 0)):
     return np.sum(u * u) * r
 
 
+def cost_components(x, u, w1=WP, w2=WV, r=WR, tg=(0, 0)):
+    """
+    The three terms of Cost_function, kept apart.
+
+    Every controller is scored with the shared r, including FL, which is
+    *optimised* with the much smaller WR_FL. Scoring each one under the weights
+    it optimised would compare three different quantities.
+    """
+    target1, target2 = compute_angles_from_cartesian(tg[0], tg[1])
+    thetas, thetae, omegas, omegae = x[-1, :4]
+
+    return (
+        w1 * ((thetas - target1) ** 2 + (thetae - target2) ** 2),
+        w2 * (omegas**2 + omegae**2),
+        np.sum(u * u) * r,
+    )
+
+
 def Compute_Cartesian_Speed(x, L1=30, L2=33):
     """Hand velocity in cartesian coordinates from the joint state x[:4]."""
     ts, te, os_, oe = x[0], x[1], x[2], x[3]

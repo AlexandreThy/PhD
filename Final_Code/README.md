@@ -13,7 +13,7 @@ Every script shares its parameters, cost function and plotting style through
 | `velocity_profiles.py` | 17 | `Kinematiccenterout.svg` |
 | `force_field.py` | 20 | `FF3Controllers.svg`, `FFFV.svg` |
 | `sensitivity_analysis.py` | 22 | `SensitivityAnalysis.svg` |
-| `large_amplitude_reaching.py` | 24 | `LongMove.svg` |
+| `large_amplitude_reaching.py` | 24 | `LongMove.svg`, `long_move_terminal.svg` |
 | `path_constraint.py` | 25 | `PathConstraint.svg`, `PathConstraintCommands.svg` |
 | `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `DLQG_CostMap_90_315.svg` + `.npz` |
 | `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `Corr_Plots_{1,2}DLQG.svg` |
@@ -177,6 +177,33 @@ Beyond the weights, two things differ from the notebook:
 
 The notebook's `FFside` argument is not reproduced: the field side is the sign
 of `ff_power`, so `--ff-power 3e-4` gives what it called the other side.
+
+## Why the DLQG cost is so much more spread out on the long movements
+
+`long_move_terminal.svg` answers this. The dominant term of the cost is
+`WP * (dtheta_s**2 + dtheta_e**2)` with `WP = 20000`, and its sensitivity to
+trial-to-trial jitter is its derivative, `2 * WP * dtheta` — proportional to how
+far off the *mean* landing point is, not to the size of the noise.
+
+ILQG and FL land on the target (mean terminal error under 0.05 deg), so they sit
+at the bottom of that parabola where the derivative vanishes: their target term
+is pure `WP * noise**2`, which behaves like a scaled chi-square with mean equal
+to its own SD (0.44 +/- 0.40 for ILQG on movement 2). DLQG ends 4.3 deg short at
+the elbow, far up the parabola, so the *same* jitter is amplified. On movement 2,
+`2 * WP * |mean| * sd` predicts an SD of 19.1 against 20.3 measured, and the term
+accounts for 100% of the variance of the total.
+
+So the spread is not noise sensitivity in the control sense — the terminal
+jitter of DLQG (0.36 deg) is comparable to that of the other two (about 0.2 deg).
+It is the systematic offset multiplying it. Note also that in *relative* terms
+DLQG is not the most variable: its CV is 0.16 against 0.44 for ILQG, whose cost
+is small and entirely noise-driven.
+
+FL is the reverse case: 81% of its variance is the motor term, which is large
+(89.9 of a total of 90.3 on movement 2) but very stable, giving it the lowest CV
+of the three at 0.010. That term is large because FL is scored with the shared
+`WR` while it optimises with `WR_FL`, 300 times smaller — see the note under the
+cost function weights.
 
 ## What the 2-direction cost map shows
 

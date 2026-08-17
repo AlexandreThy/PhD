@@ -13,9 +13,10 @@ from matplotlib import gridspec
 from matplotlib.lines import Line2D
 
 from common import (
-    COLORS, Cost_function, LEGEND, NUM_CONTROLLERS, build_parser, delete_axis,
-    finish, guarded, longmovement_1, longmovement_2, np, pi, plt, run_dlqg,
-    run_fl, run_ilqg, run_tasks, save_figure,
+    COLORS, Cost_function, LEGEND, NUM_CONTROLLERS, build_parser,
+    compute_angles_from_cartesian, cost_components, delete_axis, finish,
+    guarded, longmovement_1, longmovement_2, np, pi, plt, run_dlqg, run_fl,
+    run_ilqg, run_tasks, save_figure,
 )
 
 MOVEMENT_TIME = 0.6
@@ -24,6 +25,8 @@ MAX_TRAJECTORIES_SHOWN = 10
 # The notebook drew movement 2 on the top row and movement 1 below it
 MOVEMENTS = (longmovement_2, longmovement_1)
 MOVEMENT_BY_NUMBER = {1: longmovement_1, 2: longmovement_2}
+COST_TERMS = ("target\naccuracy", "terminal\nvelocity", "motor")
+JOINTS = ("shoulder", "elbow")
 
 
 def _worker(task):
@@ -34,10 +37,18 @@ def _worker(task):
         guarded(run_fl, f"FL on {movement_name}", duration, num_iter, start, target),
         guarded(run_dlqg, f"DLQG on {movement_name}", duration, num_iter, start, target),
     )
-    cost = np.array([Cost_function(x, u, tg=target) for _, _, x, u in runs])
-    velocity = np.array([x[:, 2:4].T for _, _, x, _ in runs])
-    trajectory = np.array([[X, Y] for X, Y, _, _ in runs])
-    return cost, velocity, trajectory
+    target_angles = np.array(compute_angles_from_cartesian(target[0], target[1]))
+    return {
+        "cost": np.array([Cost_function(x, u, tg=target) for _, _, x, u in runs]),
+        "components": np.array([cost_components(x, u, tg=target)
+                                for _, _, x, u in runs]),
+        "velocity": np.array([x[:, 2:4].T for _, _, x, _ in runs]),
+        # Signed, so that overshooting and falling short stay distinguishable.
+        "terminal_error": np.array([x[-1, :2] - target_angles
+                                    for _, _, x, _ in runs]),
+        "terminal_velocity": np.array([x[-1, 2:4] for _, _, x, _ in runs]),
+        "trajectory": np.array([[X, Y] for X, Y, _, _ in runs]),
+    }
 
 
 def simulate(movement, num_sim, jobs):
@@ -45,11 +56,8 @@ def simulate(movement, num_sim, jobs):
     tasks = [(start, target, MOVEMENT_TIME, NUM_ITER, movement.__name__)
              for _ in range(num_sim)]
     results = run_tasks(_worker, tasks, jobs, desc=f"{movement.__name__}")
-
-    cost = np.array([r[0] for r in results])
-    velocity = np.array([r[1] for r in results])
-    trajectory = np.array([r[2] for r in results])
-    return start, target, cost, velocity, trajectory
+    data = {key: np.array([r[key] for r in results]) for key in results[0]}
+    return start, target, data
 
 
 def _mark_endpoints(ax, start, target):
@@ -134,6 +142,66 @@ def plot_cost(ax, cost, log=True):
     ax.set_ylabel(f"Movement Cost ({'log' if log else 'linear'})", fontsize=22)
 
 
+def _grouped_boxplot(ax, values, group_labels, ylabel, title, log=False,
+                     zero_line=False):
+    """
+    One box per controller, in a group per label.
+
+    `values` is (repetition, controller, group).
+    """
+    if log:
+        ax.set_yscale("log")
+    span = NUM_CONTROLLERS + 1
+    for group in range(len(group_labels)):
+        box = ax.boxplot(values[:, :, group], patch_artist=True, showfliers=False,
+                         positions=np.arange(NUM_CONTROLLERS) + group * span,
+                         medianprops=dict(color="black"),
+                         whiskerprops=dict(color="black"),
+                         capprops=dict(color="black"))
+        for patch, color in zip(box["boxes"], COLORS):
+            patch.set_facecolor(color)
+
+    if zero_line:
+        ax.axhline(0, color="grey", linewidth=1, zorder=0)
+
+    centre = (NUM_CONTROLLERS - 1) / 2
+    ax.set_xticks([centre + g * span for g in range(len(group_labels))],
+                  labels=group_labels, fontsize=14)
+    ax.set_ylabel(ylabel, fontsize=15)
+    ax.set_title(title, fontsize=15)
+    ax.tick_params(axis="y", labelsize=13)
+    delete_axis(ax, sides=["top", "right", "bottom"])
+
+
+def plot_terminal(per_movement, outdir):
+    """Where each controller ends up, and what the cost is made of."""
+    fig, axes = plt.subplots(3, len(per_movement), figsize=(14, 15),
+                             layout="constrained")
+
+    for column, (number, data) in enumerate(per_movement):
+        _grouped_boxplot(axes[0, column], data["components"], COST_TERMS,
+                         "Movement cost", f"Cost by term, movement {number}",
+                         log=True)
+        _grouped_boxplot(axes[1, column],
+                         np.degrees(data["terminal_velocity"]), JOINTS,
+                         "Terminal velocity [deg/s]",
+                         f"Terminal joint velocity, movement {number}",
+                         zero_line=True)
+        _grouped_boxplot(axes[2, column],
+                         np.degrees(data["terminal_error"]), JOINTS,
+                         "Terminal error [deg]",
+                         f"Terminal joint position, movement {number}",
+                         zero_line=True)
+
+    axes[0, 0].legend(handles=[Line2D([], [], color=c, lw=3, label=n)
+                               for c, n in zip(COLORS, LEGEND)],
+                      fontsize=12, loc="upper left", frameon=False)
+    fig.suptitle("Where the long movements end, and what the cost is made of\n"
+                 "(joint panels are signed: 0 is the target, reached at rest)",
+                 fontsize=16)
+    save_figure(fig, outdir, "long_move_terminal.svg")
+
+
 def main():
     parser = build_parser(__doc__, num_sim_default=100)
     parser.add_argument("--movements", type=int, nargs="+", choices=(1, 2),
@@ -155,19 +223,21 @@ def main():
 
     time = np.linspace(0, MOVEMENT_TIME * 1000, NUM_ITER + 1)
 
+    per_movement = []
     for column, number in enumerate(args.movements):
         movement = MOVEMENT_BY_NUMBER[number]
-        start, target, cost, velocity, trajectory = simulate(
-            movement, args.num_sim, args.jobs)
-        plot_trajectories(traj_axes[column], start, target, trajectory)
-        plot_velocities(vel_rows[column], velocity, time,
+        start, target, data = simulate(movement, args.num_sim, args.jobs)
+        plot_trajectories(traj_axes[column], start, target, data["trajectory"])
+        plot_velocities(vel_rows[column], data["velocity"], time,
                         "Angular Velocity [deg/sec]")
-        plot_cost(cost_log_axes[column], cost, log=True)
-        plot_cost(cost_linear_axes[column], cost, log=False)
+        plot_cost(cost_log_axes[column], data["cost"], log=True)
+        plot_cost(cost_linear_axes[column], data["cost"], log=False)
+        per_movement.append((number, data))
 
     share_velocity_axis(vel_rows)
 
     save_figure(fig, args.outdir, "LongMove.svg", dpi=200)
+    plot_terminal(per_movement, args.outdir)
     finish(not args.no_show)
 
 

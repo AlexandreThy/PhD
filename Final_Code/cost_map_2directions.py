@@ -100,6 +100,40 @@ def _plot_joint_map(ax, cost, direction_deg, norm):
     return im
 
 
+def _start_positions():
+    """Hand position of every sampled posture, shaped like the cost grid."""
+    return np.array([[hand_position(s, e) for e in ELBOW_ANGLES]
+                     for s in SHOULDER_ANGLES])
+
+
+def _plot_cartesian_map(ax, cost, direction_deg, norm):
+    """
+    The same cost, over where the posture puts the hand.
+
+    The grid is regular in joint angles, so in hand coordinates it is a curved
+    quadrilateral rather than a rectangle. A triangulation fills exactly the
+    region that was sampled; imshow would have to invent a bounding box and
+    colour in corners no simulation ever visited.
+    """
+    starts = _start_positions()
+    x, y, values = starts[..., 0].ravel(), starts[..., 1].ravel(), cost.ravel()
+    finite = np.isfinite(values)
+    im = ax.tripcolor(x[finite], y[finite], values[finite], shading="gouraud",
+                      cmap="plasma", norm=norm)
+
+    
+    ax.plot([0], [40], marker="o", markersize=11,
+            markerfacecolor="none", markeredgecolor="green", markeredgewidth=2.5)
+
+    ax.set_aspect("equal")
+    ax.set_xlabel("Initial hand x [cm]", fontsize=13)
+    ax.set_ylabel("Initial hand y [cm]", fontsize=13)
+    ax.set_title(f"Cost over starting hand position,\n{direction_deg} deg reach",
+                 fontsize=13)
+    ax.tick_params(labelsize=11)
+    return im
+
+
 def _plot_elbow_collapse(ax, cost, direction_deg):
     """
     Cost against the elbow angle alone.
@@ -141,8 +175,7 @@ def _draw_arm(ax, shoulder_deg, elbow_deg, direction_deg, color, label):
 
 def _plot_workspace(ax, cost, direction_deg, norm):
     """Where the sampled postures put the hand, and the two extreme postures."""
-    starts = np.array([[hand_position(s, e) for e in ELBOW_ANGLES]
-                       for s in SHOULDER_ANGLES])
+    starts = _start_positions()
     ax.scatter(starts[..., 0], starts[..., 1], c=cost, cmap="plasma", norm=norm,
                s=16, zorder=2)
 
@@ -169,13 +202,16 @@ def plot(cost_maps, outdir, num_sim):
 
     # Constrained layout, because tight_layout cannot place a colourbar that is
     # shared across a grid of axes without walking it over the middle column.
-    fig, axes = plt.subplots(len(DIRECTIONS), 3, figsize=(15, 9),
+    # The cartesian map sits next to the joint one: same cost, same colour scale,
+    # only the coordinates the starting posture is named by change.
+    fig, axes = plt.subplots(len(DIRECTIONS), 4, figsize=(20, 9),
                              layout="constrained")
     for row, direction in enumerate(DIRECTIONS):
         cost = cost_maps[direction]
         im = _plot_joint_map(axes[row, 0], cost, direction, norm)
-        _plot_elbow_collapse(axes[row, 1], cost, direction)
-        _plot_workspace(axes[row, 2], cost, direction, norm)
+        _plot_cartesian_map(axes[row, 1], cost, direction, norm)
+        _plot_elbow_collapse(axes[row, 2], cost, direction)
+        _plot_workspace(axes[row, 3], cost, direction, norm)
 
     cbar = fig.colorbar(im, ax=axes.ravel().tolist(), location="right",
                         shrink=0.6, pad=0.01)
