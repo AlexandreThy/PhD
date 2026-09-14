@@ -159,6 +159,19 @@ def run_dlqg(duration, num_iter, start, target, noise=True, ff=False, ff_power=0
     return X, Y, z.T, u
 
 
+def run_delta_dlqg(duration, num_iter, start, target, noise=True, ff=False,
+                   ff_power=0.0, wp=WP, wv=WV, wr=WR,
+                   motor_noise=MOTOR_NOISE):
+    """Run DLQG with feedback on the estimated differential state delta x."""
+    X, Y, u, z = DLQG_6Muscles(
+        w1=wp, w2=wp, w3=wv, w4=wv, Duration=duration, r1=wr,
+        Num_iter=num_iter, starting_point=start, targets=target, plot=False,
+        Delay=DELAY, Activate_Noise=noise, FF=ff, ff_power=ff_power,
+        motornoise_variance=motor_noise, delta_state=True,
+    )
+    return X, Y, z.T, u
+
+
 class ControllerDiverged(RuntimeError):
     """A controller produced a non-finite state for the requested movement."""
 

@@ -1,0 +1,199 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{amsmath,amssymb,geometry,booktabs}
+\usepackage{lmodern}
+\geometry{margin=2.4cm}
+\title{DLQG en variables différentielles :\\ pourquoi les deux formulations coïncident}
+\author{WP1}
+\date{}
+\begin{document}
+\maketitle
+
+\section*{Résumé}
+Le DLQG du modèle six muscles a été réécrit de manière à exprimer la rétroaction sur une
+variable différentielle $\delta x$ plutôt que sur l'état absolu. Les deux versions produisent
+des trajectoires identiques à la précision machine près. Ce document montre que ce résultat
+est attendu : avec la définition de $\delta x$ retenue dans le papier de référence, les deux
+formulations sont la même loi de commande écrite dans deux systèmes de coordonnées. En
+particulier, la matrice $A$ ne change pas, et il n'y a aucune raison qu'elle change.
+
+\section{Dynamique augmentée}
+Soit $x_k\in\mathbb{R}^{6}$ l'état articulaire et musculaire utilisé par le DLQG,
+$u_k\in\mathbb{R}^{6}$ la commande et $d$ le retard discret. L'état augmenté empile $d+1$ copies
+de l'état,
+\[
+ \bar x_k=\big[x_k^T,\;x_{k-1}^T,\;\ldots,\;x_{k-d}^T\big]^T,
+\]
+et la dynamique locale s'écrit
+\[
+ \bar x_{k+1}=\bar A_k\,\bar x_k+\bar B_k\,u_k,\qquad
+ \bar A_k=\begin{bmatrix}A_{0,k}&0\\I&0\end{bmatrix},\qquad
+ \bar B_k=\begin{bmatrix}B_{0,k}\\0\end{bmatrix}.
+\]
+Les deux dernières composantes de $x_k$ portent les angles cibles. Elles sont propagées par
+l'identité et restent donc constantes le long de la simulation ; l'écart à la cible est
+reconstruit par les termes croisés de $Q$ (section~\ref{sec:cout}).
+
+\section{La variable différentielle du papier}
+Le papier définit $\delta x$ autour de l'\emph{état de fonctionnement courant} $x_0(t)$, et non
+autour de la cible :
+\[
+ \delta x=x-x_0(t),\qquad \delta u=u-u_0(t),\qquad u_0(t)=0 .
+\]
+Les jacobiennes sont évaluées en ce même point,
+\[
+ A_{0,k}=\left.\frac{\partial f}{\partial x}\right|_{(x_0(t),\,0)},\qquad
+ B_{0,k}=\left.\frac{\partial f}{\partial u}\right|_{(x_0(t),\,0)},
+\]
+et la dynamique linéarisée devient $\delta\dot x=A_{0,k}\,\delta x+B_{0,k}\,\delta u$.
+Dans le code, ces deux évaluations sont \texttt{Linearization\_6dof(dt, xcopy, 0)} et
+\texttt{fu(dt, xcopy, 0)}, où \texttt{xcopy} est une copie de l'état courant.
+
+\section{Premier point : les jacobiennes sont les mêmes}
+\label{sec:jacobiennes}
+La question naturelle est de savoir si $A$ devrait différer entre les deux modes. Elle ne le
+doit pas, pour une raison simple : le DLQG dit « original » évalue déjà ses jacobiennes à
+l'état courant, à chaque pas de temps. Le point de linéarisation est $x_0(t)=x(t)$ dans les deux
+cas, donc
+\[
+ A_k^{\text{delta}}=A_k^{\text{original}},\qquad
+ B_k^{\text{delta}}=B_k^{\text{original}}\qquad\text{pour tout }k .
+\]
+Autrement dit, le contrôleur de référence \emph{est déjà} le contrôleur différentiel : il n'existe
+pas de seconde matrice $A$ à obtenir. Le choix $u_0=0$ ne change rien non plus, car la dynamique
+est linéaire en $u$ à travers le produit bras de levier fois commande ; $B$ est indépendante de
+$u$, comme le note le papier.
+
+\section{Critère quadratique}
+\label{sec:cout}
+Le critère implémenté ne pénalise l'état qu'en fin d'horizon :
+\[
+ J=\bar x_N^T Q\,\bar x_N+\sum_{k=0}^{N-1}u_k^T R\,u_k ,
+\]
+avec $R=r_1 I_6$ et
+\[
+ Q_{[1:6,\,1:6]}=\begin{bmatrix}
+ w_1&0&0&0&-w_1&0\\
+ 0&w_2&0&0&0&-w_2\\
+ 0&0&w_3&0&0&0\\
+ 0&0&0&w_4&0&0\\
+ -w_1&0&0&0&w_1&0\\
+ 0&-w_2&0&0&0&w_2
+ \end{bmatrix},
+\]
+les autres blocs étant nuls. Les termes croisés $-w_1$ et $-w_2$ construisent
+$w_1(\theta_1-\theta_1^\star)^2+w_2(\theta_2-\theta_2^\star)^2$ à partir des composantes
+d'angle et des composantes de cible. \textbf{La cible est donc déjà contenue dans le coût.}
+
+\section{Récursion DLQG}
+La récursion de Riccati est résolue à chaque pas sur l'horizon restant, à jacobiennes gelées :
+\[
+ S\leftarrow Q,\qquad
+ L=(R+\bar B_k^T S\bar B_k)^{-1}\bar B_k^T S\bar A_k,\qquad
+ S\leftarrow \bar A_k^T S(\bar A_k-\bar B_k L),
+\]
+répété $N-k$ fois. Le gain retenu est le $L$ de la dernière itération, soit $L_k$.
+L'estimateur et le bruit moteur sont inchangés :
+\[
+ \hat{\bar x}_{k+1}=\bar A_k\hat{\bar x}_k+\bar B_k u_k+K_k\big(y_k-H\hat{\bar x}_k\big),
+ \qquad
+ K_k=\bar A_k\Sigma_k H^T\big(H\Sigma_k H^T+\Omega_y\big)^{-1}.
+\]
+
+\section{Second point : la loi de commande est une identité}
+\label{sec:identite}
+Notons $\bar x_0=\mathbf{1}_{d+1}\otimes x_0(t)$ la réplication du point de fonctionnement sur
+l'état augmenté. Le mode différentiel calcule
+\[
+ \widehat{\delta\bar x}_k=\hat{\bar x}_k-\bar x_0 ,
+\]
+puis applique, puisque $u_0=0$,
+\[
+ u_k=u_0-L_k\,\widehat{\delta\bar x}_k
+   \;\longrightarrow\;
+ u_k=-L_k\big(\widehat{\delta\bar x}_k+\bar x_0\big).
+\]
+En substituant la première ligne dans la seconde,
+\[
+ u_k=-L_k\Big(\big(\hat{\bar x}_k-\bar x_0\big)+\bar x_0\Big)=-L_k\,\hat{\bar x}_k .
+\]
+La soustraction de $\bar x_0$ est annulée par son addition avant le produit par $L_k$. On
+retrouve exactement la loi absolue du mode original. Aucune approximation n'intervient : c'est
+une identité algébrique, valable à chaque pas et pour toute valeur de $\bar x_0$.
+
+\section{Conséquence : équivalence exacte}
+Combinant la section~\ref{sec:jacobiennes} (mêmes $\bar A_k$, $\bar B_k$, donc mêmes $L_k$ et
+$K_k$) et la section~\ref{sec:identite} (mêmes $u_k$), les deux modes engendrent la même
+séquence de commandes, donc la même trajectoire d'état, la même trajectoire d'estimation et le
+même coût. Les seules différences observables proviennent de l'ordre des opérations en
+arithmétique flottante.
+
+\section{Vérification numérique}
+Simulation de \texttt{longmovement\_1}, bruit désactivé pour que les deux contrôleurs voient
+les mêmes réalisations, durée $0.6$ s, $60$ pas, retard $0.06$ s, $w_1=w_2=20000$,
+$w_3=w_4=1$, $r_1=0.02$.
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+Écart maximal & Valeur \\
+\midrule
+Commandes $\;\max_k\lVert u_k^{\text{orig}}-u_k^{\text{delta}}\rVert_\infty$ & $2{,}4\times10^{-12}$ \\
+États $\;\max_k\lVert x_k^{\text{orig}}-x_k^{\text{delta}}\rVert_\infty$ & $7{,}4\times10^{-12}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+Ces valeurs sont de l'ordre de l'erreur d'arrondi accumulée sur soixante pas, et non d'une
+différence de comportement. Comparer les deux modes sur un banc d'essai bruité ne mesure donc
+rien d'autre que la variabilité du bruit.
+
+\section{Ce qui romprait l'équivalence}
+L'équivalence repose sur deux hypothèses. En relâcher une produit un contrôleur réellement
+distinct.
+
+\paragraph{(a) Linéariser ailleurs qu'à l'état courant.}
+Si $\delta x$ est défini autour d'une trajectoire nominale $x^{\text{nom}}(t)$ obtenue par une
+passe avant déterministe, comme en iLQG, alors
+$A_k=\partial f/\partial x|_{x^{\text{nom}}(t)}\neq\partial f/\partial x|_{x(t)}$ dès que l'état
+s'écarte du nominal. Les gains diffèrent alors vraiment. Le papier écarte explicitement cette
+option, jugeant l'hypothèse de proximité au nominal intenable après perturbation. Un second
+choix possible est de figer la linéarisation au point d'équilibre cible, ce qui donne une unique
+matrice $A$ pour tout le mouvement.
+
+\paragraph{(b) Commande nominale non nulle.}
+Avec $u_0\neq0$, la loi devient $u_k=u_0-L_k\,\widehat{\delta\bar x}_k$, et le terme $u_0$ ne se
+simplifie plus. Cela suppose de disposer d'une commande de référence, donc d'une trajectoire
+nominale, ce qui ramène au cas (a).
+
+\paragraph{(c) Conserver le terme affine.}
+C'est l'écart le plus substantiel entre le code et une formulation différentielle exacte. La
+dynamique simulée est $x_{k+1}=x_k+\Delta t\,f(x_k,u_k)$. Son développement autour de
+$(x_0,\,u_0=0)$ donne
+\[
+ \delta x_{k+1}=A_k\,\delta x_k+B_k\,\delta u_k+c_k,
+ \qquad c_k=\Delta t\,f(x_0,0),
+\]
+où $c_k$ est la dérive à commande nulle. Le code néglige $c_k$ et applique le gain à l'état
+absolu. Un DLQG différentiel exact demanderait soit un LQR affine, obtenu en augmentant l'état
+d'une composante constante égale à un et en logeant $c_k$ dans la dernière colonne de $A$, soit
+une trajectoire nominale par rapport à laquelle $c_k$ est nul par construction.
+
+\section{Un piège à éviter}
+Il est tentant de définir $\delta x=x-x^\star$ par rapport à la cible. Ce n'est pas la
+définition du papier, et c'est incorrect ici : la cible occupe déjà les deux dernières
+composantes de l'état, et les termes croisés de $Q$ (section~\ref{sec:cout}) forment l'erreur de
+position à partir d'elles. La soustraire dans la commande la retrancherait une seconde fois.
+
+\section{Conclusion}
+Le mode \texttt{delta\_state} tel qu'implémenté est un changement de coordonnées suivi de son
+inverse. Il ne modifie ni les jacobiennes, ni les gains, ni les commandes. Le fait que la
+matrice $A$ soit inchangée n'est pas un symptôme d'erreur : c'est la conséquence directe du fait
+que le DLQG de référence linéarise déjà à l'état courant, exactement comme le prescrit le
+papier. Pour obtenir deux contrôleurs distincts à comparer, il faut choisir l'une des variantes
+(a), (b) ou (c) ci-dessus.
+
+\end{document}

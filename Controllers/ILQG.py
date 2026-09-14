@@ -21,6 +21,7 @@ Viscous = np.array([[0.05, 0.025], [0.025, 0.05]])
 
 # Muscle model constants. Hoisted to module level: they used to be rebuilt from
 # nested lists on every call of f / fx / fu, which dominated the runtime.
+
 MOMENT_ARM = np.array([[2, -2, 0, 0, 1.5, -2], [0, 0, 2, -2, 2, -1.5]])
 L0 = np.array([7.32, 3.26, 6.4, 4.26, 5.95, 4.04])
 THETA0 = np.array(

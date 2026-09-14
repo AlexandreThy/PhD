@@ -657,6 +657,7 @@ def DLQG_6Muscles(
     ClassicLQG=False,
     FF=False,
     ff_power=0.3,
+    delta_state=False,
 ):
 
     dt = Duration / Num_iter
@@ -734,7 +735,15 @@ def DLQG_6Muscles(
             BtS = B.T @ S
             L = np.linalg.inv(R + BtS @ B) @ B.T @ S @ A
             S = A.T @ S @ (A - B @ L)
-        u = -L @ xhat
+        if delta_state:
+            # The paper defines delta x around the current operating point.
+            x0_local = x[:Num_Var]
+            delta_xhat = xhat - np.tile(x0_local, kdelay + 1)
+            # u0 = 0 in the paper; delta x is a local linearization
+            # coordinate, not a target error or a delayed-state reference.
+            u = -L @ (delta_xhat + np.tile(x0_local, kdelay + 1))
+        else:
+            u = -L @ xhat
         J += u.T @ R @ u
 
         y[k] = (H @ x).flatten()
