@@ -376,16 +376,19 @@ def step2(x, u, Duration, w1, w2, r1, xtarg):
 
     # The state and control cost Hessians do not depend on the timestep, so they
     # are evaluated once and broadcast instead of rebuilt K times.
+    # The running cost is a sum over timesteps, not scaled by dt, so that the total
+    # cost is (1/2) [r1 sum_k ||u_k||^2 + w1 ||theta_N - target||^2 + w2 ||omega_N||^2],
+    # i.e. half the Cost_function of PaperPlot.ipynb with r = r1: ILQG is optimal for it.
     identity_n = np.identity(n)
-    Q_step = dt * lxx(w1, w2)
-    R_step = dt * luu(x[0], u[0], r1)
+    Q_step = lxx(w1, w2)
+    R_step = luu(x[0], u[0], r1)
 
     for i in range(K):
         A[i] = identity_n + dt * fx(x[i], u[i])
         B[i] = dt * fu(x[i], u[i])
-        q[i] = dt * l(x[i], u[i], r1, xtarg, w1, w2)
-        qbold[i] = dt * lx(x[i], u[i], xtarg, w1, w2)
-        r[i] = dt * lu(x[i], u[i], r1)
+        q[i] = l(x[i], u[i], r1, xtarg, w1, w2)
+        qbold[i] = lx(x[i], u[i], xtarg, w1, w2)
+        r[i] = lu(x[i], u[i], r1)
         Q[i] = Q_step
         R[i] = R_step
 
@@ -588,7 +591,9 @@ def simulate_ILQG(
         for j in range(2):
             cbold[i, j, 2 + j] = sqrt(motornoise_variance)
 
+    xtarg = np.array([obj1, obj2])
     u_incr = np.ones(u.shape) * np.inf
+    step = np.zeros(u.shape)  # update actually applied to u (alpha * u_incr)
 
     for iterate in range(300):
         x = step1(
@@ -609,7 +614,7 @@ def simulate_ILQG(
                 A,
                 B,
                 K,
-                u - u_incr,
+                u - step,
                 kdelay,
                 motornoise_variance,
                 FF,
@@ -622,11 +627,32 @@ def simulate_ILQG(
             break
 
         A, B, q, qbold, r, Q, R = step2(
-            x, u, Duration, w1, w2, r1, np.array([obj1, obj2])
+            x, u, Duration, w1, w2, r1, xtarg
         )  # Compute the Linearizations of the dynamic
         l, L = step3(
             A, B, C, cbold, q, qbold, r, Q, R, eps
         )  # Compute the control gains improvement (feedforward and feedback)
         u_incr = step4(l, L, K, A, B)  # Compute the command sequence improvement
-        u += u_incr  # Improves the command sequence
+
+        # Backtracking line search: keep the step only if it decreases the cost,
+        # halving it otherwise. The full step (alpha = 1) is used whenever it works;
+        # without this, the rollout diverges on e.g. longmovement_2.
+        J = total_cost(x, u, w1, w2, r1, xtarg)
+        alpha = 1.0
+        while alpha > 1e-8:
+            J_new = total_cost(step1(x0, u + alpha * u_incr, Duration), u + alpha * u_incr, w1, w2, r1, xtarg)
+            if np.isfinite(J_new) and J_new < J:
+                break
+            alpha /= 2
+        else:
+            # No decrease possible: converged up to round-off. Keep u and stop at
+            # the next iteration, executing it with the feedback gains only.
+            alpha, u_incr, l = 0.0, np.zeros(u.shape), np.zeros(l.shape)
+        step = alpha * u_incr
+        u += step  # Improves the command sequence
     return X, Y, x, u
+
+
+def total_cost(x, u, w1, w2, r1, xtarg):
+    """Cost minimised by ILQG: (1/2) Cost_function of PaperPlot.ipynb (see step2)."""
+    return np.sum([l(x[i], u[i], r1) for i in range(len(u))]) + h(x[-1], w1, w2, xtarg)
