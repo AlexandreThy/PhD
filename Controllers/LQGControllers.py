@@ -79,417 +79,6 @@ def compute_forcefield(theta, omega, coefficient):
 
     return -Jacobian.T @ D @ Jacobian @ omega
 
-
-def compute_forcefield_old(theta, omega, acc, coefficient):
-    """
-    Compute the joint angles acceleration resulting from a lateral
-    velocity-dependent forcefield.
-
-    Args:
-        theta : current joint angles
-        omega : current joint angular velocities
-        acc : current joint angular accelerations
-        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
-
-    """
-    t0, t1 = theta
-    o0, o1 = omega
-    sin_t0, cos_t0 = np.sin(t0), np.cos(t0)
-    sin_t01, cos_t01 = np.sin(t0 + t1), np.cos(t0 + t1)
-
-    fe = -33 * sin_t01
-    fs = fe - 30 * sin_t0
-    ge = 33 * cos_t01
-    gs = ge + 30 * cos_t0
-
-    fse = -33 * cos_t01
-    gse = -33 * sin_t01
-    fee = fse
-    fss = fse - 30 * cos_t0
-    gee = fe
-    gss = fs
-
-    xddot = (
-        13 * (gs * o0 + ge * o1) * coefficient
-        + fss * o0 * o0
-        + 2 * fse * o0 * o1
-        + fee * o1 * o1
-        + fs * acc[0]
-        + fe * acc[1]
-    )
-    yddot = (
-        gss * o0 * o0 + 2 * gse * o0 * o1 + gee * o1 * o1 + gs * acc[0] + ge * acc[1]
-    )
-
-    gamma = xddot - fss * o0 * o0 - 2 * fse * o0 * o1 - fee * o1 * o1
-    nu = yddot - gss * o0 * o0 - 2 * gse * o0 * o1 - gee * o1 * o1
-    F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
-    F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
-    return np.array([F1, F2])
-
-
-def LQG(
-    Duration=0.6,
-    w1=1e8,
-    w2=1e8,
-    w3=1e4,
-    w4=1e4,
-    r1=1e-5,
-    r2=1e-5,
-    targets=[0, 55],
-    starting_point=[0, 20],
-    FF=False,
-    Side="Right",
-    plot=True,
-    Delay=0,
-    plotEstimation=False,
-    Showu=False,
-    newtonfunc=newtonf,
-    newtondfunc=newtondf,
-    Num_iter=300,
-    Activate_Noise=False,
-    motornoise_variance=1e-3,
-):
-
-    dt = Duration / Num_iter
-    kdelay = int(Delay / dt)
-
-    obj1, obj2 = newton(
-        newtonfunc, newtondfunc, 1e-8, 1000, targets[0], targets[1]
-    )  # Defini les targets
-    st1, st2 = newton(
-        newtonfunc, newtondfunc, 1e-8, 1000, starting_point[0], starting_point[1]
-    )
-
-    xstart = np.array([st1, 0, 0, st2, 0, 0, obj1, 0, obj2, 0])
-    x0 = np.array([st1, 0, 0, st2, 0, 0, obj1, obj2])
-    x0_with_delay = np.copy(x0)
-    for _ in range(kdelay):
-        x0_with_delay = np.concatenate((x0_with_delay, x0))
-    Num_Var = 8
-
-    # Define Weight Matrices
-
-    R = np.array([[r1, 0], [0, r2]])
-    Q = np.array(
-        [
-            [w1, 0, 0, 0, 0, 0, -w1, 0],
-            [0, w2, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, w3, 0, 0, 0, -w3],
-            [0, 0, 0, 0, w4, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [-w1, 0, 0, 0, 0, 0, w1, 0],
-            [0, 0, 0, -w3, 0, 0, 0, w3],
-        ]
-    )
-
-    # Define Dynamic Matrices
-
-    A_basic = Linearization(dt, [pi / 4, 0, 0, pi / 2, 0, 0])
-
-    B_basic = np.transpose(
-        [[0, 0, dt / tau, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, dt / tau, 0, 0]]
-    )
-
-    NewQ = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
-    NewQ[:Num_Var, :Num_Var] = Q
-    Q = NewQ
-
-    H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
-    H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
-
-    A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
-    A[:Num_Var, :Num_Var] = A_basic
-    A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
-    B = np.zeros(((kdelay + 1) * Num_Var, 2))
-    B[:Num_Var] = B_basic
-
-    S = Q
-
-    array_L = np.zeros((Num_iter - 1, 2, Num_Var * (kdelay + 1)))
-    array_S = np.zeros((Num_iter, Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-    array_S[-1] = Q
-    for k in range(Num_iter - 1):
-        L = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
-        array_L[Num_iter - 2 - k] = L
-        S = A.T @ S @ (A - B @ L)
-        array_S[Num_iter - 2 - k] = S
-
-    # print(array_L[0])
-    # Feedback
-    L = array_L
-
-    array_x = np.zeros((Num_iter, Num_Var))
-    array_xhat = np.zeros((Num_iter, Num_Var))
-    array_u = np.zeros((Num_iter - 1, 2))
-    y = np.zeros((Num_iter - 1, Num_Var))
-
-    array_x[0] = x0.flatten()
-    array_xhat[0] = x0.flatten()
-    xhat = np.copy(x0_with_delay)
-    x = np.copy(x0_with_delay)
-
-    sigma = np.identity(Num_Var * (kdelay + 1)) * 10**-6
-    J = 0
-    F = [0, 0]
-    for k in range(Num_iter - 1):
-
-        acc = (
-            np.array([array_x[k][2], array_x[k][5]])
-            - np.array([array_x[k - 1][2], array_x[k - 1][5]])
-        ) / dt
-        if (np.sin(x[0] + x[3]) * 33 + np.sin(x[0]) * 30 > 35) and (FF == True):
-
-            F = Compute_f_new_version(
-                np.array([x[0], x[3]]), np.array([x[1], x[4]]), acc, 1
-            )
-            if Side == "Left":
-                F *= -1
-
-        else:
-            F = [0, 0]
-        Omega_sens, Omega_measure, motor_noise, measure_noise = NoiseAndCovMatrix(
-            N=Num_Var, kdelay=kdelay, Linear=True, Var=motornoise_variance
-        )
-        y[k] = (H @ x).flatten()
-        if Activate_Noise == True:
-            y[k] += measure_noise
-        K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
-        sigma = Omega_sens + (A - K @ H) @ sigma @ A.T
-        u = -L[k].reshape(np.flip(B.shape)) @ xhat
-        array_u[k] = u
-        J += u.T @ R @ u
-        xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
-        x = (
-            A @ x
-            + B @ u
-            + np.concatenate(
-                ([0, dt * F[0], 0, 0, dt * F[1], 0, 0, 0], np.zeros(Num_Var * kdelay))
-            ).flatten()
-        )
-        if Activate_Noise:
-            for j, i in enumerate([2, 5]):
-                x[i] += motor_noise[j]
-        array_xhat[k + 1] = xhat[:Num_Var].flatten()
-        array_x[k + 1] = x[:Num_Var].flatten()
-
-        # print(array_x[k-1,2],((array_x[k]-array_x[k-1])/dt)[1])
-
-    # Plot
-    J += x.T @ Q @ x
-    x0 = xstart
-
-    x_nonlin = array_x.T[:, 1:][:, ::1]
-    X = np.cos(x_nonlin[0] + x_nonlin[3]) * 33 + np.cos(x_nonlin[0]) * 30
-    Y = np.sin(x_nonlin[0] + x_nonlin[3]) * 33 + np.sin(x_nonlin[0]) * 30
-
-    if plot:
-        plt.plot(X, Y, color="green", label="LQG", linewidth=0.8)
-        plt.axis("equal")
-        plt.scatter([targets[0]], [targets[1]], color="black")
-        if plotEstimation:
-            x_nonlin = array_xhat.T[:, 1:][:, ::1]
-            X2 = np.cos(x_nonlin[0] + x_nonlin[3]) * 33 + np.cos(x_nonlin[0]) * 30
-            Y2 = np.sin(x_nonlin[0] + x_nonlin[3]) * 33 + np.sin(x_nonlin[0]) * 30
-            plt.plot(
-                X2,
-                Y2,
-                color="black",
-                label="Estimation",
-                linewidth=0.8,
-                linestyle="--",
-                alpha=0.5,
-            )
-    if Showu:
-        return X, Y, array_u
-    return X, Y, J, x_nonlin
-
-
-def BestLQG(
-    Duration=0.6,
-    w1=1e4,
-    w2=1e4,
-    w3=1,
-    w4=1,
-    r1=1e-5,
-    r2=1e-5,
-    targets=[0, 55],
-    starting_point=[0, 20],
-    plot=True,
-    Delay=0,
-    Num_iter=60,
-    Activate_Noise=False,
-    plotEstimation=False,
-    ClassicLQG=False,
-    filter=[1, 0, 0, 1, 0, 0],
-    AdditionalDynamics={},
-):
-
-    dt = Duration / Num_iter
-    kdelay = int(Delay / dt)
-    obj1, obj2 = newton(
-        newtonf, newtondf, 1e-8, 1000, targets[0], targets[1]
-    )  # Defini les targets
-    st1, st2 = newton(
-        newtonf, newtondf, 1e-8, 1000, starting_point[0], starting_point[1]
-    )
-    TimeConstant = 1 / 0.06
-
-    x0 = np.array([st1, 0, 0, st2, 0, 0, obj1, obj2])
-    x0_with_delay = np.tile(x0, kdelay + 1)
-    Num_Var = 8
-
-    R = np.array([[r1, 0], [0, r2]])
-
-    Q = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
-    Q[:Num_Var, :Num_Var] = np.array(
-        [
-            [w1, 0, 0, 0, 0, 0, -w1, 0],
-            [0, w3, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, w2, 0, 0, 0, -w2],
-            [0, 0, 0, 0, w4, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [-w1, 0, 0, 0, 0, 0, w1, 0],
-            [0, 0, 0, -w2, 0, 0, 0, w2],
-        ]
-    )
-
-    H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
-    H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
-
-    A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
-    A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
-
-    B = np.zeros(((kdelay + 1) * Num_Var, 2))
-    B[:Num_Var] = np.transpose(
-        [[0, 0, dt / tau, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, dt / tau, 0, 0]]
-    )
-
-    array_x = np.zeros((Num_iter, Num_Var))
-    array_xhat = np.zeros((Num_iter, Num_Var))
-    y = np.zeros((Num_iter - 1, Num_Var))
-
-    array_x[0] = x0.flatten()
-    array_xhat[0] = x0.flatten()
-
-    xhat = np.copy(x0_with_delay)
-    x = np.copy(x0_with_delay)
-
-    sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-    J = 0
-    omega = np.zeros(2)
-    acc = np.zeros(2)
-    for k in range(Num_iter - 1):
-        F = EnvironmentDynamics(AdditionalDynamics, x, acc)
-        if ClassicLQG:
-            A[:Num_Var, :Num_Var] = Linearization(
-                dt, np.array([pi / 4, 0, 0, pi / 2, 0, 0])
-            )
-        else:
-            xcopy = np.copy(xhat)
-            for i in range(6):
-                xcopy[i] *= filter[i]
-            A[:Num_Var, :Num_Var] = Linearization(dt, xcopy)
-        S = Q
-        for _ in range(Num_iter - 1 - k):
-            L = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
-            S = A.T @ S @ (A - B @ L)
-        u = -L @ xhat
-        J += u.T @ R @ u
-
-        C = np.array(
-            [
-                -x[4] * (2 * x[1] + x[4]) * a2 * np.sin(x[3]),
-                x[1] * x[1] * a2 * np.sin(x[3]),
-            ]
-        )
-        M = np.array(
-            [
-                [a1 + 2 * a2 * np.cos(x[3]), a3 + a2 * np.cos(x[3])],
-                [a3 + a2 * np.cos(x[3]), a3],
-            ]
-        )
-
-        Omega_sens, Omega_measure, motor_noise, measure_noise = NoiseAndCovMatrix(
-            M, Num_Var, kdelay, Linear=True, Var=1e-4
-        )
-        # Omega_sens = np.diag(np.ones(Num_Var))*1e-6
-        # Omega_measure = np.diag(np.ones(Num_Var))*1e-7
-        y[k] = (H @ x).flatten()
-        if Activate_Noise == True:
-            y[k] += measure_noise
-
-        sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
-        for _ in range(Num_iter - 1):
-
-            K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
-            sigma = Omega_sens + (A - K @ H) @ sigma @ A.T
-
-        xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
-        # print(xhat[:8])
-        acc = np.linalg.solve(M, ((x[[2, 5]]) - C - Bdyn @ omega)) + F
-        omega += dt * acc
-        x_new = np.array(
-            [
-                x[0] + dt * x[1],
-                omega[0],
-                x[2] + dt * TimeConstant * (u[0] - x[2]),
-                x[3] + dt * x[4],
-                omega[1],
-                x[5] + dt * TimeConstant * (u[1] - x[5]),
-                x[6],
-                x[7],
-            ]
-        )
-
-        # Concatenate with remaining x values
-        x = np.concatenate((x_new, x[:-Num_Var]))
-
-        if Activate_Noise:
-
-            x[[2, 5]] += motor_noise
-
-        array_xhat[k + 1] = xhat[:Num_Var].flatten()
-        array_x[k + 1] = x[:Num_Var].flatten()
-
-        # print(array_x[k-1,2],((array_x[k]-array_x[k-1])/dt)[1])
-
-    # Plot
-    J += x.T @ Q @ x
-
-    x_nonlin = array_x.T[:, :][:, ::1]
-    X = np.cos(x_nonlin[0] + x_nonlin[3]) * 33 + np.cos(x_nonlin[0]) * 30
-    Y = np.sin(x_nonlin[0] + x_nonlin[3]) * 33 + np.sin(x_nonlin[0]) * 30
-
-    if plot:
-        color = "magenta" if ClassicLQG else "green"
-        label = "LQG" if ClassicLQG else "DLQG"
-        plt.plot(X, Y, color=color, label=label, linewidth=0.8)
-        plt.axis("equal")
-        tg = np.array([obj1, obj2])
-        plt.scatter(
-            np.array([ToCartesian(tg)[0]]),
-            np.array([ToCartesian(tg)[1]]),
-            color="black",
-        )
-    if plotEstimation:
-        x_nonlin2 = array_xhat.T[:, 1:][:, ::1]
-        X2 = np.cos(x_nonlin2[0] + x_nonlin2[3]) * 33 + np.cos(x_nonlin2[0]) * 30
-        Y2 = np.sin(x_nonlin2[0] + x_nonlin2[3]) * 33 + np.sin(x_nonlin2[0]) * 30
-        plt.plot(
-            X2,
-            Y2,
-            color="black",
-            label="Estimation",
-            linewidth=0.8,
-            linestyle="--",
-            alpha=0.5,
-        )
-    return X, Y, u, x_nonlin
-
-
 def Linearization_6dof(dt, x, u):
     """
     Parameters :
@@ -639,8 +228,138 @@ def fu(dt, x, u):
         du[i] = 0
     return dt * sol
 
+def LQG(
+    Duration=0.6,
+    w1=1e4,
+    w2=1e4,
+    w3=1,
+    w4=1,
+    
+    r1=1e-5,
+    targets=[0, 55],
+    starting_point=[0, 20],
+    Delay=0,
+    Num_iter=60,
+    Activate_Noise=False,
+    motornoise_variance=1e-3,
+    FF=False,
+    ff_power=0.3,
+):
 
-def DLQG_6Muscles(
+    dt = Duration / Num_iter
+    kdelay = int(Delay / dt)
+    obj1, obj2 = compute_angles_from_cartesian(targets[0], targets[1])  # Defini les targets
+    st1, st2 = compute_angles_from_cartesian(starting_point[0], starting_point[1])
+
+    x0 = np.array([st1, st2, 0, 0, obj1, obj2])
+    x0_with_delay = np.tile(x0, kdelay + 1)
+    Num_Var = 6
+
+    R = np.diag(np.ones(6) * r1)
+
+    Q = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
+    Q[:Num_Var, :Num_Var] = np.array(
+        [
+            [w1, 0, 0, 0, -w1, 0],
+            [0, w2, 0, 0, 0, -w2],
+            [0, 0, w3, 0, 0, 0],
+            [0, 0, 0, w4, 0, 0],
+            [-w1, 0, 0, 0, w1, 0],
+            [0, -w2, 0, 0, 0, w2],
+        ]
+    )
+
+    H = np.zeros((Num_Var, (kdelay + 1) * Num_Var))
+    H[:, (kdelay) * Num_Var :] = np.identity(Num_Var)
+
+    A = np.zeros(((kdelay + 1) * Num_Var, (kdelay + 1) * Num_Var))
+    A[Num_Var:, :-Num_Var] = np.identity((kdelay) * Num_Var)
+
+    B = np.zeros(((kdelay + 1) * Num_Var, 6))
+
+    array_x = np.zeros((Num_iter + 1, Num_Var))
+    array_xhat = np.zeros((Num_iter + 1, Num_Var))
+    array_u = np.zeros((Num_iter, 6))
+    y = np.zeros((Num_iter, Num_Var))
+
+    array_x[0] = x0.flatten()
+    array_xhat[0] = x0.flatten()
+
+    xhat = np.copy(x0_with_delay)
+    x = np.copy(x0_with_delay)
+
+    sigma = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
+    J = 0
+    u = np.zeros(6)
+
+    # Constant across timesteps, so built once instead of on every iteration.
+    Omega_motor = np.zeros((Num_Var * (kdelay + 1), Num_Var * (kdelay + 1)))
+    Omega_measure = np.diag(np.ones(Num_Var) * 1e-4)
+    for i in range(2, 4):
+
+        Omega_motor[i, i] = motornoise_variance
+    
+    A[:Num_Var, :Num_Var] = Linearization_6dof(dt, x0, 0)
+    B[:4] = fu(dt, x0, 0)
+    # One backward Riccati pass on the model linearised at x0. The cost is
+    # terminal only, so the gain depends on the time to go: step k uses the gain
+    # computed Num_iter - k steps from the end, as in DLQG. Keeping only the
+    # last gain of the pass (the step-0 gain) for every step undershoots.
+    array_L = np.zeros((Num_iter, 6, (kdelay + 1) * Num_Var))
+    S = Q
+    for i in range(Num_iter):
+        # B.T @ S is shared with the gain expression below; @ is
+        # left-associative so this is the same product, computed once.
+        BtS = B.T @ S
+        L = np.linalg.inv(R + BtS @ B) @ B.T @ S @ A
+        S = A.T @ S @ (A - B @ L)
+        array_L[Num_iter - 1 - i] = L
+
+    for k in range(Num_iter):
+        L = array_L[k]
+        
+        F = (
+            compute_forcefield(x[0:2], x[2:4], ff_power)
+            if FF == True
+            else np.array([0, 0])
+        )
+        u = -L @ xhat
+        J += u.T @ R @ u
+
+        y[k] = (H @ x).flatten()
+        if Activate_Noise == True:
+            y[k] += np.random.normal(0, 1e-2, Num_Var)
+
+        K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
+        sigma = Omega_motor + (A - K @ H) @ sigma @ A.T
+
+        xhat = A @ xhat + B @ u + K @ (y[k] - H @ xhat)
+
+        x_new = (x[:Num_Var] + dt * (f(x, u, F))).reshape(6)
+
+        # Concatenate with remaining x values
+        x = np.concatenate((x_new, x[:-Num_Var]))
+
+        if Activate_Noise:
+
+            x[[2, 3]] += np.random.normal(0, np.sqrt(motornoise_variance), 2)
+
+        array_xhat[k + 1] = xhat[:Num_Var].flatten()
+        array_x[k + 1] = x[:Num_Var].flatten()
+        array_u[k] = u
+
+        # print(array_x[k-1,2],((array_x[k]-array_x[k-1])/dt)[1])
+
+    # Plot
+    J += x.T @ Q @ x
+
+    x_nonlin = array_x.T[:, :][:, ::1]
+    X = np.cos(x_nonlin[0] + x_nonlin[1]) * 33 + np.cos(x_nonlin[0]) * 30
+    Y = np.sin(x_nonlin[0] + x_nonlin[1]) * 33 + np.sin(x_nonlin[0]) * 30
+
+    return X, Y, array_u, x_nonlin
+
+def DLQG(
     Duration=0.6,
     w1=1e4,
     w2=1e4,

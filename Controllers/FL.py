@@ -421,8 +421,8 @@ def nonlinear_transform_command(L, x):
     )
     fl, ff_v = muscle_force_scaling(x)
 
-    U = MOMENT_ARM_PINV @ (M @ linear_command + C + Viscous @ x[2:4])
-    u = U / (fl * ff_v)
+    Pinv_AD = np.linalg.pinv(MOMENT_ARM@np.diag(fl*ff_v))  # precompute the pseudoinverse for efficiency
+    u = Pinv_AD @ (M @ linear_command + C + Viscous @ x[2:4])
     return u, linear_command
 
 
