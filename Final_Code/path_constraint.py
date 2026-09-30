@@ -22,11 +22,11 @@ from common import (
 MOVEMENT_TIME = 0.6
 NUM_ITER = 60
 MOVEMENT_BY_NUMBER = {1: longmovement_1, 2: longmovement_2}
-# Progressive path weights, from unconstrained to straight. At TAU_PATH = 0.15
-# the peak lateral deviation across these five values is 13.6 / 8.0 / 4.7 / 2.2
-# / 0.8 cm for the first long movement and 11.9 / 4.1 / 1.3 / 0.5 / 0.6 cm for
-# the second, on a 58 cm reach.
-WC_SWEEP = (0, 0.002, 0.005, 0.01, 0.1)
+# Progressive path weights, from unconstrained to straight. At TAU_PATH = 0.02
+# the noiseless peak lateral deviation across these five values is 13.6 / 8.6 /
+# 4.9 / 2.4 / 1.0 cm for the first long movement and 11.9 / 8.0 / 5.1 / 3.1 /
+# 1.8 cm for the second, on a 58 cm reach.
+WC_SWEEP = (0, 20, 40, 60, 80)
 
 FREE_COLOR = "#0081a7"  # FL without the straight-path cost
 PATH_COLOR = "#f07167" # FL with the straight-path cost
@@ -43,11 +43,13 @@ def cost_components(x, u, dt, wc, target):
     # The controller's own cost matrices, so this scores what it optimised. It
     # weights step t by exp(-(NUM_ITER - 1 - t) * dt / TAU_PATH), i.e. the decay
     # runs backwards from the end of the movement.
-    Qkwc = compute_path(start, np.asarray(target), wc, NUM_ITER)
+    # Controllers/FL.py now uses one joint-space matrix for every step, built at
+    # simulate_FL's default percent = 0.75 of the way to the target.
+    Qkwc = compute_path(start, np.asarray(target), wc, 0.75)
     decay = np.exp(-(NUM_ITER - 1 - np.arange(NUM_ITER)) * dt / TAU_PATH)
 
     states = x[:NUM_ITER]
-    path = float(np.einsum("tj,tjk,tk->t", states, Qkwc, states) @ decay)
+    path = float(np.einsum("tj,jk,tk->t", states, Qkwc, states) @ decay)
 
     thetas, thetae, omegas, omegae = x[-1, :4]
     return (

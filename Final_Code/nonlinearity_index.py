@@ -3,7 +3,7 @@ Peak joint power index against the movement cost, per reach direction.
 
 For each of eight center-out directions the joint power (torque times angular
 velocity) is taken at its peak over the movement, then correlated with the total
-DLQG movement cost of the same direction. Ported from
+LQG movement cost of the same direction. Ported from
 CurrentParts/NonlinearityIndex.py.
 
 The cost it correlates against comes from centerout_cost_polar.py, so run that
@@ -17,7 +17,7 @@ from scipy import stats
 
 from common import (
     COLORS, LEGEND, NUM_CONTROLLERS, START, build_parser, centerout_targets,
-    finish, np, pi, plt, run_dlqg, run_fl, run_ilqg, run_tasks, save_figure,
+    finish, np, pi, plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
 )
 # The muscle model of the controllers, so the torque below is the torque the
 # simulation actually produced. See the note in compute_torque.
@@ -28,9 +28,9 @@ NUM_ITER = 40
 AMPLITUDE = 15
 NUM_TARGETS = 8
 # Written by centerout_cost_polar.py for the 15 cm / 400 ms condition
-COST_FILE = "Costr.npz"
+COST_FILE = "Cfy40_15cm_400ms_cost.npz"
 # Column of the cost array the correlations use as the x axis
-REFERENCE_CONTROLLER = 2  # DLQG
+REFERENCE_CONTROLLER = 2  # LQG
 
 
 def compute_torque(x, u):
@@ -62,11 +62,11 @@ def _worker(task):
     target, duration, num_iter, start = task
     _, _, x_ilqg, u_ilqg = run_ilqg(duration, num_iter, start, target)
     _, _, x_fl, u_fl = run_fl(duration, num_iter, start, target)
-    _, _, x_dlqg, u_dlqg = run_dlqg(duration, num_iter, start, target)
+    _, _, x_lqg, u_lqg = run_lqg(duration, num_iter, start, target)
     return np.array([
         compute_effort(x_ilqg, u_ilqg),
         compute_effort(x_fl[:, :4], u_fl),
-        compute_effort(x_dlqg[:, :4], u_dlqg),
+        compute_effort(x_lqg[:, :4], u_lqg),
     ])
 
 
@@ -90,7 +90,7 @@ def load_total_cost(outdir):
             f"    python Final_Code/centerout_cost_polar.py "
             f"--amplitude 15 --duration 0.4"
         )
-    return np.load(path)["my_array"]
+    return np.load(path)["total"]
 
 
 def regress(cost_column, peak):

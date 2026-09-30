@@ -11,7 +11,7 @@ Replaces the three near-identical notebook cells with one parameterised pass.
 
 from common import (
     COLORS, LEGEND, START, build_parser, centerout_targets, finish, np,
-    plt, run_dlqg, run_fl, run_ilqg, run_tasks, save_figure,
+    plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
 )
 
 MOVEMENT_TIME = 0.4
@@ -20,7 +20,7 @@ AMPLITUDE = 15
 NUM_TARGETS = 8
 MAX_TRAJECTORIES_SHOWN = 15
 
-RUNNERS = (run_ilqg, run_fl, run_dlqg)
+RUNNERS = (run_ilqg, run_fl, run_lqg)
 
 
 def _worker(task):

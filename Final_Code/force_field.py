@@ -16,7 +16,7 @@ from matplotlib.lines import Line2D
 from common import (
     COLORS, Cost_function, LEGEND, NUM_CONTROLLERS,
     build_parser, compute_angles_from_cartesian, delete_axis, finish, np, pi,
-    plt, run_dlqg, run_fl, run_ilqg, run_tasks, save_figure,
+    plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
 )
 
 MOVEMENT_TIME = 0.6
@@ -30,6 +30,7 @@ TARGET = [0, 55]
 # 8e-4 DLQG stops being the worst. 7.5e-4 keeps both gaps well resolved
 # (ILQG-FL +13.4, DLQG-ILQG +23.6, each many standard errors) while holding the
 # lateral excursion near 10 cm and the terminal error near 2 cm.
+# Note: that tuning was done with DLQG as the third controller; it is now LQG.
 FF_POWER = -3e-4
 MAX_TRAJECTORIES_SHOWN = 10
 TRAJECTORY_OFFSET = 15  # panel 0 draws the controllers side by side
@@ -41,7 +42,7 @@ def _run_all(duration, num_iter, start, target, ff, ff_power):
     return (
         run_ilqg(duration, num_iter, start, target, ff=ff, ff_power=power),
         run_fl(duration, num_iter, start, target, ff=ff, ff_power=power),
-        run_dlqg(duration, num_iter, start, target, ff=ff, ff_power=power),
+        run_lqg(duration, num_iter, start, target, ff=ff, ff_power=power),
     )
 
 

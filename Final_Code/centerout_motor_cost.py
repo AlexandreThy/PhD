@@ -16,7 +16,7 @@ would compare three different quantities rather than the same one.
 
 from common import (
     COLORS, Cost_r, LEGEND, NUM_CONTROLLERS, START, WR, build_parser,
-    centerout_targets, delete_axis, finish, np, plt, run_dlqg, run_fl,
+    centerout_targets, delete_axis, finish, np, plt, run_lqg, run_fl,
     run_ilqg, run_tasks, save_figure,
 )
 
@@ -31,9 +31,9 @@ def _worker(task):
     target, duration, num_iter, start = task
     _, _, x_ilqg, u_ilqg = run_ilqg(duration, num_iter, start, target)
     _, _, x_fl, u_fl = run_fl(duration, num_iter, start, target)
-    _, _, x_dlqg, u_dlqg = run_dlqg(duration, num_iter, start, target)
+    _, _, x_lqg, u_lqg = run_lqg(duration, num_iter, start, target)
 
-    runs = ((x_ilqg, u_ilqg), (x_fl, u_fl), (x_dlqg, u_dlqg))
+    runs = ((x_ilqg, u_ilqg), (x_fl, u_fl), (x_lqg, u_lqg))
     return np.array([Cost_r(x, u, tg=target) for x, u in runs])
 
 

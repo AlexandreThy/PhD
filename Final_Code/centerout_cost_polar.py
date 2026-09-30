@@ -8,11 +8,17 @@ that differed only in reach amplitude and movement duration.
     python Final_Code/centerout_cost_polar.py                       # all conditions
     python Final_Code/centerout_cost_polar.py --amplitude 15 --duration 0.4
     python Final_Code/centerout_cost_polar.py --num-sim 5 --jobs 1   # quick check
+    python Final_Code/centerout_cost_polar.py --replot   # redraw from saved costs
+
+Each condition gives two figures: all three controllers, and ILQG and FL alone
+(*_ILQG_FL.svg) on a scale fitted to those two.
 """
+
+from matplotlib.ticker import MaxNLocator
 
 from common import (
     COLORS, Cost_function, Cost_r, LEGEND, NUM_CONTROLLERS, START,
-    build_parser, centerout_targets, finish, np, plt, run_dlqg, run_fl,
+    build_parser, centerout_targets, finish, np, plt, run_lqg, run_fl,
     run_ilqg, run_tasks, save_figure, style_polar_axis,
 )
 
@@ -22,6 +28,8 @@ CONDITIONS = [(15, 0.4), (15, 0.6), (10, 0.4), (10, 0.6), (20, 0.4), (20, 0.6)]
 # The only two radial references drawn, on every condition.
 RADIAL_TICKS = (2, 4)
 YLIM = {(15, 0.6): (0, 5)}
+# Controllers of the second figure of each condition, drawn on its own scale.
+WITHOUT_LQG = (0, 1)  # ILQG, FL
 
 
 def num_iter_for(duration):
@@ -34,9 +42,9 @@ def _worker(task):
     target, duration, num_iter, start = task
     _, _, x_ilqg, u_ilqg = run_ilqg(duration, num_iter, start, target)
     _, _, x_fl, u_fl = run_fl(duration, num_iter, start, target)
-    _, _, x_dlqg, u_dlqg = run_dlqg(duration, num_iter, start, target)
+    _, _, x_lqg, u_lqg = run_lqg(duration, num_iter, start, target)
 
-    runs = ((x_ilqg, u_ilqg), (x_fl, u_fl), (x_dlqg, u_dlqg))
+    runs = ((x_ilqg, u_ilqg), (x_fl, u_fl), (x_lqg, u_lqg))
     total = np.array([Cost_function(x, u, tg=target) for x, u in runs])
     motor = np.array([Cost_r(x, u, tg=target) for x, u in runs])
     return total, motor
@@ -57,25 +65,66 @@ def simulate(amplitude, duration, num_sim, jobs, start):
 
     total = np.array([r[0] for r in results]).reshape(num_sim, NUM_TARGETS, NUM_CONTROLLERS)
     motor = np.array([r[1] for r in results]).reshape(num_sim, NUM_TARGETS, NUM_CONTROLLERS)
-    return np.mean(total, axis=0), np.mean(motor, axis=0)
+    # Mean and standard deviation over repetitions, per (direction, controller)
+    return (np.mean(total, axis=0), np.mean(motor, axis=0),
+            np.std(total, axis=0), np.std(motor, axis=0))
 
 
-def plot(amplitude, duration, mean_total, outdir, start):
-    # Close the polar curve by repeating the first direction at 2*pi.
+def condition_name(amplitude, duration, start):
+    return f"Cfy{int(start[1])}_{int(amplitude)}cm_{int(duration * 1000)}ms"
+
+
+def auto_radial_ticks(rmax, count=2):
+    """`count` round radial ticks inside (0, rmax] for a plot without LQG."""
+    ticks = MaxNLocator(nbins=count + 1, steps=[1, 2, 2.5, 5, 10]).tick_values(0, rmax)
+    ticks = [t for t in ticks if 0 < t <= rmax]
+    return tuple(ticks[-count:])
+
+
+def plot(amplitude, duration, mean_total, sd_total, outdir, start,
+         controllers=tuple(range(NUM_CONTROLLERS)), suffix=""):
+    """
+    Mean cost per direction with a +/- one SD band, for the given controllers.
+
+    With all three controllers the scale and ticks are the fixed ones shared by
+    every condition; with a subset they are fitted to the curves drawn, so the
+    ILQG/FL comparison is not flattened by the much larger LQG cost.
+    """
+    # Close the polar curves by repeating the first direction at 2*pi.
     closed = np.vstack([mean_total, mean_total[0]])
+    closed_sd = np.vstack([sd_total, sd_total[0]])
+    lower = np.clip(closed - closed_sd, 0, None)  # a cost cannot be negative
+    upper = closed + closed_sd
     angles = np.linspace(0, 2 * np.pi, NUM_TARGETS + 1)
+    controllers = list(controllers)
 
     fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={"projection": "polar"})
-    for i in range(NUM_CONTROLLERS):
+    for i in controllers:
+        # Shaded band: mean +/- one standard deviation over repetitions
+        ax.fill_between(angles, lower[:, i], upper[:, i], color=COLORS[i],
+                        alpha=0.2, linewidth=0)
         ax.plot(angles, closed[:, i], color=COLORS[i], linewidth=2.5,
                 label=LEGEND[i])
 
-    rmax = YLIM.get((amplitude, duration),
-                    (0, max(max(RADIAL_TICKS), closed.max()) * 1.05))[1]
-    style_polar_axis(ax, RADIAL_TICKS, NUM_TARGETS, rmax)
+    if len(controllers) == NUM_CONTROLLERS:
+        ticks = RADIAL_TICKS
+        rmax = YLIM.get((amplitude, duration),
+                        (0, max(max(RADIAL_TICKS), upper.max()) * 1.05))[1]
+    else:
+        rmax = upper[:, controllers].max() * 1.05
+        ticks = auto_radial_ticks(rmax)
+    style_polar_axis(ax, ticks, NUM_TARGETS, rmax)
 
-    name = f"Cfy{int(start[1])}_{int(amplitude)}cm_{int(duration * 1000)}ms"
-    save_figure(fig, outdir, f"{name}.svg")
+    name = condition_name(amplitude, duration, start)
+    save_figure(fig, outdir, f"{name}{suffix}.svg")
+    return name
+
+
+def plot_all(amplitude, duration, mean_total, sd_total, outdir, start):
+    """The three-controller figure and the ILQG/FL-only one."""
+    name = plot(amplitude, duration, mean_total, sd_total, outdir, start)
+    plot(amplitude, duration, mean_total, sd_total, outdir, start,
+         controllers=WITHOUT_LQG, suffix="_ILQG_FL")
     return name
 
 
@@ -85,6 +134,8 @@ def main():
                         help="reach amplitude in cm (default: all conditions)")
     parser.add_argument("--duration", type=float, default=None,
                         help="movement duration in s (default: all conditions)")
+    parser.add_argument("--replot", action="store_true",
+                        help="redraw from the saved *_cost.npz, no simulation")
     args = parser.parse_args()
 
     if args.amplitude is None and args.duration is None:
@@ -96,11 +147,17 @@ def main():
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     for amplitude, duration in conditions:
-        mean_total, mean_motor = simulate(amplitude, duration, args.num_sim,
-                                          args.jobs, START)
-        name = plot(amplitude, duration, mean_total, args.outdir, START)
+        if args.replot:
+            saved = np.load(args.outdir / f"{condition_name(amplitude, duration, START)}_cost.npz")
+            plot_all(amplitude, duration, saved["total"], saved["total_sd"],
+                     args.outdir, START)
+            continue
+        mean_total, mean_motor, sd_total, sd_motor = simulate(
+            amplitude, duration, args.num_sim, args.jobs, START)
+        name = plot_all(amplitude, duration, mean_total, sd_total, args.outdir, START)
         np.savez(args.outdir / f"{name}_cost.npz",
-                 total=mean_total, motor=mean_motor)
+                 total=mean_total, motor=mean_motor,
+                 total_sd=sd_total, motor_sd=sd_motor)
         print(f"wrote {args.outdir / (name + '_cost.npz')}", flush=True)
 
     finish(not args.no_show)

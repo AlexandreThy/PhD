@@ -1,5 +1,5 @@
 """
-DLQG movement cost as a function of the starting arm configuration.
+LQG movement cost as a function of the starting arm configuration.
 
 Every reach is identical -- 15 cm, in one of two directions -- and only the
 posture it starts from changes, sampled on a grid of shoulder and elbow angles.
@@ -18,7 +18,7 @@ hand position. Sampling the joint angles directly varies the two independently.
 from matplotlib.colors import LogNorm
 
 from common import (
-    Cost_function, build_parser, delete_axis, finish, np, plt, run_dlqg,
+    Cost_function, build_parser, delete_axis, finish, np, plt, run_lqg,
     run_tasks, save_figure,
 )
 
@@ -49,7 +49,7 @@ def reach_target(start, direction_deg):
 
 
 def _worker(task):
-    """Mean DLQG cost over repetitions for one starting posture and direction."""
+    """Mean LQG cost over repetitions for one starting posture and direction."""
     shoulder_deg, elbow_deg, direction_deg, num_sim = task
     start = hand_position(shoulder_deg, elbow_deg)
     target = reach_target(start, direction_deg)
@@ -58,7 +58,7 @@ def _worker(task):
 
     costs = np.zeros(num_sim)
     for sim in range(num_sim):
-        _, _, x, u = run_dlqg(MOVEMENT_TIME, NUM_ITER, list(start), list(target))
+        _, _, x, u = run_lqg(MOVEMENT_TIME, NUM_ITER, list(start), list(target))
         costs[sim] = Cost_function(x, u, tg=target)
     return float(np.mean(costs))
 
@@ -68,7 +68,7 @@ def simulate(num_sim, jobs):
              for direction in DIRECTIONS
              for shoulder in SHOULDER_ANGLES
              for elbow in ELBOW_ANGLES]
-    results = run_tasks(_worker, tasks, jobs, desc="DLQG cost map")
+    results = run_tasks(_worker, tasks, jobs, desc="LQG cost map")
 
     flat = np.array(results).reshape(len(DIRECTIONS), len(SHOULDER_ANGLES),
                                      len(ELBOW_ANGLES))
@@ -219,7 +219,7 @@ def plot(cost_maps, outdir, num_sim):
 
     fig.suptitle(f"Identical {AMPLITUDE} cm reaches: the cost is set by the "
                  f"posture they start from", fontsize=16)
-    save_figure(fig, outdir, "DLQG_CostMap_90_315.svg")
+    save_figure(fig, outdir, "LQG_CostMap_90_315.svg")
 
 
 def main():
@@ -230,7 +230,7 @@ def main():
     plot(cost_maps, args.outdir, args.num_sim)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
-    path = args.outdir / "DLQG_CostMap_90_315.npz"
+    path = args.outdir / "LQG_CostMap_90_315.npz"
     np.savez(path, shoulder_angles=SHOULDER_ANGLES, elbow_angles=ELBOW_ANGLES,
              **{f"deg_{d}": cost_maps[d] for d in DIRECTIONS})
     print(f"wrote {path}", flush=True)

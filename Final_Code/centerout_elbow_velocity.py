@@ -11,7 +11,7 @@ plotted as a magnitude, which is also what a radial axis can show.
 
 from common import (
     COLORS, LEGEND, NUM_CONTROLLERS, START, build_parser, centerout_targets,
-    finish, np, pi, plt, run_dlqg, run_fl, run_ilqg, run_tasks, save_figure,
+    finish, np, pi, plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
     style_polar_axis,
 )
 
@@ -29,11 +29,11 @@ def _worker(task):
     target, duration, num_iter, start = task
     _, _, x_ilqg, _ = run_ilqg(duration, num_iter, start, target)
     _, _, x_fl, _ = run_fl(duration, num_iter, start, target)
-    _, _, x_dlqg, _ = run_dlqg(duration, num_iter, start, target)
+    _, _, x_lqg, _ = run_lqg(duration, num_iter, start, target)
 
     # Column 3 of the state is the elbow angular velocity, for all three.
     return np.array([abs(x[-1, 3]) * 180 / pi
-                     for x in (x_ilqg, x_fl, x_dlqg)])
+                     for x in (x_ilqg, x_fl, x_lqg)])
 
 
 def simulate(num_sim, jobs, amplitude, duration, start):

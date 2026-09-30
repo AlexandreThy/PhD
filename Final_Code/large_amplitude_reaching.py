@@ -15,7 +15,7 @@ from matplotlib.lines import Line2D
 from common import (
     COLORS, Cost_function, LEGEND, NUM_CONTROLLERS, build_parser,
     compute_angles_from_cartesian, cost_components, delete_axis, finish,
-    guarded, longmovement_1, longmovement_2, np, pi, plt, run_dlqg, run_fl,
+    guarded, longmovement_1, longmovement_2, np, pi, plt, run_lqg, run_fl,
     run_ilqg, run_tasks, save_figure,
 )
 
@@ -35,7 +35,7 @@ def _worker(task):
     runs = (
         guarded(run_ilqg, f"ILQG on {movement_name}", duration, num_iter, start, target),
         guarded(run_fl, f"FL on {movement_name}", duration, num_iter, start, target),
-        guarded(run_dlqg, f"DLQG on {movement_name}", duration, num_iter, start, target),
+        guarded(run_lqg, f"LQG on {movement_name}", duration, num_iter, start, target),
     )
     target_angles = np.array(compute_angles_from_cartesian(target[0], target[1]))
     return {

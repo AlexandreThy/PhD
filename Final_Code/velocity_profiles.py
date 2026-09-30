@@ -14,7 +14,7 @@ from matplotlib.lines import Line2D
 from common import (
     COLORS, Compute_Cartesian_Speed, LEGEND, NUM_CONTROLLERS, START,
     build_parser, cost_components, delete_axis, finish, np, pi,
-    plt, run_dlqg, run_fl, run_ilqg, run_tasks, save_figure,
+    plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
 )
 
 MOVEMENT_TIME = 0.4
@@ -31,7 +31,7 @@ def _worker(task):
     runs = (
         run_ilqg(duration, num_iter, start, target),
         run_fl(duration, num_iter, start, target),
-        run_dlqg(duration, num_iter, start, target),
+        run_lqg(duration, num_iter, start, target),
     )
     return {
         # Shoulder and elbow angular velocity of each controller

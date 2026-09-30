@@ -11,7 +11,7 @@ cost of each controller.
 
 from common import (
     COLORS, Cost_function, LEGEND, NUM_CONTROLLERS, WP, WR, WR_FL, WV,
-    build_parser, delete_axis, finish, np, plt, run_dlqg, run_fl, run_ilqg,
+    build_parser, delete_axis, finish, np, plt, run_lqg, run_fl, run_ilqg,
     run_tasks, save_figure,
 )
 
@@ -49,10 +49,10 @@ def _worker(task):
                                     wp=wp, wv=wv, wr=wr)
     _, _, x_fl, u_fl = run_fl(MOVEMENT_TIME, NUM_ITER, start, target,
                               wp=wp, wv=wv, wr=wr_fl)
-    _, _, x_dlqg, u_dlqg = run_dlqg(MOVEMENT_TIME, NUM_ITER, start, target,
+    _, _, x_lqg, u_lqg = run_lqg(MOVEMENT_TIME, NUM_ITER, start, target,
                                     wp=wp, wv=wv, wr=wr)
 
-    runs = ((x_ilqg, u_ilqg), (x_fl, u_fl), (x_dlqg, u_dlqg))
+    runs = ((x_ilqg, u_ilqg), (x_fl, u_fl), (x_lqg, u_lqg))
     # The cost is always scored with the weights the controllers were given.
     return np.array([Cost_function(x, u, wp, wv, wr, tg=target) for x, u in runs])
 

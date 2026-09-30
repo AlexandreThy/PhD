@@ -28,8 +28,15 @@ from math import cos, pi, sin
 from matplotlib import pyplot as plt
 
 from Controllers.FL import ToCartesian, compute_path, simulate_FL
-from Controllers.ILQG import FULL_PLANT, Plant, simulate_ILQG
-from Controllers.LQGControllers import DLQG_6Muscles
+from Controllers.ILQG import simulate_ILQG
+
+try:
+    from Controllers.ILQG import FULL_PLANT, Plant
+except ImportError:
+    # The current Controllers/ILQG.py has no switchable plant; only
+    # nonlinearity_ablation.py needs one.
+    FULL_PLANT = Plant = None
+from Controllers.LQGControllers import DLQG, LQG
 from Helpers.Helpers import (
     compute_angles_from_cartesian,
     delete_axis,
@@ -46,22 +53,22 @@ FIGURE_DIR = Path(__file__).resolve().parent / "figures"
 # ----------------------------------------------------------------------------
 WP = 20000  # position (target) cost weight
 WV = 1  # terminal velocity cost weight
-WR = 0.02  # motor cost of ILQG and DLQG
+WR = 0.02  # motor cost of ILQG and LQG
 WR_FL = 6e-5  # motor cost of FL
 MOTOR_NOISE = 5e-4  # motor noise variance
 DELAY = 0.06  # sensory feedback delay [s]
 START = [0, 40]  # center-out starting position [cm]
 
-# Straight-path cost parameters (FL only), from a grid search over both, redone
-# for WR_FL = 6e-5. At TAU_PATH = 0.15 the peak lateral deviation of the long
-# movements falls from 13.6 to 0.8 cm and from 11.9 to 0.6 cm between WC = 0 and
-# WC = 0.1 -- a straight hand path -- while the endpoint error stays under
-# 0.01 cm. Both are saturated past WC ~ 0.1. See Final_Code/README.md.
-WC = 0.1  # weight of the straight-path cost
-TAU_PATH = 0.15  # time constant of the straight-path cost decay
+# Straight-path cost parameters (FL only), from a grid search over both for the
+# joint-space path cost of Controllers/FL.py (percent = 0.75). At TAU_PATH = 0.02
+# the peak lateral deviation of the long movements falls from 13.6 to 1.0 cm and
+# from 11.9 to 1.8 cm between WC = 0 and WC = 80, with the endpoint error at or
+# under 0.1 cm. Past WC ~ 100 the path curves again. See Final_Code/README.md.
+WC = 80  # weight of the straight-path cost
+TAU_PATH = 0.02  # time constant of the straight-path cost decay
 
 COLORS = ["#009E73", "#0072B2", "#E69F00"]
-LEGEND = ["ILQG", "FL", "DLQG"]
+LEGEND = ["ILQG", "FL", "LQG"]
 NUM_CONTROLLERS = 3
 
 
@@ -122,10 +129,11 @@ def run_ilqg(duration, num_iter, start, target, noise=True, ff=False, ff_power=0
     `plant` selects which arm nonlinearities are kept; the default keeps all
     three, so every caller but nonlinearity_ablation.py can ignore it.
     """
+    extra = {} if plant is None else {"plant": plant}
     X, Y, x, u = simulate_ILQG(
         duration, wp, wv, wr, target, start, num_iter,
         delay=DELAY, Noise=noise, print_iterations=False,
-        FF=ff, ff_power=ff_power, motornoise_variance=motor_noise, plant=plant,
+        FF=ff, ff_power=ff_power, motornoise_variance=motor_noise, **extra,
     )
     return X, Y, x, u
 
@@ -143,16 +151,17 @@ def run_fl(duration, num_iter, start, target, noise=True, ff=False, ff_power=0.0
     return X, Y, x, u
 
 
-def run_dlqg(duration, num_iter, start, target, noise=True, ff=False, ff_power=0.0,
-             wp=WP, wv=WV, wr=WR, motor_noise=MOTOR_NOISE):
-    """Run DLQG with six muscles. Returns (X, Y, state, command).
+def run_lqg(duration, num_iter, start, target, noise=True, ff=False, ff_power=0.0,
+            wp=WP, wv=WV, wr=WR, motor_noise=MOTOR_NOISE):
+    """Run LQG with six muscles. Returns (X, Y, state, command).
 
-    The state is transposed to (time, variable) so that it matches the layout
-    returned by the other two controllers.
+    The arm is linearised once, at the starting posture, and the feedback gain
+    is held fixed for the whole movement. The state is transposed to
+    (time, variable) so that it matches the layout of the other two controllers.
     """
-    X, Y, u, z = DLQG_6Muscles(
+    X, Y, u, z = LQG(
         w1=wp, w2=wp, w3=wv, w4=wv, Duration=duration, r1=wr,
-        Num_iter=num_iter, starting_point=start, targets=target, plot=False,
+        Num_iter=num_iter, starting_point=start, targets=target,
         Delay=DELAY, Activate_Noise=noise, FF=ff, ff_power=ff_power,
         motornoise_variance=motor_noise,
     )
@@ -163,7 +172,7 @@ def run_delta_dlqg(duration, num_iter, start, target, noise=True, ff=False,
                    ff_power=0.0, wp=WP, wv=WV, wr=WR,
                    motor_noise=MOTOR_NOISE):
     """Run DLQG with feedback on the estimated differential state delta x."""
-    X, Y, u, z = DLQG_6Muscles(
+    X, Y, u, z = DLQG(
         w1=wp, w2=wp, w3=wv, w4=wv, Duration=duration, r1=wr,
         Num_iter=num_iter, starting_point=start, targets=target, plot=False,
         Delay=DELAY, Activate_Noise=noise, FF=ff, ff_power=ff_power,

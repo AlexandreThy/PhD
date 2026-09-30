@@ -8,15 +8,15 @@ Every script shares its parameters, cost function and plotting style through
 
 | Script | Notebook cells | Output |
 | --- | --- | --- |
-| `centerout_trajectories.py` | 2, 3, 4 | `{ILQG,FL,DLQG}_Centerout.svg` and `*_Centerout_mean.svg` |
+| `centerout_trajectories.py` | 2, 3, 4 | `{ILQG,FL,LQG}_Centerout.svg` and `*_Centerout_mean.svg` |
 | `centerout_cost_polar.py` | 6, 7, 8, 11, 12, 14, 15 | `Cfy40_<amp>cm_<dur>ms.svg` and `*_cost.npz` |
 | `velocity_profiles.py` | 17 | `Kinematiccenterout.svg` |
 | `force_field.py` | 20 | `FF3Controllers.svg`, `FFFV.svg` |
 | `sensitivity_analysis.py` | 22 | `SensitivityAnalysis.svg` |
 | `large_amplitude_reaching.py` | 24 | `LongMove.svg`, `long_move_terminal.svg` |
 | `path_constraint.py` | 25 | `PathConstraint.svg`, `PathConstraintCommands.svg` |
-| `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `DLQG_CostMap_90_315.svg` + `.npz` |
-| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `Corr_Plots_{1,2}DLQG.svg` |
+| `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `LQG_CostMap_90_315.svg` + `.npz` |
+| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `Corr_Plots_motor{1,2}.svg` |
 | `nonlinearity_ablation.py` | from `CurrentParts/Nonlinearities.ipynb` | `NonlinearityAblation.svg` |
 | `centerout_motor_cost.py` | new | `MotorCost_15cm_400ms.svg` + `.npz` |
 
@@ -24,6 +24,33 @@ Every script shares its parameters, cost function and plotting style through
 `centerout_cost_polar.py`, so run that for the 15 cm / 400 ms condition first.
 
 Figures are written to `Final_Code/figures/`.
+
+## LQG in place of DLQG
+
+The third controller is now `LQG` from `Controllers/LQGControllers.py`
+(`run_lqg` in `common.py`), not DLQG. It linearises the arm once, at the
+starting posture, and holds the feedback gain fixed for the whole movement,
+where DLQG relinearised and recomputed the gain at every step. Every script
+that ran DLQG runs LQG now, and the legends and the file names that said DLQG
+say LQG (`LQG_Centerout.svg`, `LQG_CostMap_90_315.svg`). The sections below
+that discuss DLQG results describe the earlier figures.
+
+`LQG` originally kept only the last gain of its backward Riccati pass — the
+gain for the *first* step — and applied it at every step. With a terminal-only
+cost the gain depends on the time to go, so that early, gentle gain never drove
+the arm onto the target: it stopped about 3.5 cm short of a 15 cm reach, at a
+cost of about 300 against DLQG's 2. It now stores the gain for every step and
+uses the one for step k, which is exactly DLQG with the linearisation frozen at
+the starting posture. Over 10 noisy trials per direction, the endpoint error is
+0.1 to 0.5 cm and the cost 0.6 to 5 on the center-out reaches (DLQG: 0.2 to
+0.4 cm, 0.9 to 3.7), and about 0.5 cm on the two long movements.
+
+`run_delta_dlqg` still calls `DLQG(..., delta_state=True)` for
+`delta_dlqg_benchmark.ipynb`.
+
+`nonlinearity_index.py` used to read `figures/Costr.npz`, which no script
+writes and which held old costs. It now reads the `total` column of
+`Cfy40_15cm_400ms_cost.npz`, as described below.
 
 ## Usage
 
@@ -88,36 +115,36 @@ the weights, the following had to change.
 Both were chosen by sweeping them and measuring the effect, rather than by eye.
 
 **Straight-path cost** (`WC`, `TAU_PATH` in `common.py`, `WC_SWEEP` in
-`path_constraint.py`). `Controllers.FL.compute_path` used to penalise
-`[k*(theta_s - theta_s0) - (theta_e - theta_e0)]**2` — straightness in **joint**
-space, about one fixed line — and no `(WC, TAU_PATH)` pair could straighten the
-hand path with it. A straight joint path maps to a curved hand path: over the
-58 cm long movements every fixed joint-space line still bows 5 to 7 cm, and a
-grid search over both parameters hit exactly that floor, halving the deviation
-at best before it saturated and then grew again.
+`path_constraint.py`). `Controllers.FL.compute_path` penalises straightness in
+**joint** space, about the fixed line from the starting posture to the posture
+`percent = 0.75` of the way to the target, with one 8x8 matrix for every step
+weighted by `exp(-(time to go) / TAU_PATH)`. (An earlier version penalised the
+cartesian lateral offset with a time-varying matrix; `FL.py` no longer has it,
+and `path_constraint.py` scores the current one.)
 
-It now penalises the **cartesian** lateral offset from the start-to-target line,
-linearised about a via point that advances along that line on a minimum-jerk
-profile. That makes the cost matrix time-varying (`compute_path` returns one
-8x8 per timestep) and, being a linear form in the state, it stays an exact LQR
-stage cost — `wp * outer(v, v)`, positive semi-definite. At `TAU_PATH = 0.15`
-the sweep `WC_SWEEP = (0, 0.003, 0.01, 0.03, 0.1)` now runs from unconstrained
-to straight:
+A straight joint path maps to a curved hand path, so this cost cannot make the
+hand path straight at every setting, and past a point more weight curves it
+again. A noiseless grid over `WC` (0 to 300) and `TAU_PATH` (0.02 to 1) on the
+two 58 cm long movements found:
 
-| `WC` | 0 | 0.003 | 0.01 | 0.03 | 0.1 |
+- At `TAU_PATH` 0.15 and above the deviation never falls below about 6.6 cm,
+  and `WC` up to 0.1 — the old sweep — changes it by at most 1 cm.
+- At `TAU_PATH = 0.02` the straightening is monotone up to `WC ~ 80-100`, and
+  the endpoint error stays at or under 0.1 cm. That is the setting used.
+- `percent = 1` leaves the path unchanged at any weight; `0.5` straightens
+  movement 2 sooner but movement 1 less, with a larger endpoint error.
+
+At `TAU_PATH = 0.02`, peak lateral deviation (noiseless) for
+`WC_SWEEP = (0, 20, 40, 60, 80)`:
+
+| `WC` | 0 | 20 | 40 | 60 | 80 |
 | --- | --- | --- | --- | --- | --- |
-| peak deviation, movement 1 | 13.6 cm | 8.0 | 4.7 | 2.2 | 0.8 |
-| peak deviation, movement 2 | 11.9 cm | 4.1 | 1.3 | 0.5 | 0.6 |
+| peak deviation, movement 1 | 13.6 cm | 8.6 | 4.9 | 2.4 | 1.0 |
+| peak deviation, movement 2 | 11.9 cm | 8.0 | 5.1 | 3.1 | 1.8 |
 
-The endpoint error is unchanged by the path cost (0.13 to 0.20 cm with motor
-noise on, the same as at `WC = 0`). Both movements are saturated past
-`WC ~ 0.1`; the second straightens sooner than the first, which is why its last
-three sweep curves nearly coincide.
-
-`TAU_PATH` was retuned from 0.2 to 0.15 when `WR_FL` moved to `6e-5`. A cheaper
-motor cost makes the same `WC` bite harder, so holding `TAU_PATH` at 0.2 would
-have pushed the sweep to straight by the third weight and wasted the last two;
-0.15 restores the earlier spacing at the same five weights.
+Beyond `WC = 80` the first movement curves again (1.7 cm at 100, 3.4 at 150),
+so the sweep stops there, and `WC = 80` is the weight of the single
+with/without comparison.
 
 **Force field strength** (`FF_POWER` in `force_field.py`). Picked so the
 controllers rank
