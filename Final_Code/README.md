@@ -16,12 +16,13 @@ Every script shares its parameters, cost function and plotting style through
 | `large_amplitude_reaching.py` | 24 | `LongMove.svg`, `long_move_terminal.svg` |
 | `path_constraint.py` | 25 | `PathConstraint.svg`, `PathConstraintCommands.svg` |
 | `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `LQG_CostMap_90_315.svg` + `.npz` |
-| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `Corr_Plots_motor{1,2}.svg` |
+| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `PeakPower_{polar,vs_total,vs_motor}_<amp>cm_<dur>ms.svg` + `.npz` |
 | `nonlinearity_ablation.py` | from `CurrentParts/Nonlinearities.ipynb` | `NonlinearityAblation.svg` |
 | `centerout_motor_cost.py` | new | `MotorCost_15cm_400ms.svg` + `.npz` |
 
-`nonlinearity_index.py` correlates against the cost written by
-`centerout_cost_polar.py`, so run that for the 15 cm / 400 ms condition first.
+`nonlinearity_index.py` correlates against the costs written by
+`centerout_cost_polar.py`, so run that first. By default it runs the
+10 cm / 400 ms and 15 cm / 600 ms conditions.
 
 Figures are written to `Final_Code/figures/`.
 
@@ -105,10 +106,10 @@ the weights, the following had to change.
   which hold results from the old weights. They now read
   `figures/Cfy40_15cm_400ms_cost.npz`, the matching condition at the current
   weights, and say so if it is missing.
-- The peak power index is correlated against the **total** movement cost only.
-  The original also regressed it against the motor cost and drew a third figure
-  for it; that figure is gone, and `Corr_Plots_2DLQG.svg` is now the total-cost
-  scatter that `Corr_Plots_3DLQG.svg` used to hold.
+- The peak power index is correlated against the LQG **total** movement cost
+  (`PeakPower_vs_total_*.svg`) and against the LQG **motor** cost alone
+  (`PeakPower_vs_motor_*.svg`), for the 10 cm / 400 ms and 15 cm / 600 ms
+  conditions. The polar figure lists both r2 values.
 
 ## Path-cost weights and force field strength
 

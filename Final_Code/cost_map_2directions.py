@@ -11,15 +11,19 @@ distance from the shoulder are collinear (a cubic fit of the cost on either
 gives R^2 = 0.93), so it could not separate the starting posture from the plain
 hand position. Sampling the joint angles directly varies the two independently.
 
+ILQG is run on the same grid, and the last column shows the relative cost of
+LQG, (mean LQG cost - mean ILQG cost) / mean ILQG cost, over the starting
+posture.
+
     python Final_Code/cost_map_2directions.py
     python Final_Code/cost_map_2directions.py --num-sim 2 --jobs 1
 """
 
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, SymLogNorm
 
 from common import (
-    Cost_function, build_parser, delete_axis, finish, np, plt, run_lqg,
-    run_tasks, save_figure,
+    Cost_function, build_parser, delete_axis, finish, np, plt, run_ilqg,
+    run_lqg, run_tasks, save_figure,
 )
 
 MOVEMENT_TIME = 0.4
@@ -34,6 +38,7 @@ DIRECTIONS = [90, 315]
 
 CHEAP_COLOR = "#009E73"
 COSTLY_COLOR = "#B90072"
+REL_LINTHRESH = 10  # [%] linear range of the relative-cost colour scale
 
 
 def hand_position(shoulder_deg, elbow_deg):
@@ -49,30 +54,39 @@ def reach_target(start, direction_deg):
 
 
 def _worker(task):
-    """Mean LQG cost over repetitions for one starting posture and direction."""
+    """Mean LQG and ILQG costs over repetitions for one posture and direction."""
     shoulder_deg, elbow_deg, direction_deg, num_sim = task
     start = hand_position(shoulder_deg, elbow_deg)
     target = reach_target(start, direction_deg)
     if not (L2 - L1) + 0.5 < np.hypot(*target) < (L1 + L2) - 0.5:
-        return np.nan  # target outside the reachable annulus
+        return np.nan, np.nan  # target outside the reachable annulus
 
-    costs = np.zeros(num_sim)
+    costs = np.zeros((num_sim, 2))
     for sim in range(num_sim):
-        _, _, x, u = run_lqg(MOVEMENT_TIME, NUM_ITER, list(start), list(target))
-        costs[sim] = Cost_function(x, u, tg=target)
-    return float(np.mean(costs))
+        for j, runner in enumerate((run_lqg, run_ilqg)):
+            _, _, x, u = runner(MOVEMENT_TIME, NUM_ITER, list(start), list(target))
+            costs[sim, j] = Cost_function(x[:, :4], u, tg=target)
+    return tuple(np.mean(costs, axis=0))
 
 
 def simulate(num_sim, jobs):
+    """Mean LQG and ILQG cost maps, each {direction: (shoulder, elbow) array}."""
     tasks = [(shoulder, elbow, direction, num_sim)
              for direction in DIRECTIONS
              for shoulder in SHOULDER_ANGLES
              for elbow in ELBOW_ANGLES]
-    results = run_tasks(_worker, tasks, jobs, desc="LQG cost map")
+    results = run_tasks(_worker, tasks, jobs, desc="LQG / ILQG cost map")
 
     flat = np.array(results).reshape(len(DIRECTIONS), len(SHOULDER_ANGLES),
-                                     len(ELBOW_ANGLES))
-    return {direction: flat[i] for i, direction in enumerate(DIRECTIONS)}
+                                     len(ELBOW_ANGLES), 2)
+    lqg = {direction: flat[i, ..., 0] for i, direction in enumerate(DIRECTIONS)}
+    ilqg = {direction: flat[i, ..., 1] for i, direction in enumerate(DIRECTIONS)}
+    return lqg, ilqg
+
+
+def relative_cost(lqg, ilqg):
+    """(LQG - ILQG) / ILQG, from the mean costs of each posture."""
+    return (lqg - ilqg) / ilqg
 
 
 def _extreme_postures(cost):
@@ -96,6 +110,19 @@ def _plot_joint_map(ax, cost, direction_deg, norm):
     ax.set_ylabel("Starting elbow angle [deg]", fontsize=13)
     ax.set_title(f"Cost over starting posture, {direction_deg} deg reach",
                  fontsize=13)
+    ax.tick_params(labelsize=11)
+    return im
+
+
+def _plot_relative_map(ax, relative, direction_deg, norm):
+    """Relative cost of LQG against ILQG, over the two starting joint angles."""
+    im = ax.imshow(relative.T * 100, origin="lower", cmap="RdBu_r", norm=norm,
+                   aspect="auto", interpolation="bicubic",
+                   extent=[SHOULDER_ANGLES.min(), SHOULDER_ANGLES.max(),
+                           ELBOW_ANGLES.min(), ELBOW_ANGLES.max()])
+    ax.set_xlabel("Starting shoulder angle [deg]", fontsize=13)
+    ax.set_ylabel("Starting elbow angle [deg]", fontsize=13)
+    ax.set_title(f"(LQG - ILQG) / ILQG, {direction_deg} deg reach", fontsize=13)
     ax.tick_params(labelsize=11)
     return im
 
@@ -195,16 +222,26 @@ def _plot_workspace(ax, cost, direction_deg, norm):
     ax.tick_params(labelsize=11)
 
 
-def plot(cost_maps, outdir, num_sim):
+def plot(cost_maps, ilqg_maps, outdir, num_sim):
     values = np.concatenate([cost_maps[d].ravel() for d in DIRECTIONS])
     values = values[np.isfinite(values)]
     norm = LogNorm(vmin=values.min(), vmax=values.max())
+
+    # Diverging scale centred on 0: blue where LQG is cheaper than ILQG, red
+    # where it costs more. Shared by both directions. The relative cost spans a
+    # few percent to several hundred times, so the scale is logarithmic beyond
+    # +-REL_LINTHRESH percent and linear inside it.
+    relative = {d: relative_cost(cost_maps[d], ilqg_maps[d]) for d in DIRECTIONS}
+    rel_values = np.concatenate([relative[d].ravel() for d in DIRECTIONS]) * 100
+    rel_bound = np.abs(rel_values[np.isfinite(rel_values)]).max()
+    rel_norm = SymLogNorm(linthresh=REL_LINTHRESH, vmin=-rel_bound, vmax=rel_bound,
+                          base=10)
 
     # Constrained layout, because tight_layout cannot place a colourbar that is
     # shared across a grid of axes without walking it over the middle column.
     # The cartesian map sits next to the joint one: same cost, same colour scale,
     # only the coordinates the starting posture is named by change.
-    fig, axes = plt.subplots(len(DIRECTIONS), 4, figsize=(20, 9),
+    fig, axes = plt.subplots(len(DIRECTIONS), 5, figsize=(25, 9),
                              layout="constrained")
     for row, direction in enumerate(DIRECTIONS):
         cost = cost_maps[direction]
@@ -212,10 +249,15 @@ def plot(cost_maps, outdir, num_sim):
         _plot_cartesian_map(axes[row, 1], cost, direction, norm)
         _plot_elbow_collapse(axes[row, 2], cost, direction)
         _plot_workspace(axes[row, 3], cost, direction, norm)
+        im_rel = _plot_relative_map(axes[row, 4], relative[direction], direction,
+                                    rel_norm)
 
-    cbar = fig.colorbar(im, ax=axes.ravel().tolist(), location="right",
+    cbar = fig.colorbar(im, ax=axes[:, :4].ravel().tolist(), location="right",
                         shrink=0.6, pad=0.01)
-    cbar.set_label(f"Mean movement cost over {num_sim} trials", fontsize=12)
+    cbar.set_label(f"Mean LQG movement cost over {num_sim} trials", fontsize=12)
+    cbar_rel = fig.colorbar(im_rel, ax=axes[:, 4].ravel().tolist(),
+                            location="right", shrink=0.6, pad=0.01)
+    cbar_rel.set_label("Relative cost of LQG vs ILQG [%]", fontsize=12)
 
     fig.suptitle(f"Identical {AMPLITUDE} cm reaches: the cost is set by the "
                  f"posture they start from", fontsize=16)
@@ -226,13 +268,16 @@ def main():
     parser = build_parser(__doc__, num_sim_default=10)
     args = parser.parse_args()
 
-    cost_maps = simulate(args.num_sim, args.jobs)
-    plot(cost_maps, args.outdir, args.num_sim)
+    cost_maps, ilqg_maps = simulate(args.num_sim, args.jobs)
+    plot(cost_maps, ilqg_maps, args.outdir, args.num_sim)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     path = args.outdir / "LQG_CostMap_90_315.npz"
     np.savez(path, shoulder_angles=SHOULDER_ANGLES, elbow_angles=ELBOW_ANGLES,
-             **{f"deg_{d}": cost_maps[d] for d in DIRECTIONS})
+             **{f"deg_{d}": cost_maps[d] for d in DIRECTIONS},
+             **{f"ilqg_deg_{d}": ilqg_maps[d] for d in DIRECTIONS},
+             **{f"relative_deg_{d}": relative_cost(cost_maps[d], ilqg_maps[d])
+                for d in DIRECTIONS})
     print(f"wrote {path}", flush=True)
 
     finish(not args.no_show)

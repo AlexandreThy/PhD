@@ -2,19 +2,21 @@
 Peak joint power index against the movement cost, per reach direction.
 
 For each of eight center-out directions the joint power (torque times angular
-velocity) is taken at its peak over the movement, then correlated with the total
-LQG movement cost of the same direction. Ported from
-CurrentParts/NonlinearityIndex.py.
+velocity) is taken at its peak over the movement, then correlated with the LQG
+movement cost of the same direction: once with the total cost, once with the
+motor cost alone. Ported from CurrentParts/NonlinearityIndex.py.
 
-The cost it correlates against comes from centerout_cost_polar.py, so run that
-first for the matching condition (15 cm, 400 ms):
+The costs it correlates against come from centerout_cost_polar.py, so run that
+first for the matching conditions (10 cm / 400 ms and 15 cm / 600 ms):
 
-    python Final_Code/centerout_cost_polar.py --amplitude 15 --duration 0.4
-    python Final_Code/nonlinearity_index.py
+    python Final_Code/centerout_cost_polar.py
+    python Final_Code/nonlinearity_index.py                          # both
+    python Final_Code/nonlinearity_index.py --amplitude 10 --duration 0.4
 """
 
 from scipy import stats
 
+from centerout_cost_polar import condition_name, num_iter_for
 from common import (
     COLORS, LEGEND, NUM_CONTROLLERS, START, build_parser, centerout_targets,
     finish, np, pi, plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
@@ -23,12 +25,10 @@ from common import (
 # simulation actually produced. See the note in compute_torque.
 from Controllers.ILQG import MOMENT_ARM, muscle_force_scaling
 
-MOVEMENT_TIME = 0.4
-NUM_ITER = 40
-AMPLITUDE = 15
 NUM_TARGETS = 8
-# Written by centerout_cost_polar.py for the 15 cm / 400 ms condition
-COST_FILE = "Cfy40_15cm_400ms_cost.npz"
+# (amplitude [cm], duration [s]); the costs are read from the
+# <condition>_cost.npz files written by centerout_cost_polar.py
+CONDITIONS = [(10, 0.4), (15, 0.6)]
 # Column of the cost array the correlations use as the x axis
 REFERENCE_CONTROLLER = 2  # LQG
 
@@ -70,27 +70,29 @@ def _worker(task):
     ])
 
 
-def simulate(num_sim, jobs, start, amplitude):
+def simulate(num_sim, jobs, start, amplitude, duration):
     targets = centerout_targets(start, amplitude, NUM_TARGETS)
-    tasks = [(target, MOVEMENT_TIME, NUM_ITER, start)
+    tasks = [(target, duration, num_iter_for(duration), start)
              for _ in range(num_sim) for target in targets]
-    results = run_tasks(_worker, tasks, jobs, desc="nonlinearity index")
+    results = run_tasks(_worker, tasks, jobs,
+                        desc=f"nonlinearity index {amplitude:g} cm / {duration:g} s")
     # (repetition, direction, controller, timestep)
     effort = np.array(results).reshape(num_sim, NUM_TARGETS, NUM_CONTROLLERS, -1)
     # peak power within each movement, then averaged over repetitions
     return np.mean(np.max(effort, axis=3), axis=0)  # (direction, controller)
 
 
-def load_total_cost(outdir):
-    """Total movement cost per direction, as written by centerout_cost_polar.py."""
-    path = outdir / COST_FILE
+def load_costs(outdir, name, amplitude, duration):
+    """Total and motor cost per direction, as written by centerout_cost_polar.py."""
+    path = outdir / f"{name}_cost.npz"
     if not path.exists():
         raise SystemExit(
             f"{path} not found. Generate it first with:\n"
             f"    python Final_Code/centerout_cost_polar.py "
-            f"--amplitude 15 --duration 0.4"
+            f"--amplitude {amplitude:g} --duration {duration:g}"
         )
-    return np.load(path)["total"]
+    saved = np.load(path)
+    return saved["total"], saved["motor"]
 
 
 def regress(cost_column, peak):
@@ -98,7 +100,7 @@ def regress(cost_column, peak):
     return result.rvalue**2, result.slope, result.intercept
 
 
-def plot_polar(peak, r2, outdir, num_sim):
+def plot_polar(peak, r2_total, r2_motor, outdir, num_sim, tag):
     """Peak power per direction, closing the curve back to the first direction."""
     angles = np.linspace(0, 2 * pi, NUM_TARGETS + 1)
     fig, ax = plt.subplots(subplot_kw={"projection": "polar"}, figsize=(8, 8))
@@ -108,13 +110,15 @@ def plot_polar(peak, r2, outdir, num_sim):
         ax.scatter(angles, closed, color=COLORS[i])
 
     for k, i in enumerate(range(NUM_CONTROLLERS)):
-        ax.text(0, 1.10 - 0.05 * k, f"{LEGEND[i]} : r2 = {r2[i]:.2f}",
-                ha="center", va="center", transform=ax.transAxes, fontsize=12)
+        ax.text(0.5, 1.12 - 0.04 * k,
+                f"{LEGEND[i]} : r2 total = {r2_total[i]:.2f}, "
+                f"r2 motor = {r2_motor[i]:.2f}",
+                ha="center", va="center", transform=ax.transAxes, fontsize=11)
     ax.legend(loc="upper right", bbox_to_anchor=(1.11, 1.1), fontsize=10)
-    ax.set_title(f"Peak joint power index by direction\n"
-                 f"({num_sim} trials, r2 against total "
-                 f"{LEGEND[REFERENCE_CONTROLLER]} movement cost)", fontsize=13)
-    save_figure(fig, outdir, "Corr_Plots_motor1.svg")
+    ax.set_title(f"Peak joint power index by direction, {tag}\n"
+                 f"({num_sim} trials, r2 against "
+                 f"{LEGEND[REFERENCE_CONTROLLER]} cost)", fontsize=13, pad=70)
+    save_figure(fig, outdir, f"PeakPower_polar_{tag}.svg")
 
 
 def plot_scatter(cost_column, peak, fits, xlabel, title, filename, outdir):
@@ -139,25 +143,51 @@ def plot_scatter(cost_column, peak, fits, xlabel, title, filename, outdir):
 
 def main():
     parser = build_parser(__doc__, num_sim_default=100)
+    parser.add_argument("--amplitude", type=float, default=None,
+                        help="reach amplitude in cm (default: all conditions)")
+    parser.add_argument("--duration", type=float, default=None,
+                        help="movement duration in s (default: all conditions)")
     args = parser.parse_args()
 
-    total_cost = load_total_cost(args.outdir)
-    peak = simulate(args.num_sim, args.jobs, START, AMPLITUDE)
+    if args.amplitude is None and args.duration is None:
+        conditions = CONDITIONS
+    elif args.amplitude is not None and args.duration is not None:
+        conditions = [(args.amplitude, args.duration)]
+    else:
+        parser.error("give both --amplitude and --duration, or neither")
 
-    total_column = total_cost[:NUM_TARGETS, REFERENCE_CONTROLLER]
-    total_fits = [regress(total_column, peak[:, i]) for i in range(NUM_CONTROLLERS)]
+    ref = LEGEND[REFERENCE_CONTROLLER]
+    for amplitude, duration in conditions:
+        name = condition_name(amplitude, duration, START)
+        tag = f"{int(amplitude)}cm_{int(duration * 1000)}ms"
+        total_cost, motor_cost = load_costs(args.outdir, name, amplitude, duration)
+        peak = simulate(args.num_sim, args.jobs, START, amplitude, duration)
 
-    plot_polar(peak, [f[0] for f in total_fits], args.outdir, args.num_sim)
-    plot_scatter(total_column, peak, total_fits,
-                 f"Total {LEGEND[REFERENCE_CONTROLLER]} movement cost",
-                 "Peak joint power against total movement cost",
-                 "Corr_Plots_motor2.svg", args.outdir)
+        total_column = total_cost[:NUM_TARGETS, REFERENCE_CONTROLLER]
+        motor_column = motor_cost[:NUM_TARGETS, REFERENCE_CONTROLLER]
+        total_fits = [regress(total_column, peak[:, i]) for i in range(NUM_CONTROLLERS)]
+        motor_fits = [regress(motor_column, peak[:, i]) for i in range(NUM_CONTROLLERS)]
 
-    print(f"\nr2 of peak joint power against total "
-          f"{LEGEND[REFERENCE_CONTROLLER]} movement cost:")
-    for i in range(NUM_CONTROLLERS):
-        r2, slope, _ = total_fits[i]
-        print(f"  {LEGEND[i]:5s}  r2 = {r2:.3f}   slope = {slope:+.4g}")
+        plot_polar(peak, [f[0] for f in total_fits], [f[0] for f in motor_fits],
+                   args.outdir, args.num_sim, tag)
+        plot_scatter(total_column, peak, total_fits,
+                     f"Total {ref} movement cost",
+                     f"Peak joint power against total movement cost, {tag}",
+                     f"PeakPower_vs_total_{tag}.svg", args.outdir)
+        plot_scatter(motor_column, peak, motor_fits,
+                     f"{ref} motor cost",
+                     f"Peak joint power against motor cost, {tag}",
+                     f"PeakPower_vs_motor_{tag}.svg", args.outdir)
+        np.savez(args.outdir / f"PeakPower_{tag}.npz", peak=peak,
+                 total=total_column, motor=motor_column,
+                 legend=np.array(LEGEND))
+
+        print(f"\n{tag}: r2 of peak joint power against {ref} cost")
+        for i in range(NUM_CONTROLLERS):
+            print(f"  {LEGEND[i]:5s}  total r2 = {total_fits[i][0]:.3f} "
+                  f"(slope {total_fits[i][1]:+.4g})   "
+                  f"motor r2 = {motor_fits[i][0]:.3f} "
+                  f"(slope {motor_fits[i][1]:+.4g})")
 
     finish(not args.no_show)
 

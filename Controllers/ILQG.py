@@ -1,3 +1,5 @@
+from dataclasses import dataclass, replace
+
 import numpy as np
 from math import *
 
@@ -47,6 +49,56 @@ THETA0 = np.array(
 # Derivatives of the muscle length / velocity w.r.t. the joint state are constant.
 DLDTS = -MOMENT_ARM[0] / L0
 DLDTE = -MOMENT_ARM[1] / L0
+
+
+@dataclass(frozen=True)
+class Plant:
+    """
+    Which nonlinearities of the arm the dynamics keep. All three by default.
+
+    Removing one applies both to the simulated arm and to the model ILQG
+    optimises against, as in CurrentParts/Nonlinearities.ipynb:
+        - inertia  = False : the mass matrix is frozen at the starting elbow
+          angle `elbow0` (simulate_ILQG sets it), so its derivative is zero.
+        - muscle   = False : the force-length and force-velocity gains are 1,
+          so the joint torque is MOMENT_ARM @ u.
+        - coriolis = False : the Coriolis and centrifugal torques are dropped.
+    """
+
+    inertia: bool = True
+    muscle: bool = True
+    coriolis: bool = True
+    elbow0: float = None
+
+
+FULL_PLANT = Plant()
+_UNIT_GAIN = np.ones(6)
+_ZERO_GAIN = np.zeros(6)
+
+
+def _elbow_for_inertia(theta2, plant):
+    return theta2 if plant.inertia else plant.elbow0
+
+
+def _inverse_inertia(theta2):
+    """Analytic inverse of the mass matrix at elbow angle theta2."""
+    Denominator = a3 * (a1 - a3) - a2**2 * np.cos(theta2) ** 2
+    return np.array(
+        [
+            [a3 / Denominator, (-a2 * np.cos(theta2) - a3) / Denominator],
+            [
+                (-a2 * np.cos(theta2) - a3) / Denominator,
+                (2 * a2 * np.cos(theta2) + a1) / Denominator,
+            ],
+        ]
+    )
+
+
+def _force_gains(x, plant):
+    """fl, fv of the six muscles, or unit gains for a linear muscle."""
+    if plant.muscle:
+        return muscle_force_scaling(x)[3:]
+    return _UNIT_GAIN, _UNIT_GAIN
 
 
 def muscle_force_scaling(x):
@@ -159,7 +211,7 @@ def compute_forcefield(theta, omega, coefficient):
     return -Jacobian.T @ D @ Jacobian @ omega
 
 
-def get_linearized_dynamics(x, u):
+def get_linearized_dynamics(x, u, plant=FULL_PLANT):
     """
     Parameters :
         - x : the state of the system
@@ -170,64 +222,77 @@ def get_linearized_dynamics(x, u):
     """
 
     theta1, theta2, dtheta1, dtheta2 = x[:4]
-    C = np.array(
-        [
-            -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.sin(theta2),
-            dtheta1**2 * a2 * np.sin(theta2),
-        ]
-    )
+    if plant.coriolis:
+        C = np.array(
+            [
+                -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.sin(theta2),
+                dtheta1**2 * a2 * np.sin(theta2),
+            ]
+        )
 
-    dCdte = np.array(
-        [
-            -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.cos(theta2),
-            dtheta1**2 * a2 * np.cos(theta2),
-        ]
-    )
-    dCdos = np.array(
-        [-dtheta2 * 2 * a2 * np.sin(theta2), 2 * dtheta1 * a2 * np.sin(theta2)]
-    )
-    dCdoe = np.array([(-2 * dtheta1 - 2 * dtheta2) * a2 * np.sin(theta2), 0])
+        dCdte = np.array(
+            [
+                -dtheta2 * (2 * dtheta1 + dtheta2) * a2 * np.cos(theta2),
+                dtheta1**2 * a2 * np.cos(theta2),
+            ]
+        )
+        dCdos = np.array(
+            [-dtheta2 * 2 * a2 * np.sin(theta2), 2 * dtheta1 * a2 * np.sin(theta2)]
+        )
+        dCdoe = np.array([(-2 * dtheta1 - 2 * dtheta2) * a2 * np.sin(theta2), 0])
+    else:
+        C = dCdte = dCdos = dCdoe = np.zeros(2)
 
+    # With a linear inertia the mass matrix is that of the starting posture and
+    # no longer depends on the elbow angle.
+    theta2_M = _elbow_for_inertia(theta2, plant)
     M = np.array(
         [
-            [a1 + 2 * a2 * np.cos(theta2), a3 + a2 * np.cos(theta2)],
-            [a3 + a2 * np.cos(theta2), a3],
+            [a1 + 2 * a2 * np.cos(theta2_M), a3 + a2 * np.cos(theta2_M)],
+            [a3 + a2 * np.cos(theta2_M), a3],
         ]
     )
 
     Minv = np.linalg.inv(M)
 
-    dM = np.array(
-        [[-2 * a2 * np.sin(theta2), -a2 * np.sin(theta2)], [-a2 * np.sin(theta2), 0]]
-    )
+    if plant.inertia:
+        dM = np.array(
+            [[-2 * a2 * np.sin(theta2), -a2 * np.sin(theta2)], [-a2 * np.sin(theta2), 0]]
+        )
+    else:
+        dM = np.zeros((2, 2))
 
-    l, v, temp, fl, fv = muscle_force_scaling(x)
-    dldts = DLDTS
-    dldte = DLDTE
-    dvdos = DLDTS
-    dvdoe = DLDTE
+    if plant.muscle:
+        l, v, temp, fl, fv = muscle_force_scaling(x)
+        dldts = DLDTS
+        dldte = DLDTE
+        dvdos = DLDTS
+        dvdoe = DLDTE
 
-    dfldl = (
-        -fl
-        * 2.12
-        * np.abs(temp)**1.12
-        * np.sign(temp)
-        * (1.55 * l**0.55 / 0.81)
-    )
-    dfvdl = np.where(v <= 0, 0, v * (-4.21 + 5.34 * l) / (0.62 + v))
+        dfldl = (
+            -fl
+            * 2.12
+            * np.abs(temp)**1.12
+            * np.sign(temp)
+            * (1.55 * l**0.55 / 0.81)
+        )
+        dfvdl = np.where(v <= 0, 0, v * (-4.21 + 5.34 * l) / (0.62 + v))
 
-    dfvdv = np.where(
-        v <= 0,
-        7.39 * (1 + 0.96) / (-7.39 + 0.96 * v) ** 2,
-        -0.62 * (-3.12 + 4.21 * l - 2.67 * l**2 + 1) / (0.62 + v) ** 2,
-    )
+        dfvdv = np.where(
+            v <= 0,
+            7.39 * (1 + 0.96) / (-7.39 + 0.96 * v) ** 2,
+            -0.62 * (-3.12 + 4.21 * l - 2.67 * l**2 + 1) / (0.62 + v) ** 2,
+        )
 
-    dfldts = dfldl * dldts
-    dfldte = dfldl * dldte
-    dfvdts = dfvdl * dldts
-    dfvdte = dfvdl * dldte
-    dfvdos = dfvdv * dvdos
-    dfvdoe = dfvdv * dvdoe
+        dfldts = dfldl * dldts
+        dfldte = dfldl * dldte
+        dfvdts = dfvdl * dldts
+        dfvdte = dfvdl * dldte
+        dfvdos = dfvdv * dvdos
+        dfvdoe = dfvdv * dvdoe
+    else:
+        fl = fv = _UNIT_GAIN
+        dfldts = dfldte = dfvdts = dfvdte = dfvdos = dfvdoe = _ZERO_GAIN
 
     # Compute acceleration dependencies
     dtheta = np.array([dtheta1, dtheta2])
@@ -263,43 +328,28 @@ def get_linearized_dynamics(x, u):
     return A
 
 
-def f(x, u, F=0):
-    C = np.array(
-        [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
-    )
+def f(x, u, F=0, plant=FULL_PLANT):
+    if plant.coriolis:
+        C = np.array(
+            [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
+        )
+    else:
+        C = 0
 
-    Denominator = a3 * (a1 - a3) - a2**2 * np.cos(x[1]) ** 2
-    Minv = np.array(
-        [
-            [a3 / Denominator, (-a2 * np.cos(x[1]) - a3) / Denominator],
-            [
-                (-a2 * np.cos(x[1]) - a3) / Denominator,
-                (2 * a2 * np.cos(x[1]) + a1) / Denominator,
-            ],
-        ]
-    )
-    _, _, _, fl, ff_v = muscle_force_scaling(x)
+    Minv = _inverse_inertia(_elbow_for_inertia(x[1], plant))
+    fl, ff_v = _force_gains(x, plant)
     theta = Minv @ (MOMENT_ARM @ (u * fl * ff_v) - Viscous @ x[2:4] - C + F)
 
     return np.array([[x[2], x[3], theta[0], theta[1]]])
 
 
-def fx(x, u):
-    return get_linearized_dynamics(x, u)
+def fx(x, u, plant=FULL_PLANT):
+    return get_linearized_dynamics(x, u, plant)
 
 
-def fu(x, u):
-    Denominator = a3 * (a1 - a3) - a2**2 * np.cos(x[1]) ** 2
-    Minv = np.array(
-        [
-            [a3 / Denominator, (-a2 * np.cos(x[1]) - a3) / Denominator],
-            [
-                (-a2 * np.cos(x[1]) - a3) / Denominator,
-                (2 * a2 * np.cos(x[1]) + a1) / Denominator,
-            ],
-        ]
-    )
-    _, _, _, fl, fv = muscle_force_scaling(x)
+def fu(x, u, plant=FULL_PLANT):
+    Minv = _inverse_inertia(_elbow_for_inertia(x[1], plant))
+    fl, fv = _force_gains(x, plant)
     # Column i is the response to a unit command on muscle i. The one-hot vector
     # is reused across iterations rather than reallocated.
     sol = np.zeros((4, 6))
@@ -353,19 +403,19 @@ def Kalman(Omega_measure, Omega_sens, A, sigma, H):
     return K, sigma
 
 
-def step1(x0, u, Duration):
+def step1(x0, u, Duration, plant=FULL_PLANT):
     K = np.shape(u)[0]
     dt = Duration / (K)
     newx = np.zeros((K + 1, len(x0)))
     newx[0] = np.copy(x0)
 
     for i in range(K):
-        newx[i + 1] = newx[i] + dt * f(newx[i], u[i])
+        newx[i + 1] = newx[i] + dt * f(newx[i], u[i], plant=plant)
 
     return newx
 
 
-def step2(x, u, Duration, w1, w2, r1, xtarg):
+def step2(x, u, Duration, w1, w2, r1, xtarg, plant=FULL_PLANT):
     K = np.shape(u)[0]
     dt = Duration / K
     n, m = len(x[0]), len(u[0])
@@ -384,8 +434,8 @@ def step2(x, u, Duration, w1, w2, r1, xtarg):
     R_step = luu(x[0], u[0], r1)
 
     for i in range(K):
-        A[i] = identity_n + dt * fx(x[i], u[i])
-        B[i] = dt * fu(x[i], u[i])
+        A[i] = identity_n + dt * fx(x[i], u[i], plant)
+        B[i] = dt * fu(x[i], u[i], plant)
         q[i] = l(x[i], u[i], r1, xtarg, w1, w2)
         qbold[i] = lx(x[i], u[i], xtarg, w1, w2)
         r[i] = lu(x[i], u[i], r1)
@@ -477,6 +527,7 @@ def step5(
     motornoise_variance,
     FF,
     ff_power,
+    plant=FULL_PLANT,
 ):
     dt = Duration / (Num_steps)
     Num_Var = len(x0)
@@ -519,12 +570,12 @@ def step5(
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
 
         passed_newx = np.copy(newx[i, :-Num_Var])
-        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u, F)
+        newx[i + 1, :Num_Var] = newx[i, :Num_Var] + dt * f(newx[i, :Num_Var], u, F, plant)
         newx[i + 1, Num_Var:] = passed_newx
 
         passed_xref = np.copy(xref[i, :-Num_Var])
         xref[i + 1, :Num_Var] = xref[i, :Num_Var] + dt * f(
-            xref[i, :Num_Var], bestu[i], F=0
+            xref[i, :Num_Var], bestu[i], F=0, plant=plant
         )
         xref[i + 1, Num_Var:] = passed_xref
 
@@ -556,6 +607,7 @@ def simulate_ILQG(
     print_iterations=True,
     FF=False,
     ff_power=0.3,
+    plant=FULL_PLANT,
 ):
     """
     Parameters :
@@ -569,6 +621,7 @@ def simulate_ILQG(
         - Delay : Sensory Delay in sec
         - motornoise_variance : Variance of the motor noise
         - alpha : Body Tilt in radiant
+        - plant : Plant, which arm nonlinearities to keep (default: all)
 
     return :
         - X,Y : Cartesian coordinates of the hand trajectory
@@ -580,6 +633,8 @@ def simulate_ILQG(
     st1, st2 = compute_angles_from_cartesian(start[0], start[1])
 
     x0 = np.array([st1, st2, 0, 0])
+    # A linear inertia is frozen at the starting posture.
+    plant = replace(plant, elbow0=st2)
     m, n = 6, 4
     u = np.zeros((K, m))
     dt = Duration / K
@@ -597,7 +652,7 @@ def simulate_ILQG(
 
     for iterate in range(300):
         x = step1(
-            x0, u, Duration
+            x0, u, Duration, plant
         )  # Forward step computing the sequence of state trajectory given a sequence of input u
         X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
         Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
@@ -619,6 +674,7 @@ def simulate_ILQG(
                 motornoise_variance,
                 FF,
                 ff_power,
+                plant,
             )
             X = np.cos(x[:, 0] + x[:, 1]) * 33 + np.cos(x[:, 0]) * 30
             Y = np.sin(x[:, 0] + x[:, 1]) * 33 + np.sin(x[:, 0]) * 30
@@ -627,7 +683,7 @@ def simulate_ILQG(
             break
 
         A, B, q, qbold, r, Q, R = step2(
-            x, u, Duration, w1, w2, r1, xtarg
+            x, u, Duration, w1, w2, r1, xtarg, plant
         )  # Compute the Linearizations of the dynamic
         l, L = step3(
             A, B, C, cbold, q, qbold, r, Q, R, eps
@@ -640,7 +696,7 @@ def simulate_ILQG(
         J = total_cost(x, u, w1, w2, r1, xtarg)
         alpha = 1.0
         while alpha > 1e-8:
-            J_new = total_cost(step1(x0, u + alpha * u_incr, Duration), u + alpha * u_incr, w1, w2, r1, xtarg)
+            J_new = total_cost(step1(x0, u + alpha * u_incr, Duration, plant), u + alpha * u_incr, w1, w2, r1, xtarg)
             if np.isfinite(J_new) and J_new < J:
                 break
             alpha /= 2
