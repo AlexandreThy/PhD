@@ -19,6 +19,7 @@ rose with muscle length instead of falling; both are corrected here.
 from matplotlib.lines import Line2D
 
 from common import (
+    FIGURE_SUBDIRS,
     Compute_Cartesian_Speed, Cost_function, Plant, build_parser,
     compute_angles_from_cartesian, delete_axis, finish, guarded, np, pi, plt,
     run_ilqg, run_tasks, save_figure,
@@ -174,7 +175,8 @@ def plot_panels(data, outdir, ff_power):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["force_field"])
     parser.add_argument("--ff-power", type=float, default=FF_POWER,
                         help="force field strength (sign sets the side)")
     parser.add_argument("--linear-coriolis", action="store_true",

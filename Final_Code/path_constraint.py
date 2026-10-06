@@ -13,6 +13,7 @@ FL against those of ILQG.
 from matplotlib import gridspec
 
 from common import (
+    FIGURE_SUBDIRS,
     TAU_PATH, WC, WP, WR, WR_FL, WV, build_parser, ToCartesian, compute_path,
     compute_angles_from_cartesian, delete_axis, delete_ticks, finish, guarded,
     get_colors_from_colormap, longmovement_1, longmovement_2, np, pi, plt,
@@ -174,7 +175,8 @@ def plot_commands(per_movement, outdir):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["large_amplitude"])
     parser.add_argument("--movements", type=int, nargs="+", choices=(1, 2),
                         default=[1, 2],
                         help="which long movements to simulate (panel order)")

@@ -10,7 +10,8 @@ Run any script directly, e.g.:
     python Final_Code/centerout_cost_polar.py --amplitude 15 --duration 0.4
     python Final_Code/centerout_cost_polar.py --num-sim 5 --jobs 1   # quick check
 
-Figures are written to Final_Code/figures/ unless --outdir says otherwise.
+Figures are written to one folder per reaching task under Final_Code/figures/
+(see FIGURE_SUBDIRS) unless --outdir says otherwise.
 """
 
 import argparse
@@ -47,6 +48,17 @@ from Helpers.Helpers import (
 )
 
 FIGURE_DIR = Path(__file__).resolve().parent / "figures"
+# One folder per reaching task, so the figures of a task sit together.
+FIGURE_SUBDIRS = {
+    "cost_polar": "centerout/cost_polar",
+    "trajectories": "centerout/trajectories",
+    "kinematics": "centerout/kinematics",
+    "nonlinearity_index": "centerout/nonlinearity_index",
+    "force_field": "force_field",
+    "two_directions": "two_directions",
+    "sensitivity": "sensitivity",
+    "large_amplitude": "large_amplitude",
+}
 
 # ----------------------------------------------------------------------------
 # Simulation parameters shared by the figures
@@ -265,13 +277,14 @@ def run_tasks(worker, tasks, jobs=None, desc=None):
 # ----------------------------------------------------------------------------
 # Plumbing
 # ----------------------------------------------------------------------------
-def build_parser(description, num_sim_default=100):
+def build_parser(description, num_sim_default=100, subdir=""):
+    """`subdir` is the task folder under figures/ that is the default --outdir."""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("--num-sim", type=int, default=num_sim_default,
                         help="number of noisy repetitions per condition")
     parser.add_argument("--jobs", type=int, default=None,
                         help="worker processes (default: cpu_count - 1, 1 disables)")
-    parser.add_argument("--outdir", type=Path, default=FIGURE_DIR,
+    parser.add_argument("--outdir", type=Path, default=FIGURE_DIR / subdir,
                         help="directory for the generated figures")
     parser.add_argument("--no-show", action="store_true",
                         help="save the figures without opening a window")

@@ -6,25 +6,36 @@ Every script shares its parameters, cost function and plotting style through
 
 ## Scripts
 
-| Script | Notebook cells | Output |
-| --- | --- | --- |
-| `centerout_trajectories.py` | 2, 3, 4 | `{ILQG,FL,LQG}_Centerout.svg` and `*_Centerout_mean.svg` |
-| `centerout_cost_polar.py` | 6, 7, 8, 11, 12, 14, 15 | `Cfy40_<amp>cm_<dur>ms.svg` and `*_cost.npz` |
-| `velocity_profiles.py` | 17 | `Kinematiccenterout.svg` |
-| `force_field.py` | 20 | `FF3Controllers.svg`, `FFFV.svg` |
-| `sensitivity_analysis.py` | 22 | `SensitivityAnalysis.svg` |
-| `large_amplitude_reaching.py` | 24 | `LongMove.svg`, `long_move_terminal.svg` |
-| `path_constraint.py` | 25 | `PathConstraint.svg`, `PathConstraintCommands.svg` |
-| `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `LQG_CostMap_90_315.svg` + `.npz` |
-| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `PeakPower_{polar,vs_total,vs_motor}_<amp>cm_<dur>ms.svg` + `.npz` |
-| `nonlinearity_ablation.py` | from `CurrentParts/Nonlinearities.ipynb` | `NonlinearityAblation.svg` |
-| `centerout_motor_cost.py` | new | `MotorCost_15cm_400ms.svg` + `.npz` |
+| Script | Notebook cells | Folder under `figures/` | Output |
+| --- | --- | --- | --- |
+| `centerout_trajectories.py` | 2, 3, 4 | `centerout/trajectories` | `{ILQG,FL,LQG}_Centerout.svg` and `*_Centerout_mean.svg` |
+| `centerout_trajectories_r1.py` | new | `centerout/trajectories` | `Centerout_mean_r1.svg` + `.npz` |
+| `centerout_cost_polar.py` | 6, 7, 8, 11, 12, 14, 15 | `centerout/cost_polar` | `Cfy40_<amp>cm_<dur>ms[_r1_<r1>].svg` and `*_cost.npz` |
+| `centerout_motor_cost.py` | new | `centerout/cost_polar` | `MotorCost_15cm_400ms.svg` + `.npz` |
+| `velocity_profiles.py` | 17 | `centerout/kinematics` | `Kinematiccenterout.svg` |
+| `centerout_elbow_velocity.py` | new | `centerout/kinematics` | `elbow_vel_co.svg` + `.npz` |
+| `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `centerout/nonlinearity_index` | `PeakPower_{polar,vs_total,vs_motor}_<amp>cm_<dur>ms.svg` + `.npz` |
+| `force_field.py` | 20 | `force_field` | `FF3Controllers[_r1_<r1>].svg`, `FFFV[_r1_<r1>].svg` |
+| `nonlinearity_ablation.py` | from `CurrentParts/Nonlinearities.ipynb` | `force_field` | `NonlinearityAblation.svg` |
+| `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `two_directions` | `LQG_CostMap_90_315.svg` + `.npz` |
+| `sensitivity_analysis.py` | 22 | `sensitivity` | `SensitivityAnalysis.svg` |
+| `large_amplitude_reaching.py` | 24 | `large_amplitude` | `LongMove.svg`, `long_move_terminal.svg` |
+| `path_constraint.py` | 25 | `large_amplitude` | `PathConstraint.svg`, `PathConstraintCommands.svg` |
 
 `nonlinearity_index.py` correlates against the costs written by
-`centerout_cost_polar.py`, so run that first. By default it runs the
-10 cm / 400 ms and 15 cm / 600 ms conditions.
+`centerout_cost_polar.py` in `figures/centerout/cost_polar/`, so run that
+first. By default it runs the 10 cm / 400 ms and 15 cm / 600 ms conditions.
 
-Figures are written to `Final_Code/figures/`.
+Figures are written to one folder per reaching task under `Final_Code/figures/`
+(the table above, `FIGURE_SUBDIRS` in `common.py`); `--outdir` overrides it.
+`figures/delta_dlqg/` holds the figure of `delta_dlqg_benchmark.ipynb`, and
+`figures/legacy/` the DLQG, old-weight and `Corr_Plots_*` outputs that no script
+writes anymore.
+
+`centerout_cost_polar.py`, `centerout_trajectories_r1.py` and `force_field.py`
+take `--r1`, the motor cost of ILQG and LQG, which also scores all three
+controllers; FL keeps `WR_FL`. Any r1 other than the default `WR` adds
+`_r1_<r1>` to the file names.
 
 ## LQG in place of DLQG
 
@@ -104,7 +115,7 @@ the weights, the following had to change.
 - The third figure plotted the DLQG fit on the ILQG panel.
 - The correlations read `Costdata.npz` and `Costr.npz` from the repository root,
   which hold results from the old weights. They now read
-  `figures/Cfy40_15cm_400ms_cost.npz`, the matching condition at the current
+  `figures/centerout/cost_polar/Cfy40_15cm_400ms_cost.npz`, the matching condition at the current
   weights, and say so if it is missing.
 - The peak power index is correlated against the LQG **total** movement cost
   (`PeakPower_vs_total_*.svg`) and against the LQG **motor** cost alone

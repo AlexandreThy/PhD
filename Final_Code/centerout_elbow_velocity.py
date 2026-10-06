@@ -10,6 +10,7 @@ plotted as a magnitude, which is also what a radial axis can show.
 """
 
 from common import (
+    FIGURE_SUBDIRS,
     COLORS, LEGEND, NUM_CONTROLLERS, START, build_parser, centerout_targets,
     finish, np, pi, plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
     style_polar_axis,
@@ -65,7 +66,8 @@ def plot(mean_by_direction, outdir):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["kinematics"])
     parser.add_argument("--amplitude", type=float, default=AMPLITUDE,
                         help="reach amplitude in cm")
     parser.add_argument("--duration", type=float, default=DURATION,

@@ -13,6 +13,7 @@ from matplotlib import gridspec
 from matplotlib.lines import Line2D
 
 from common import (
+    FIGURE_SUBDIRS,
     COLORS, Cost_function, LEGEND, NUM_CONTROLLERS, build_parser,
     compute_angles_from_cartesian, cost_components, delete_axis, finish,
     guarded, longmovement_1, longmovement_2, np, pi, plt, run_lqg, run_fl,
@@ -203,7 +204,8 @@ def plot_terminal(per_movement, outdir):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["large_amplitude"])
     parser.add_argument("--movements", type=int, nargs="+", choices=(1, 2),
                         default=[2, 1],
                         help="which long movements to simulate (row order)")

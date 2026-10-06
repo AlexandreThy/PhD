@@ -22,6 +22,7 @@ posture.
 from matplotlib.colors import LogNorm, SymLogNorm
 
 from common import (
+    FIGURE_SUBDIRS,
     Cost_function, build_parser, delete_axis, finish, np, plt, run_ilqg,
     run_lqg, run_tasks, save_figure,
 )
@@ -265,7 +266,8 @@ def plot(cost_maps, ilqg_maps, outdir, num_sim):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=10)
+    parser = build_parser(__doc__, num_sim_default=10,
+                          subdir=FIGURE_SUBDIRS["two_directions"])
     args = parser.parse_args()
 
     cost_maps, ilqg_maps = simulate(args.num_sim, args.jobs)

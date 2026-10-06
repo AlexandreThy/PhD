@@ -10,6 +10,7 @@ cost of each controller.
 """
 
 from common import (
+    FIGURE_SUBDIRS,
     COLORS, Cost_function, LEGEND, NUM_CONTROLLERS, WP, WR, WR_FL, WV,
     build_parser, delete_axis, finish, np, plt, run_lqg, run_fl, run_ilqg,
     run_tasks, save_figure,
@@ -72,7 +73,8 @@ def sweep(name, values, num_sim, jobs, start):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["sensitivity"])
     parser.add_argument("--num-points", type=int, default=NUM_POINTS,
                         help="values probed per weight")
     args = parser.parse_args()

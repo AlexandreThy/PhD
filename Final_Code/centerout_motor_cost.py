@@ -15,6 +15,7 @@ would compare three different quantities rather than the same one.
 """
 
 from common import (
+    FIGURE_SUBDIRS,
     COLORS, Cost_r, LEGEND, NUM_CONTROLLERS, START, WR, build_parser,
     centerout_targets, delete_axis, finish, np, plt, run_lqg, run_fl,
     run_ilqg, run_tasks, save_figure,
@@ -82,7 +83,8 @@ def plot_summary(ax, motor):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["cost_polar"])
     parser.add_argument("--amplitude", type=float, default=AMPLITUDE,
                         help="reach amplitude in cm")
     parser.add_argument("--duration", type=float, default=DURATION,

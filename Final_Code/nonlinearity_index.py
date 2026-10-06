@@ -18,6 +18,7 @@ from scipy import stats
 
 from centerout_cost_polar import condition_name, num_iter_for
 from common import (
+    FIGURE_DIR, FIGURE_SUBDIRS,
     COLORS, LEGEND, NUM_CONTROLLERS, START, build_parser, centerout_targets,
     finish, np, pi, plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
 )
@@ -142,7 +143,8 @@ def plot_scatter(cost_column, peak, fits, xlabel, title, filename, outdir):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["nonlinearity_index"])
     parser.add_argument("--amplitude", type=float, default=None,
                         help="reach amplitude in cm (default: all conditions)")
     parser.add_argument("--duration", type=float, default=None,
@@ -160,7 +162,8 @@ def main():
     for amplitude, duration in conditions:
         name = condition_name(amplitude, duration, START)
         tag = f"{int(amplitude)}cm_{int(duration * 1000)}ms"
-        total_cost, motor_cost = load_costs(args.outdir, name, amplitude, duration)
+        total_cost, motor_cost = load_costs(FIGURE_DIR / FIGURE_SUBDIRS["cost_polar"], name,
+                                           amplitude, duration)
         peak = simulate(args.num_sim, args.jobs, START, amplitude, duration)
 
         total_column = total_cost[:NUM_TARGETS, REFERENCE_CONTROLLER]

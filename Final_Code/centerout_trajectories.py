@@ -10,6 +10,7 @@ Replaces the three near-identical notebook cells with one parameterised pass.
 """
 
 from common import (
+    FIGURE_SUBDIRS,
     COLORS, LEGEND, START, build_parser, centerout_targets, finish, np,
     plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
 )
@@ -77,7 +78,8 @@ def plot_controller(controller, targets, trajectories, start, outdir):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=15)
+    parser = build_parser(__doc__, num_sim_default=15,
+                          subdir=FIGURE_SUBDIRS["trajectories"])
     parser.add_argument("--amplitude", type=float, default=AMPLITUDE,
                         help="reach amplitude in cm")
     args = parser.parse_args()

@@ -12,6 +12,7 @@ sqrt(vx**2 + vy**2), and the three terms of the movement cost as grouped bars.
 from matplotlib.lines import Line2D
 
 from common import (
+    FIGURE_SUBDIRS,
     COLORS, Compute_Cartesian_Speed, LEGEND, NUM_CONTROLLERS, START,
     build_parser, cost_components, delete_axis, finish, np, pi,
     plt, run_lqg, run_fl, run_ilqg, run_tasks, save_figure,
@@ -104,7 +105,8 @@ def plot_cost_panel(ax, costs):
 
 
 def main():
-    parser = build_parser(__doc__, num_sim_default=100)
+    parser = build_parser(__doc__, num_sim_default=100,
+                          subdir=FIGURE_SUBDIRS["kinematics"])
     parser.add_argument("--amplitude", type=float, default=AMPLITUDE,
                         help="reach amplitude in cm")
     args = parser.parse_args()
