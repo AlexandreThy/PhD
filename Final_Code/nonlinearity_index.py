@@ -123,21 +123,23 @@ def plot_polar(peak, r2_total, r2_motor, outdir, num_sim, tag):
 
 
 def plot_scatter(cost_column, peak, fits, xlabel, title, filename, outdir):
-    """One panel per controller: peak power against the reference cost."""
-    fig, ax = plt.subplots(NUM_CONTROLLERS, figsize=(8, 8))
+    """
+    Peak power against the reference cost, the three controllers on one axes:
+    one colour each for the points and their regression line.
+    """
+    fig, ax = plt.subplots(figsize=(8, 6))
+    order = np.argsort(cost_column)
     for i in range(NUM_CONTROLLERS):
         r2, slope, intercept = fits[i]
-        ax[i].scatter(cost_column, peak[:, i], marker="o", color=COLORS[i],
-                      linewidth=2, label=f"{LEGEND[i]} peak power")
-        ax[i].plot(cost_column, slope * cost_column + intercept, color=COLORS[i],
-                   linestyle="--", label=f"{LEGEND[i]} fit")
-        ax[i].text(0.02, 0.90, f"{LEGEND[i]} : r2 = {r2:.2f}",
-                   transform=ax[i].transAxes, fontsize=12)
-        ax[i].set_xlabel(xlabel, fontsize=12)
-        ax[i].set_ylabel("Peak joint power index", fontsize=12)
-        ax[i].grid(True)
-        ax[i].legend(fontsize=9, loc="lower right")
-    ax[0].set_title(title, fontsize=13)
+        ax.scatter(cost_column, peak[:, i], marker="o", color=COLORS[i], s=40)
+        ax.plot(cost_column[order], slope * cost_column[order] + intercept,
+                color=COLORS[i], linestyle="--", linewidth=2,
+                label=f"{LEGEND[i]}  (r2 = {r2:.2f})")
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel("Peak joint power index", fontsize=12)
+    ax.grid(True)
+    ax.legend(fontsize=11, loc="best")
+    ax.set_title(title, fontsize=13)
     fig.tight_layout()
     save_figure(fig, outdir, filename)
 
