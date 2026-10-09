@@ -8,9 +8,20 @@ FL against those of ILQG.
 
     python Final_Code/path_constraint.py
     python Final_Code/path_constraint.py --num-sim 5 --jobs 1
+    python Final_Code/path_constraint.py --wv-fl 100   # *_wvfl100.svg
+
+--wv-fl is the terminal velocity weight FL optimises with (default WV = 1).
+The path cost pulls the joints onto the line in the last few steps, so with
+WV = 1 the straight paths end at 90-100 deg/s; at wv = 10 to 100 they stop at
+under 15 deg/s with nearly the same straightening (see Final_Code/README.md).
+--wc sets the path weight of the with/without comparison (default WC).
+--velocities-only draws just the two angular velocity panels, with a legend:
+
+    python Final_Code/path_constraint.py --velocities-only --wc 70 --wv-fl 100
 """
 
 from matplotlib import gridspec
+from matplotlib.lines import Line2D
 
 from common import (
     FIGURE_SUBDIRS,
@@ -63,13 +74,15 @@ def cost_components(x, u, dt, wc, target):
 
 def _worker(task):
     """FL without and with the straight-path cost, plus ILQG, for one repetition."""
-    start, target, duration, num_iter, wc = task
+    start, target, duration, num_iter, wc, wv_fl = task
     dt = duration / num_iter
 
     _, _, x_free, u_free = guarded(
-        run_fl, "FL without path cost", duration, num_iter, start, target, wc=0)
+        run_fl, "FL without path cost", duration, num_iter, start, target, wc=0,
+        wv=wv_fl)
     _, _, x_path, u_path = guarded(
-        run_fl, "FL with path cost", duration, num_iter, start, target, wc=wc)
+        run_fl, "FL with path cost", duration, num_iter, start, target, wc=wc,
+        wv=wv_fl)
     _, _, _, u_ilqg = guarded(
         run_ilqg, "ILQG", duration, num_iter, start, target)
 
@@ -84,9 +97,10 @@ def _worker(task):
     }
 
 
-def simulate(movement, num_sim, jobs, wc=WC):
+def simulate(movement, num_sim, jobs, wc=WC, wv_fl=WV):
     start, target = movement()
-    tasks = [(start, target, MOVEMENT_TIME, NUM_ITER, wc) for _ in range(num_sim)]
+    tasks = [(start, target, MOVEMENT_TIME, NUM_ITER, wc, wv_fl)
+             for _ in range(num_sim)]
     results = run_tasks(_worker, tasks, jobs, desc=f"{movement.__name__} path cost")
     data = {key: np.array([r[key] for r in results]) for key in results[0]}
     return start, target, data
@@ -94,15 +108,15 @@ def simulate(movement, num_sim, jobs, wc=WC):
 
 def _sweep_worker(task):
     """Mean trajectory for one path weight. Stays top-level."""
-    start, target, duration, num_iter, wc = task
-    X, Y, _, _ = run_fl(duration, num_iter, start, target, wc=wc)
+    start, target, duration, num_iter, wc, wv_fl = task
+    X, Y, _, _ = run_fl(duration, num_iter, start, target, wc=wc, wv=wv_fl)
     return np.array([X, Y])
 
 
-def sweep_wc(movement, num_sim, jobs):
+def sweep_wc(movement, num_sim, jobs, wv_fl=WV):
     """Mean FL trajectory for each path weight in WC_SWEEP."""
     start, target = movement()
-    tasks = [(start, target, MOVEMENT_TIME, NUM_ITER, wc)
+    tasks = [(start, target, MOVEMENT_TIME, NUM_ITER, wc, wv_fl)
              for wc in WC_SWEEP for _ in range(num_sim)]
     results = run_tasks(_sweep_worker, tasks, jobs,
                         desc=f"{movement.__name__} wc sweep")
@@ -138,6 +152,28 @@ def plot_velocities(ax, data, time):
     ax.tick_params(labelsize=20)
 
 
+def plot_velocity_figure(movements, per_movement, wc, num_sim, outdir, suffix):
+    """The two angular velocity panels alone, labelled."""
+    time = np.linspace(0, MOVEMENT_TIME * 1000, NUM_ITER + 1)
+    fig, axes = plt.subplots(len(movements), 1, figsize=(8, 4.25 * len(movements)),
+                             squeeze=False)
+    for ax, movement, (_, _, data) in zip(axes[:, 0], movements, per_movement):
+        plot_velocities(ax, data, time)
+        ax.set_title(movement.__name__, fontsize=16)
+        ax.set_ylabel("Angular velocity [deg/s]", fontsize=14)
+    axes[-1, 0].set_xlabel("Time [ms]", fontsize=14)
+    axes[0, 0].legend(handles=[
+        Line2D([], [], color=FREE_COLOR, lw=2, label="FL, no path cost"),
+        Line2D([], [], color=PATH_COLOR, lw=2, label=f"FL, path cost wc = {wc:g}"),
+        Line2D([], [], color="black", ls="-", label="shoulder"),
+        Line2D([], [], color="black", ls="--", label="elbow"),
+    ], fontsize=11, loc="upper right", frameon=False)
+    fig.suptitle(f"Joint angular velocity, mean +/- SD over {num_sim} trials",
+                 fontsize=15)
+    fig.tight_layout()
+    save_figure(fig, outdir, f"PathConstraintVelocities{suffix}.svg", dpi=200)
+
+
 def plot_sweep(ax, start, target, mean_trajectories):
     colors = HAND_COLORS
     for idx in range(len(WC_SWEEP)):
@@ -158,7 +194,7 @@ def plot_cost_breakdown(ax, data):
     ax.set_yscale("log")
 
 
-def plot_commands(per_movement, outdir):
+def plot_commands(per_movement, outdir, suffix=""):
     fig, ax = plt.subplots(2, 3, figsize=(10, 10))
     time = np.linspace(0, MOVEMENT_TIME * 1000, NUM_ITER)
     limits = [(-3, 1.5), (-6, 2)]
@@ -171,7 +207,7 @@ def plot_commands(per_movement, outdir):
                                   color=MUSCLE_COLORS[muscle])
             ax[row, col].set_ylim(*limits[row])
 
-    save_figure(fig, outdir, "PathConstraintCommands.svg", dpi=200)
+    save_figure(fig, outdir, f"PathConstraintCommands{suffix}.svg", dpi=200)
 
 
 def main():
@@ -180,7 +216,26 @@ def main():
     parser.add_argument("--movements", type=int, nargs="+", choices=(1, 2),
                         default=[1, 2],
                         help="which long movements to simulate (panel order)")
+    parser.add_argument("--wc", type=float, default=WC,
+                        help="path weight of the with/without comparison")
+    parser.add_argument("--wv-fl", type=float, default=WV,
+                        help="terminal velocity weight FL optimises with")
+    parser.add_argument("--velocities-only", action="store_true",
+                        help="only the angular velocity panels, as their own figure")
     args = parser.parse_args()
+    # The defaults keep the historical file names.
+    wc_tag = f"_wc{args.wc:g}"
+    wv_tag = "" if args.wv_fl == WV else f"_wvfl{args.wv_fl:g}"
+    suffix = ("" if args.wc == WC else wc_tag) + wv_tag
+
+    movements = [MOVEMENT_BY_NUMBER[n] for n in args.movements]
+    per_movement = [simulate(m, args.num_sim, args.jobs, args.wc, args.wv_fl)
+                    for m in movements]
+    if args.velocities_only:
+        plot_velocity_figure(movements, per_movement, args.wc, args.num_sim,
+                             args.outdir, wc_tag + wv_tag)
+        finish(not args.no_show)
+        return
 
     # One row per long movement for the velocity profiles and for the sweep.
     fig = plt.figure(figsize=(8, 21))
@@ -191,19 +246,17 @@ def main():
 
     time = np.linspace(0, MOVEMENT_TIME * 1000, NUM_ITER + 1)
 
-    movements = [MOVEMENT_BY_NUMBER[n] for n in args.movements]
-    per_movement = [simulate(m, args.num_sim, args.jobs) for m in movements]
-
     for idx, (_, _, data) in enumerate(per_movement):
         plot_velocities(ax_vel[idx], data, time)
         plot_cost_breakdown(ax_cost[idx], data)
 
     for idx, movement in enumerate(movements):
-        start, target, mean_trajectories = sweep_wc(movement, args.num_sim, args.jobs)
+        start, target, mean_trajectories = sweep_wc(movement, args.num_sim,
+                                                    args.jobs, args.wv_fl)
         plot_sweep(ax_sweep[idx], start, target, mean_trajectories)
 
-    save_figure(fig, args.outdir, "PathConstraint.svg", dpi=200)
-    plot_commands(per_movement, args.outdir)
+    save_figure(fig, args.outdir, f"PathConstraint{suffix}.svg", dpi=200)
+    plot_commands(per_movement, args.outdir, suffix)
     finish(not args.no_show)
 
 

@@ -158,6 +158,28 @@ Beyond `WC = 80` the first movement curves again (1.7 cm at 100, 3.4 at 150),
 so the sweep stops there, and `WC = 80` is the weight of the single
 with/without comparison.
 
+**Terminal velocity of the straight paths.** The path cost is weighted by
+`exp(-(time to go) / TAU_PATH)`, so it acts in the last few steps, and with FL's
+terminal velocity weight at `WV = 1` the straight paths end moving: at
+`WC = 80` the largest terminal joint velocity is 104 deg/s on movement 1 and
+46 deg/s on movement 2, against 6 and 10 deg/s without the path cost.
+`TAU_PATH` cannot fix this. A noiseless grid over `TAU_PATH` 0.01 to 0.3 and
+`WC` 0 to 600 shows the terminal velocity tied to how straight the path gets,
+not to `TAU_PATH`: every setting that brings movement 1 under about 2.5 cm
+(`TAU_PATH` 0.01 to 0.03) ends at 80 to 110 deg/s, and from `TAU_PATH` 0.05 up
+the path never straightens below 4 cm. Raising the terminal velocity weight
+FL optimises with (`--wv-fl`) does fix it, with nearly the same sweep:
+
+| movement 1, `TAU_PATH = 0.02` | `WC` 0 | 20 | 40 | 60 | 80 |
+| --- | --- | --- | --- | --- | --- |
+| `wv = 1`: peak deviation / terminal velocity | 13.6 cm / 6 deg/s | 8.6 / 40 | 4.9 / 66 | 2.4 / 87 | 1.0 / 104 |
+| `wv = 10` | 13.6 / 1 | 9.3 / 4 | 6.0 / 7 | 3.6 / 10 | 1.8 / 12 |
+| `wv = 100` | 13.6 / 0 | 9.4 / 0 | 6.1 / 1 | 3.7 / 1 | 1.9 / 1 |
+
+On movement 2, `WC = 80` gives 2.7 cm / 5 deg/s at `wv = 10` and 2.8 cm /
+1 deg/s at `wv = 100`. Nothing changes past `wv = 100`. The default stays at
+`WV = 1`; `--wv-fl 100` writes the `*_wvfl100.svg` variants.
+
 **Force field strength** (`FF_POWER` in `force_field.py`). Picked so the
 controllers rank
 
