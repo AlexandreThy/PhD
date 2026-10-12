@@ -64,7 +64,7 @@ FIGURE_SUBDIRS = {
 # Simulation parameters shared by the figures
 # ----------------------------------------------------------------------------
 WP = 20000  # position (target) cost weight
-WV = 1  # terminal velocity cost weight
+WV = 10  # terminal velocity cost weight
 WR = 0.1  # motor cost of ILQG and LQG
 WR_FL = 6e-5  # motor cost of FL
 MOTOR_NOISE = 5e-4  # motor noise variance

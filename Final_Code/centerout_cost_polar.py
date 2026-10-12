@@ -11,6 +11,7 @@ that differed only in reach amplitude and movement duration.
     python Final_Code/centerout_cost_polar.py --replot   # redraw from saved costs
     python Final_Code/centerout_cost_polar.py --amplitude 15 --duration 0.4 --r1 1e-4
     python Final_Code/centerout_cost_polar.py --amplitude 10 --duration 0.4 --start-y 35
+    python Final_Code/centerout_cost_polar.py --wv 10   # all conditions, *_wv_10.svg
 
 Each condition gives two figures: all three controllers, and ILQG and FL alone
 (*_ILQG_FL.svg) on a scale fitted to those two.
@@ -20,7 +21,7 @@ from matplotlib.ticker import MaxNLocator
 
 from common import (
     FIGURE_SUBDIRS,
-    COLORS, Cost_function, Cost_r, LEGEND, NUM_CONTROLLERS, START, WR,
+    COLORS, Cost_function, Cost_r, LEGEND, NUM_CONTROLLERS, START, WR, WV,
     build_parser, centerout_targets, finish, np, plt, run_lqg, run_fl,
     run_ilqg, run_tasks, save_figure, style_polar_axis,
 )
@@ -42,22 +43,22 @@ def num_iter_for(duration):
 
 def _worker(task):
     """Run the three controllers for one (repetition, target). Stays top-level."""
-    target, duration, num_iter, start, r1 = task
-    _, _, x_ilqg, u_ilqg = run_ilqg(duration, num_iter, start, target, wr=r1)
-    _, _, x_fl, u_fl = run_fl(duration, num_iter, start, target)
-    _, _, x_lqg, u_lqg = run_lqg(duration, num_iter, start, target, wr=r1)
+    target, duration, num_iter, start, r1, wv = task
+    _, _, x_ilqg, u_ilqg = run_ilqg(duration, num_iter, start, target, wr=r1, wv=wv)
+    _, _, x_fl, u_fl = run_fl(duration, num_iter, start, target, wv=wv)
+    _, _, x_lqg, u_lqg = run_lqg(duration, num_iter, start, target, wr=r1, wv=wv)
 
     runs = ((x_ilqg, u_ilqg), (x_fl, u_fl), (x_lqg, u_lqg))
-    total = np.array([Cost_function(x, u, r=r1, tg=target) for x, u in runs])
+    total = np.array([Cost_function(x, u, w2=wv, r=r1, tg=target) for x, u in runs])
     motor = np.array([Cost_r(x, u, r=r1, tg=target) for x, u in runs])
     return total, motor
 
 
-def simulate(amplitude, duration, num_sim, jobs, start, r1=WR):
+def simulate(amplitude, duration, num_sim, jobs, start, r1=WR, wv=WV):
     num_iter = num_iter_for(duration)
     targets = centerout_targets(start, amplitude, NUM_TARGETS)
     tasks = [
-        (target, duration, num_iter, start, r1)
+        (target, duration, num_iter, start, r1, wv)
         for _ in range(num_sim)
         for target in targets
     ]
@@ -73,10 +74,14 @@ def simulate(amplitude, duration, num_sim, jobs, start, r1=WR):
             np.std(total, axis=0), np.std(motor, axis=0))
 
 
-def condition_name(amplitude, duration, start, r1=WR):
+def condition_name(amplitude, duration, start, r1=WR, wv=WV):
     name = f"Cfy{int(start[1])}_{int(amplitude)}cm_{int(duration * 1000)}ms"
-    # The default motor cost keeps the historical file names.
-    return name if r1 == WR else f"{name}_r1_{r1:g}"
+    # The default weights keep the historical file names.
+    if r1 != WR:
+        name += f"_r1_{r1:g}"
+    if wv != WV:
+        name += f"_wv_{wv:g}"
+    return name
 
 
 def auto_radial_ticks(rmax, count=2):
@@ -87,7 +92,7 @@ def auto_radial_ticks(rmax, count=2):
 
 
 def plot(amplitude, duration, mean_total, sd_total, outdir, start,
-         controllers=tuple(range(NUM_CONTROLLERS)), suffix="", r1=WR):
+         controllers=tuple(range(NUM_CONTROLLERS)), suffix="", r1=WR, wv=WV):
     """
     Mean cost per direction with a +/- one SD band, for the given controllers.
 
@@ -120,16 +125,18 @@ def plot(amplitude, duration, mean_total, sd_total, outdir, start,
         ticks = auto_radial_ticks(rmax)
     style_polar_axis(ax, ticks, NUM_TARGETS, rmax)
 
-    name = condition_name(amplitude, duration, start, r1)
+    name = condition_name(amplitude, duration, start, r1, wv)
     save_figure(fig, outdir, f"{name}{suffix}.svg")
     return name
 
 
-def plot_all(amplitude, duration, mean_total, sd_total, outdir, start, r1=WR):
+def plot_all(amplitude, duration, mean_total, sd_total, outdir, start, r1=WR,
+             wv=WV):
     """The three-controller figure and the ILQG/FL-only one."""
-    name = plot(amplitude, duration, mean_total, sd_total, outdir, start, r1=r1)
+    name = plot(amplitude, duration, mean_total, sd_total, outdir, start, r1=r1,
+                wv=wv)
     plot(amplitude, duration, mean_total, sd_total, outdir, start,
-         controllers=WITHOUT_LQG, suffix="_ILQG_FL", r1=r1)
+         controllers=WITHOUT_LQG, suffix="_ILQG_FL", r1=r1, wv=wv)
     return name
 
 
@@ -143,6 +150,9 @@ def main():
     parser.add_argument("--r1", type=float, default=WR,
                         help="motor cost of ILQG and LQG, also used to score "
                              "all three controllers (FL keeps WR_FL); default WR")
+    parser.add_argument("--wv", type=float, default=WV,
+                        help="terminal velocity weight of all three controllers, "
+                             "also used to score them; default WV")
     parser.add_argument("--start-y", type=float, default=START[1],
                         help="starting hand height in cm (default: START); "
                              "names the figures Cfy<start-y>_*")
@@ -161,14 +171,14 @@ def main():
     args.outdir.mkdir(parents=True, exist_ok=True)
     for amplitude, duration in conditions:
         if args.replot:
-            saved = np.load(args.outdir / f"{condition_name(amplitude, duration, start, args.r1)}_cost.npz")
+            saved = np.load(args.outdir / f"{condition_name(amplitude, duration, start, args.r1, args.wv)}_cost.npz")
             plot_all(amplitude, duration, saved["total"], saved["total_sd"],
-                     args.outdir, start, args.r1)
+                     args.outdir, start, args.r1, args.wv)
             continue
         mean_total, mean_motor, sd_total, sd_motor = simulate(
-            amplitude, duration, args.num_sim, args.jobs, start, args.r1)
+            amplitude, duration, args.num_sim, args.jobs, start, args.r1, args.wv)
         name = plot_all(amplitude, duration, mean_total, sd_total, args.outdir,
-                        start, args.r1)
+                        start, args.r1, args.wv)
         np.savez(args.outdir / f"{name}_cost.npz",
                  total=mean_total, motor=mean_motor,
                  total_sd=sd_total, motor_sd=sd_motor)
