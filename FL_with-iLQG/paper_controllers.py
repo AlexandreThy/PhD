@@ -64,26 +64,30 @@ def plan_muscle(duration, num_iter, start, target, wr):
 
 
 def run(controller, duration, num_iter, start, target, wr, noise=True,
-        ff=False, ff_power=0.0, seed=None, plan=None):
-    """One trial. Returns (X, Y, joint state (num_iter+1, 4), muscle commands (num_iter, 6))."""
+        ff=False, ff_power=0.0, seed=None, plan=None, delay=None):
+    """
+    One trial. Returns (X, Y, joint state (num_iter+1, 4), muscle commands (num_iter, 6)).
+    delay defaults to DELAY (60 ms).
+    """
     if seed is not None:
         np.random.seed(seed)
+    delay = DELAY if delay is None else delay
     if controller == "ILQG":
         X, Y, x, u = simulate_ILQG(
-            duration, WP, WV, wr, target, start, num_iter, delay=DELAY, Noise=noise,
+            duration, WP, WV, wr, target, start, num_iter, delay=delay, Noise=noise,
             print_iterations=False, FF=ff, ff_power=ff_power, motornoise_variance=MOTOR_NOISE,
         )
     elif controller == "FL":
         X, Y, x, u = simulate_FL(
             Duration=duration, w1=WP, w2=WP, w3=WV, w4=WV, r=R_FL, Num_iter=num_iter,
-            starting_point=start, targets=target, Delay=DELAY, Activate_Noise=noise,
+            starting_point=start, targets=target, Delay=delay, Activate_Noise=noise,
             FF=ff, ff_power=ff_power, motornoise_variance=MOTOR_NOISE,
         )
     elif controller in ("FL_muscle", "FL_muscle_mn"):
         min_norm = controller == "FL_muscle_mn"
         X, Y, x, u = simulate_FL_iLQG_muscle(
             Duration=duration, wr=wr, targets=target, starting_point=start,
-            Num_iter=num_iter, Delay=DELAY, Activate_Noise=noise, FF=ff,
+            Num_iter=num_iter, Delay=delay, Activate_Noise=noise, FF=ff,
             ff_power=ff_power, motornoise_variance=MOTOR_NOISE,
             plan=None if plan is None else plan[min_norm], min_norm=min_norm,
         )
