@@ -17,12 +17,16 @@ posture.
 
     python Final_Code/cost_map_2directions.py
     python Final_Code/cost_map_2directions.py --num-sim 2 --jobs 1
+    python Final_Code/cost_map_2directions.py --replot   # from the saved .npz
+
+LQG_ILQG_CostRatio_90_315.svg is the workspace view of the fourth column,
+coloured by the cost ratio LQG / ILQG instead of the LQG cost.
 """
 
 from matplotlib.colors import LogNorm, SymLogNorm
 
 from common import (
-    FIGURE_SUBDIRS,
+    FIGURE_SUBDIRS, START,
     Cost_function, build_parser, delete_axis, finish, np, plt, run_ilqg,
     run_lqg, run_tasks, save_figure,
 )
@@ -201,23 +205,24 @@ def _draw_arm(ax, shoulder_deg, elbow_deg, direction_deg, color, label):
                                 mutation_scale=18))
 
 
-def _plot_workspace(ax, cost, direction_deg, norm):
+def _plot_workspace(ax, cost, direction_deg, norm, names=("cheapest", "costliest"),
+                    title="Same reach, two postures", fmt=".1f"):
     """Where the sampled postures put the hand, and the two extreme postures."""
     starts = _start_positions()
     ax.scatter(starts[..., 0], starts[..., 1], c=cost, cmap="plasma", norm=norm,
                s=16, zorder=2)
 
     cheapest, costliest = _extreme_postures(cost)
-    for idx, color, name in ((cheapest, CHEAP_COLOR, "cheapest"),
-                             (costliest, COSTLY_COLOR, "costliest")):
+    for idx, color, name in ((cheapest, CHEAP_COLOR, names[0]),
+                             (costliest, COSTLY_COLOR, names[1])):
         _draw_arm(ax, SHOULDER_ANGLES[idx[0]], ELBOW_ANGLES[idx[1]], direction_deg,
-                  color, f"{name} ({cost[idx]:.1f})")
+                  color, f"{name} ({cost[idx]:{fmt}})")
 
     ax.plot(0, 0, marker="o", markersize=9, color="grey", zorder=5)  # shoulder
     ax.set_aspect("equal")
     ax.set_xlabel("Hand x [cm]", fontsize=13)
     ax.set_ylabel("Hand y [cm]", fontsize=13)
-    ax.set_title("Same reach, two postures", fontsize=13)
+    ax.set_title(title, fontsize=13)
     ax.legend(fontsize=10, loc="lower left", frameon=False)
     delete_axis(ax, sides=["top", "right"])
     ax.tick_params(labelsize=11)
@@ -265,16 +270,62 @@ def plot(cost_maps, ilqg_maps, outdir, num_sim):
     save_figure(fig, outdir, "LQG_CostMap_90_315.svg")
 
 
+def plot_ratio_workspace(cost_maps, ilqg_maps, outdir, num_sim):
+    """
+    The fourth column of LQG_CostMap_90_315.svg coloured by LQG cost / ILQG
+    cost. The two directions span very different ratios (about 4 to 110 at
+    90 deg, 1 to 8 at 315 deg), so each gets its own logarithmic scale and
+    colourbar rather than one shared scale that would flatten the 315 deg panel.
+    """
+    fig, axes = plt.subplots(1, len(DIRECTIONS), figsize=(7 * len(DIRECTIONS), 6),
+                             layout="constrained")
+    for ax, direction in zip(axes, DIRECTIONS):
+        ratio = cost_maps[direction] / ilqg_maps[direction]
+        finite = ratio[np.isfinite(ratio)]
+        norm = LogNorm(vmin=finite.min(), vmax=finite.max())
+        _plot_workspace(ax, ratio, direction, norm,
+                        names=("lowest ratio", "highest ratio"),
+                        title=f"LQG / ILQG cost, {direction} deg reach", fmt=".2f")
+        # The starting point of the center-out task, for reference.
+        ax.plot(START[0], START[1], marker="*", markersize=20, color="white",
+                markeredgecolor="black", markeredgewidth=1.5, linestyle="none",
+                zorder=6, label=f"center-out start {list(START)}")
+        ax.legend(fontsize=10, loc="lower left", frameon=False)
+        cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap="plasma"), ax=ax,
+                            location="right", shrink=0.8, pad=0.01)
+        cbar.set_label(f"Mean LQG cost / mean ILQG cost ({num_sim} trials each)",
+                       fontsize=11)
+    save_figure(fig, outdir, "LQG_ILQG_CostRatio_90_315.svg")
+
+
+def load_maps(path):
+    """The LQG and ILQG cost maps saved by main()."""
+    saved = np.load(path)
+    return ({d: saved[f"deg_{d}"] for d in DIRECTIONS},
+            {d: saved[f"ilqg_deg_{d}"] for d in DIRECTIONS})
+
+
 def main():
     parser = build_parser(__doc__, num_sim_default=10,
                           subdir=FIGURE_SUBDIRS["two_directions"])
+    parser.add_argument("--replot", action="store_true",
+                        help="redraw from the saved .npz, no simulation; "
+                             "--num-sim then only labels the figures")
     args = parser.parse_args()
+
+    path = args.outdir / "LQG_CostMap_90_315.npz"
+    if args.replot:
+        cost_maps, ilqg_maps = load_maps(path)
+        plot(cost_maps, ilqg_maps, args.outdir, args.num_sim)
+        plot_ratio_workspace(cost_maps, ilqg_maps, args.outdir, args.num_sim)
+        finish(not args.no_show)
+        return
 
     cost_maps, ilqg_maps = simulate(args.num_sim, args.jobs)
     plot(cost_maps, ilqg_maps, args.outdir, args.num_sim)
+    plot_ratio_workspace(cost_maps, ilqg_maps, args.outdir, args.num_sim)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
-    path = args.outdir / "LQG_CostMap_90_315.npz"
     np.savez(path, shoulder_angles=SHOULDER_ANGLES, elbow_angles=ELBOW_ANGLES,
              **{f"deg_{d}": cost_maps[d] for d in DIRECTIONS},
              **{f"ilqg_deg_{d}": ilqg_maps[d] for d in DIRECTIONS},

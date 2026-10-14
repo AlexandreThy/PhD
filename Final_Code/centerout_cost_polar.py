@@ -12,6 +12,7 @@ that differed only in reach amplitude and movement duration.
     python Final_Code/centerout_cost_polar.py --amplitude 15 --duration 0.4 --r1 1e-4
     python Final_Code/centerout_cost_polar.py --amplitude 10 --duration 0.4 --start-y 35
     python Final_Code/centerout_cost_polar.py --wv 10   # all conditions, *_wv_10.svg
+    python Final_Code/centerout_cost_polar.py --replot --radial-ticks 3 6
 
 Each condition gives two figures: all three controllers, and ILQG and FL alone
 (*_ILQG_FL.svg) on a scale fitted to those two.
@@ -92,14 +93,18 @@ def auto_radial_ticks(rmax, count=2):
 
 
 def plot(amplitude, duration, mean_total, sd_total, outdir, start,
-         controllers=tuple(range(NUM_CONTROLLERS)), suffix="", r1=WR, wv=WV):
+         controllers=tuple(range(NUM_CONTROLLERS)), suffix="", r1=WR, wv=WV,
+         radial_ticks=RADIAL_TICKS, rmax=None):
     """
     Mean cost per direction with a +/- one SD band, for the given controllers.
 
     With all three controllers the scale and ticks are the fixed ones shared by
     every condition; with a subset they are fitted to the curves drawn, so the
-    ILQG/FL comparison is not flattened by the much larger LQG cost.
+    ILQG/FL comparison is not flattened by the much larger LQG cost. A given
+    `rmax` overrides both, to put two conditions on the same scale; curves
+    beyond it are cut at the edge.
     """
+    rmax_given = rmax
     # Close the polar curves by repeating the first direction at 2*pi.
     closed = np.vstack([mean_total, mean_total[0]])
     closed_sd = np.vstack([sd_total, sd_total[0]])
@@ -117,12 +122,17 @@ def plot(amplitude, duration, mean_total, sd_total, outdir, start,
                 label=LEGEND[i])
 
     if len(controllers) == NUM_CONTROLLERS:
-        ticks = RADIAL_TICKS
-        rmax = YLIM.get((amplitude, duration),
-                        (0, max(max(RADIAL_TICKS), upper.max()) * 1.05))[1]
+        ticks = tuple(radial_ticks)
+        rmax = max(max(ticks), upper.max()) * 1.05
+        # A fixed limit only applies while it still shows the outer ring.
+        fixed = YLIM.get((amplitude, duration), (0, 0))[1]
+        if fixed >= max(ticks):
+            rmax = fixed
     else:
         rmax = upper[:, controllers].max() * 1.05
         ticks = auto_radial_ticks(rmax)
+    if rmax_given is not None:
+        rmax = rmax_given
     style_polar_axis(ax, ticks, NUM_TARGETS, rmax)
 
     name = condition_name(amplitude, duration, start, r1, wv)
@@ -131,10 +141,10 @@ def plot(amplitude, duration, mean_total, sd_total, outdir, start,
 
 
 def plot_all(amplitude, duration, mean_total, sd_total, outdir, start, r1=WR,
-             wv=WV):
+             wv=WV, radial_ticks=RADIAL_TICKS):
     """The three-controller figure and the ILQG/FL-only one."""
     name = plot(amplitude, duration, mean_total, sd_total, outdir, start, r1=r1,
-                wv=wv)
+                wv=wv, radial_ticks=radial_ticks)
     plot(amplitude, duration, mean_total, sd_total, outdir, start,
          controllers=WITHOUT_LQG, suffix="_ILQG_FL", r1=r1, wv=wv)
     return name
@@ -156,6 +166,9 @@ def main():
     parser.add_argument("--start-y", type=float, default=START[1],
                         help="starting hand height in cm (default: START); "
                              "names the figures Cfy<start-y>_*")
+    parser.add_argument("--radial-ticks", type=float, nargs="+",
+                        default=list(RADIAL_TICKS),
+                        help="radial rings of the three-controller figure")
     parser.add_argument("--replot", action="store_true",
                         help="redraw from the saved *_cost.npz, no simulation")
     args = parser.parse_args()
@@ -173,12 +186,12 @@ def main():
         if args.replot:
             saved = np.load(args.outdir / f"{condition_name(amplitude, duration, start, args.r1, args.wv)}_cost.npz")
             plot_all(amplitude, duration, saved["total"], saved["total_sd"],
-                     args.outdir, start, args.r1, args.wv)
+                     args.outdir, start, args.r1, args.wv, args.radial_ticks)
             continue
         mean_total, mean_motor, sd_total, sd_motor = simulate(
             amplitude, duration, args.num_sim, args.jobs, start, args.r1, args.wv)
         name = plot_all(amplitude, duration, mean_total, sd_total, args.outdir,
-                        start, args.r1, args.wv)
+                        start, args.r1, args.wv, args.radial_ticks)
         np.savez(args.outdir / f"{name}_cost.npz",
                  total=mean_total, motor=mean_motor,
                  total_sd=sd_total, motor_sd=sd_motor)

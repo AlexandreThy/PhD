@@ -18,13 +18,18 @@ under 15 deg/s with nearly the same straightening (see Final_Code/README.md).
 --velocities-only draws just the two angular velocity panels, with a legend:
 
     python Final_Code/path_constraint.py --velocities-only --wc 70 --wv-fl 100
+
+--compare-ilqg draws the angular velocities of ILQG against FL with the path
+cost, as their own figure:
+
+    python Final_Code/path_constraint.py --compare-ilqg --wc 80
 """
 
 from matplotlib import gridspec
 from matplotlib.lines import Line2D
 
 from common import (
-    FIGURE_SUBDIRS,
+    COLORS, FIGURE_SUBDIRS,
     TAU_PATH, WC, WP, WR, WR_FL, WV, build_parser, ToCartesian, compute_path,
     compute_angles_from_cartesian, delete_axis, delete_ticks, finish, guarded,
     get_colors_from_colormap, longmovement_1, longmovement_2, np, pi, plt,
@@ -83,7 +88,7 @@ def _worker(task):
     _, _, x_path, u_path = guarded(
         run_fl, "FL with path cost", duration, num_iter, start, target, wc=wc,
         wv=wv_fl)
-    _, _, _, u_ilqg = guarded(
+    _, _, x_ilqg, u_ilqg = guarded(
         run_ilqg, "ILQG", duration, num_iter, start, target)
 
     return {
@@ -92,6 +97,7 @@ def _worker(task):
         "cmd_free": u_free.T,
         "cmd_path": u_path.T,
         "cmd_ilqg": u_ilqg.T,
+        "vel_ilqg": x_ilqg[:, 2:4].T,
         "cost_free": np.array(cost_components(x_free, u_free, dt, 0, target)),
         "cost_path": np.array(cost_components(x_path, u_path, dt, wc, target)),
     }
@@ -134,8 +140,12 @@ def _mark_endpoints(ax, start, target):
     ax.set_aspect("equal")
 
 
-def plot_velocities(ax, data, time):
-    for key, color in (("vel_free", FREE_COLOR), ("vel_path", PATH_COLOR)):
+ILQG_COLOR = COLORS[0]
+
+
+def plot_velocities(ax, data, time,
+                    series=(("vel_free", FREE_COLOR), ("vel_path", PATH_COLOR))):
+    for key, color in series:
         for joint, linestyle in enumerate(["-", "--"]):
             trace = data[key][:, joint] * 180 / pi
             mean_vel, std_vel = np.mean(trace, axis=0), np.std(trace, axis=0)
@@ -152,18 +162,28 @@ def plot_velocities(ax, data, time):
     ax.tick_params(labelsize=20)
 
 
-def plot_velocity_figure(movements, per_movement, wc, num_sim, outdir, suffix):
-    """The two angular velocity panels alone, labelled."""
+def plot_velocity_figure(movements, per_movement, wc, num_sim, outdir, suffix,
+                         against_ilqg=False):
+    """
+    The two angular velocity panels alone, labelled: FL with the path cost
+    against FL without it, or against ILQG when `against_ilqg`.
+    """
     time = np.linspace(0, MOVEMENT_TIME * 1000, NUM_ITER + 1)
+    if against_ilqg:
+        series = (("vel_ilqg", ILQG_COLOR), ("vel_path", PATH_COLOR))
+        reference, name = "ILQG", f"PathConstraintVelocities_ILQG_vs_FL{suffix}.svg"
+    else:
+        series = (("vel_free", FREE_COLOR), ("vel_path", PATH_COLOR))
+        reference, name = "FL, no path cost", f"PathConstraintVelocities{suffix}.svg"
     fig, axes = plt.subplots(len(movements), 1, figsize=(8, 4.25 * len(movements)),
                              squeeze=False)
     for ax, movement, (_, _, data) in zip(axes[:, 0], movements, per_movement):
-        plot_velocities(ax, data, time)
+        plot_velocities(ax, data, time, series)
         ax.set_title(movement.__name__, fontsize=16)
         ax.set_ylabel("Angular velocity [deg/s]", fontsize=14)
     axes[-1, 0].set_xlabel("Time [ms]", fontsize=14)
     axes[0, 0].legend(handles=[
-        Line2D([], [], color=FREE_COLOR, lw=2, label="FL, no path cost"),
+        Line2D([], [], color=series[0][1], lw=2, label=reference),
         Line2D([], [], color=PATH_COLOR, lw=2, label=f"FL, path cost wc = {wc:g}"),
         Line2D([], [], color="black", ls="-", label="shoulder"),
         Line2D([], [], color="black", ls="--", label="elbow"),
@@ -171,7 +191,7 @@ def plot_velocity_figure(movements, per_movement, wc, num_sim, outdir, suffix):
     fig.suptitle(f"Joint angular velocity, mean +/- SD over {num_sim} trials",
                  fontsize=15)
     fig.tight_layout()
-    save_figure(fig, outdir, f"PathConstraintVelocities{suffix}.svg", dpi=200)
+    save_figure(fig, outdir, name, dpi=200)
 
 
 def plot_sweep(ax, start, target, mean_trajectories):
@@ -222,6 +242,8 @@ def main():
                         help="terminal velocity weight FL optimises with")
     parser.add_argument("--velocities-only", action="store_true",
                         help="only the angular velocity panels, as their own figure")
+    parser.add_argument("--compare-ilqg", action="store_true",
+                        help="angular velocities of ILQG against FL with the path cost")
     args = parser.parse_args()
     # The defaults keep the historical file names.
     wc_tag = f"_wc{args.wc:g}"
@@ -231,9 +253,10 @@ def main():
     movements = [MOVEMENT_BY_NUMBER[n] for n in args.movements]
     per_movement = [simulate(m, args.num_sim, args.jobs, args.wc, args.wv_fl)
                     for m in movements]
-    if args.velocities_only:
+    if args.velocities_only or args.compare_ilqg:
         plot_velocity_figure(movements, per_movement, args.wc, args.num_sim,
-                             args.outdir, wc_tag + wv_tag)
+                             args.outdir, wc_tag + wv_tag,
+                             against_ilqg=args.compare_ilqg)
         finish(not args.no_show)
         return
 
