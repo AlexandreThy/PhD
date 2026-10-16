@@ -144,6 +144,24 @@ def plot_scatter(cost_column, peak, fits, xlabel, title, filename, outdir):
     save_figure(fig, outdir, filename)
 
 
+ILQG_INDEX = 0  # the controller the cost ratio divides by
+
+
+def cost_ratio(total_cost):
+    """Total movement cost of the reference controller (LQG) over ILQG's, per direction."""
+    return total_cost[:NUM_TARGETS, REFERENCE_CONTROLLER] / total_cost[:NUM_TARGETS, ILQG_INDEX]
+
+
+def plot_ratio_scatter(ratio, peak, outdir, tag):
+    """Peak power against the LQG / ILQG cost ratio. Returns the fits."""
+    fits = [regress(ratio, peak[:, i]) for i in range(NUM_CONTROLLERS)]
+    ref, base = LEGEND[REFERENCE_CONTROLLER], LEGEND[ILQG_INDEX]
+    plot_scatter(ratio, peak, fits, f"Movement cost {ref} / movement cost {base}",
+                 f"Peak joint power against the {ref} / {base} cost ratio, {tag}",
+                 f"PeakPower_vs_ratio_{tag}.svg", outdir)
+    return fits
+
+
 def main():
     parser = build_parser(__doc__, num_sim_default=100,
                           subdir=FIGURE_SUBDIRS["nonlinearity_index"])
@@ -183,8 +201,10 @@ def main():
                      f"{ref} motor cost",
                      f"Peak joint power against motor cost, {tag}",
                      f"PeakPower_vs_motor_{tag}.svg", args.outdir)
+        ratio = cost_ratio(total_cost)
+        ratio_fits = plot_ratio_scatter(ratio, peak, args.outdir, tag)
         np.savez(args.outdir / f"PeakPower_{tag}.npz", peak=peak,
-                 total=total_column, motor=motor_column,
+                 total=total_column, motor=motor_column, ratio=ratio,
                  legend=np.array(LEGEND))
 
         print(f"\n{tag}: r2 of peak joint power against {ref} cost")
@@ -192,7 +212,9 @@ def main():
             print(f"  {LEGEND[i]:5s}  total r2 = {total_fits[i][0]:.3f} "
                   f"(slope {total_fits[i][1]:+.4g})   "
                   f"motor r2 = {motor_fits[i][0]:.3f} "
-                  f"(slope {motor_fits[i][1]:+.4g})")
+                  f"(slope {motor_fits[i][1]:+.4g})   "
+                  f"{ref}/{LEGEND[ILQG_INDEX]} r2 = {ratio_fits[i][0]:.3f} "
+                  f"(slope {ratio_fits[i][1]:+.4g})")
 
     finish(not args.no_show)
 

@@ -7,6 +7,9 @@ sqrt(vx**2 + vy**2), and the three terms of the movement cost as grouped bars.
 
     python Final_Code/velocity_profiles.py
     python Final_Code/velocity_profiles.py --num-sim 5 --jobs 1
+    python Final_Code/velocity_profiles.py --all-directions   # Kinematiccenterout_all.svg
+
+--all-directions draws the eight center-out directions, one row each.
 """
 
 from matplotlib.lines import Line2D
@@ -23,6 +26,7 @@ NUM_ITER = 40
 AMPLITUDE = 15
 # The two directions the notebook plotted, in radians
 DIRECTIONS = [0,pi/2,pi]
+ALL_DIRECTIONS = np.arange(8) * pi / 4  # the eight center-out targets
 COST_TERMS = ("target\naccuracy", "terminal\nvelocity", "motor")
 
 
@@ -109,13 +113,18 @@ def main():
                           subdir=FIGURE_SUBDIRS["kinematics"])
     parser.add_argument("--amplitude", type=float, default=AMPLITUDE,
                         help="reach amplitude in cm")
+    parser.add_argument("--all-directions", action="store_true",
+                        help="the eight center-out directions instead of three")
     args = parser.parse_args()
+    directions = ALL_DIRECTIONS if args.all_directions else DIRECTIONS
+    name = "Kinematiccenterout_all.svg" if args.all_directions else "Kinematiccenterout.svg"
 
     time = np.linspace(0, MOVEMENT_TIME, NUM_ITER + 1) * 1000
-    fig, axes = plt.subplots(len(DIRECTIONS), 3, figsize=(12, 7),
+    fig, axes = plt.subplots(len(directions), 3,
+                             figsize=(12, 7 * len(directions) / len(DIRECTIONS)),
                              layout="constrained")
 
-    for row, angle in enumerate(DIRECTIONS):
+    for row, angle in enumerate(directions):
         data = simulate(angle, args.num_sim, args.jobs, START, args.amplitude)
         plot_joint_panel(axes[row, 0], data["joint_vel"], time)
         plot_speed_panel(axes[row, 1], data["speed"], time)
@@ -142,7 +151,7 @@ def main():
         Line2D([], [], color="black", ls="--", label="elbow"),
     ], fontsize=11, loc="upper right", frameon=False)
 
-    save_figure(fig, args.outdir, "Kinematiccenterout.svg")
+    save_figure(fig, args.outdir, name)
     finish(not args.no_show)
 
 

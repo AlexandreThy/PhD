@@ -19,6 +19,11 @@ posture.
     python Final_Code/cost_map_2directions.py --num-sim 2 --jobs 1
     python Final_Code/cost_map_2directions.py --replot   # from the saved .npz
 
+--directions picks the reach directions; the files are named after them
+(LQG_CostMap_<d1>_<d2>..., default 90 and 315):
+
+    python Final_Code/cost_map_2directions.py --directions 0 --num-sim 200
+
 LQG_ILQG_CostRatio_90_315.svg is the workspace view of the fourth column,
 coloured by the cost ratio LQG / ILQG instead of the LQG cost.
 """
@@ -40,6 +45,11 @@ L1, L2 = 30, 33  # upper arm and forearm, as in the controllers
 SHOULDER_ANGLES = np.linspace(10, 55, 12)  # degrees
 ELBOW_ANGLES = np.linspace(85, 125, 9)  # degrees
 DIRECTIONS = [90, 315]
+
+
+def _tag():
+    """File name suffix of the current directions, e.g. 90_315."""
+    return "_".join(f"{d:g}" for d in DIRECTIONS)
 
 CHEAP_COLOR = "#009E73"
 COSTLY_COLOR = "#B90072"
@@ -247,8 +257,8 @@ def plot(cost_maps, ilqg_maps, outdir, num_sim):
     # shared across a grid of axes without walking it over the middle column.
     # The cartesian map sits next to the joint one: same cost, same colour scale,
     # only the coordinates the starting posture is named by change.
-    fig, axes = plt.subplots(len(DIRECTIONS), 5, figsize=(25, 9),
-                             layout="constrained")
+    fig, axes = plt.subplots(len(DIRECTIONS), 5, figsize=(25, 4.5 * len(DIRECTIONS)),
+                             layout="constrained", squeeze=False)
     for row, direction in enumerate(DIRECTIONS):
         cost = cost_maps[direction]
         im = _plot_joint_map(axes[row, 0], cost, direction, norm)
@@ -267,7 +277,7 @@ def plot(cost_maps, ilqg_maps, outdir, num_sim):
 
     fig.suptitle(f"Identical {AMPLITUDE} cm reaches: the cost is set by the "
                  f"posture they start from", fontsize=16)
-    save_figure(fig, outdir, "LQG_CostMap_90_315.svg")
+    save_figure(fig, outdir, f"LQG_CostMap_{_tag()}.svg")
 
 
 def plot_ratio_workspace(cost_maps, ilqg_maps, outdir, num_sim):
@@ -278,8 +288,8 @@ def plot_ratio_workspace(cost_maps, ilqg_maps, outdir, num_sim):
     colourbar rather than one shared scale that would flatten the 315 deg panel.
     """
     fig, axes = plt.subplots(1, len(DIRECTIONS), figsize=(7 * len(DIRECTIONS), 6),
-                             layout="constrained")
-    for ax, direction in zip(axes, DIRECTIONS):
+                             layout="constrained", squeeze=False)
+    for ax, direction in zip(axes[0], DIRECTIONS):
         ratio = cost_maps[direction] / ilqg_maps[direction]
         finite = ratio[np.isfinite(ratio)]
         norm = LogNorm(vmin=finite.min(), vmax=finite.max())
@@ -295,7 +305,7 @@ def plot_ratio_workspace(cost_maps, ilqg_maps, outdir, num_sim):
                             location="right", shrink=0.8, pad=0.01)
         cbar.set_label(f"Mean LQG cost / mean ILQG cost ({num_sim} trials each)",
                        fontsize=11)
-    save_figure(fig, outdir, "LQG_ILQG_CostRatio_90_315.svg")
+    save_figure(fig, outdir, f"LQG_ILQG_CostRatio_{_tag()}.svg")
 
 
 def load_maps(path):
@@ -306,14 +316,18 @@ def load_maps(path):
 
 
 def main():
+    global DIRECTIONS
     parser = build_parser(__doc__, num_sim_default=10,
                           subdir=FIGURE_SUBDIRS["two_directions"])
     parser.add_argument("--replot", action="store_true",
                         help="redraw from the saved .npz, no simulation; "
                              "--num-sim then only labels the figures")
+    parser.add_argument("--directions", type=float, nargs="+", default=DIRECTIONS,
+                        help="reach directions in degrees (default 90 315)")
     args = parser.parse_args()
+    DIRECTIONS = [int(d) if float(d).is_integer() else d for d in args.directions]
 
-    path = args.outdir / "LQG_CostMap_90_315.npz"
+    path = args.outdir / f"LQG_CostMap_{_tag()}.npz"
     if args.replot:
         cost_maps, ilqg_maps = load_maps(path)
         plot(cost_maps, ilqg_maps, args.outdir, args.num_sim)
