@@ -118,6 +118,54 @@ def compute_forcefield(theta, omega, coefficient):
     return -Jacobian.T @ D @ Jacobian @ omega
 
 
+def compute_forcefield_old(theta, omega, acc, coefficient):
+    """
+    Compute the joint angles acceleration resulting from a lateral
+    velocity-dependent forcefield.
+
+    Args:
+        theta : current joint angles
+        omega : current joint angular velocities
+        acc : current joint angular accelerations
+        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
+
+    """
+    t0, t1 = theta
+    o0, o1 = omega
+    sin_t0, cos_t0 = np.sin(t0), np.cos(t0)
+    sin_t01, cos_t01 = np.sin(t0 + t1), np.cos(t0 + t1)
+
+    fe = -33 * sin_t01
+    fs = fe - 30 * sin_t0
+    ge = 33 * cos_t01
+    gs = ge + 30 * cos_t0
+
+    fse = -33 * cos_t01
+    gse = -33 * sin_t01
+    fee = fse
+    fss = fse - 30 * cos_t0
+    gee = fe
+    gss = fs
+
+    xddot = (
+        13 * (gs * o0 + ge * o1) * coefficient
+        + fss * o0 * o0
+        + 2 * fse * o0 * o1
+        + fee * o1 * o1
+        + fs * acc[0]
+        + fe * acc[1]
+    )
+    yddot = (
+        gss * o0 * o0 + 2 * gse * o0 * o1 + gee * o1 * o1 + gs * acc[0] + ge * acc[1]
+    )
+
+    gamma = xddot - fss * o0 * o0 - 2 * fse * o0 * o1 - fee * o1 * o1
+    nu = yddot - gss * o0 * o0 - 2 * gse * o0 * o1 - gee * o1 * o1
+    F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
+    F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
+    return np.array([F1, F2])
+
+
 def compute_next_state(x, u, dt, activate_noise, FF, F, ff_power, motornoise_variance):
     """
     Compute one step of the dynamics of the system, composed of a two joint biomechanical model, and a nonlinear network dynamic
@@ -206,6 +254,9 @@ _noise_cov_cache = {}
 
 def NoiseAndCovMatrix(M=np.identity(2), N=8, kdelay=0, motornoise_variance=1e-3):
 
+    # The two covariance matrices only depend on the arguments, so they are built
+    # once per parameter set instead of on every timestep. They are returned
+    # read-only: callers must not mutate them in place.
     key = (N, kdelay, motornoise_variance)
     cached = _noise_cov_cache.get(key)
     if cached is None:
@@ -257,182 +308,110 @@ def next_state_estimate(
     return next_est_x, sigma
 
 
+def compute_path(x0, xf, wp, percent):
+    # percent = compute_percent(x0,xf)
+    xtarget = x0 + percent * (xf - x0)
+    ts, te = compute_angles_from_cartesian(xtarget[0], xtarget[1])
+    ts0, te0 = compute_angles_from_cartesian(x0[0], x0[1])
+    k = (te - te0) / (ts - ts0)
+    Qk = np.zeros((8, 8))
+
+    Qk[0, 0] = k * k
+    Qk[0, 6] = -k * k
+    Qk[6, 0] = -k * k
+    Qk[6, 6] = k * k
+    Qk[1, 1] = 1
+    Qk[1, 7] = -1
+    Qk[7, 1] = -1
+    Qk[7, 7] = 1
+    Qk[0, 1] = -k
+    Qk[1, 0] = -k
+    Qk[0, 7] = k
+    Qk[7, 0] = k
+    Qk[1, 6] = k
+    Qk[6, 1] = k
+    Qk[6, 7] = -k
+    Qk[7, 6] = -k
+
+    return Qk * wp
+
+
 def ToCartesian(s, e):
     X = np.cos(s + e) * 33 + np.cos(s) * 30
     Y = np.sin(s + e) * 33 + np.sin(s) * 30
 
     return X, Y
 
-def f(x, u, F=0):
-    C = np.array(
-        [-x[3] * (2 * x[2] + x[3]) * a2 * np.sin(x[1]), x[2] ** 2 * a2 * np.sin(x[1])]
-    )
 
-    Denominator = a3 * (a1 - a3) - a2**2 * np.cos(x[1]) ** 2
-    Minv = np.array(
+def compute_percent(x0, xf):
+    ts, te = compute_angles_from_cartesian(xf[0], xf[1])
+    ts0, te0 = compute_angles_from_cartesian(x0[0], x0[1])
+    te_incr, ts_incr = (te0 + 0.001 * (te - te0)), (ts0 + 0.001 * (ts - ts0))
+    x_incr, y_incr = ToCartesian(ts_incr, te_incr)
+    angle_objective = np.arctan2(xf[1] - x0[1], xf[0] - x0[0]) * 180 / pi
+    actual_angle = np.arctan2(y_incr - x0[1], x_incr - x0[0]) * 180 / pi
+    percent = 1 if abs(angle_objective - actual_angle) < 30 else 0.7
+    print(percent, abs(angle_objective - actual_angle))
+    return percent
+
+
+def compute_linear_control_gains(
+    Num_iter,
+    Duration,
+    Qk,
+    taupath,
+    motor_cost=1e-4,
+    cost_weights=[1e4, 1e4, 1, 1],
+):
+    dt = Duration / Num_iter
+    Num_Var = 8
+
+    R = np.diag(np.ones(2)) * motor_cost
+    w1, w2, w3, w4 = cost_weights
+    Q = np.array(
         [
-            [a3 / Denominator, (-a2 * np.cos(x[1]) - a3) / Denominator],
-            [
-                (-a2 * np.cos(x[1]) - a3) / Denominator,
-                (2 * a2 * np.cos(x[1]) + a1) / Denominator,
-            ],
+            [w1, 0, 0, 0, -w1, 0, 0, 0],
+            [0, w2, 0, 0, 0, -w2, 0, 0],
+            [0, 0, w3, 0, 0, 0, 0, 0],
+            [0, 0, 0, w4, 0, 0, 0, 0],
+            [-w1, 0, 0, 0, w1, 0, 0, 0],
+            [0, -w2, 0, 0, 0, w2, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
         ]
     )
-    _, _, _, fl, ff_v = muscle_force_scaling(x)
-    theta = Minv @ (MOMENT_ARM @ (u * fl * ff_v) - Viscous @ x[2:4] - C + F)
 
-    return np.array([[x[2], x[3], theta[0], theta[1]]])
-
-
-def l(x, u, r1, xtarg=0, w1=0, w2=0):
-    return r1 * np.sum(u**2) / 2
-
-
-def lx(x, u, xtarg=0, w1=0, w2=0):
-    return np.zeros(4)
-
-
-def lu(x, u, r1):
-    return r1 * u
-
-
-def lxx(w1=0, w2=0):
-    return np.zeros((4, 4))
-
-
-def luu(x, u, r1):
-    return np.diag(np.ones(len(u))) * r1
-
-
-def h(x, w1, w2, xtarg):
-    return w1 / 2 * ((x[0] - xtarg[0]) ** 2 + (x[1] - xtarg[1]) ** 2) + w2 / 2 * (
-        x[2] ** 2 + x[3] ** 2
+    A = np.array(
+        [
+            [1, 0, dt, 0, 0, 0, 0, 0],
+            [0, 1, 0, dt, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1],
+        ]
     )
+    B = np.zeros((8, 2))
+    B[2, 0] = dt
+    B[3, 1] = dt
+
+    S = Q
+    L = np.zeros((Num_iter, 2, Num_Var))
+
+    for k in range(Num_iter):
+        L[Num_iter - 1 - k] = np.linalg.inv(R + B.T @ S @ B) @ B.T @ S @ A
+        S = Qk * np.exp(-k * dt / (taupath)) + A.T @ S @ (A - B @ L[Num_iter - 1 - k])
+    return L
 
 
-def hx(x, w1, w2, xtarg):
-    return np.array(
-        [w1 * (x[0] - xtarg[0]), w1 * (x[1] - xtarg[1]), w2 * x[2], w2 * x[3]]
-    )
-
-
-def hxx(x, w1, w2):
-    return np.diag([w1, w1, w2, w2])
-
-
-def Kalman(Omega_measure, Omega_sens, A, sigma, H):
-    K = A @ sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Omega_measure)
-    sigma = Omega_sens + (A - K @ H) @ sigma @ A.T
-    return K, sigma
-
-
-def step1(x0, u, A, B):
-
-    K = np.shape(u)[0]
-    newx = np.zeros((K + 1, len(x0)))
-    newx[0] = np.copy(x0)
-
-    for i in range(K):
-        newx[i + 1] = A@newx[i] + B@u[i]
-
-    return newx
-
-
-def quadratizecost(x, u, Duration, w1, w2, r1, xtarg):
-    K = np.shape(u)[0]
-    dt = Duration / K
-    n, m = len(x[0]), len(u[0])
-    q, qbold = np.zeros(K + 1), np.zeros((K + 1, n))
-    r, Q, R = np.zeros((K, m)), np.zeros((K + 1, n, n)), np.zeros((K, m, m))
-    Q_step = dt * lxx(w1, w2)
-    R_step = dt * luu(x[0], u[0], r1)
-
-    for i in range(K):
-
-        q[i] = dt * l(x[i], u[i], r1, xtarg, w1, w2)
-        qbold[i] = dt * lx(x[i], u[i], xtarg, w1, w2)
-        r[i] = dt * lu(x[i], u[i], r1)
-        Q[i] = Q_step
-        R[i] = R_step
-
-    q[-1], qbold[-1], Q[-1] = (
-        h(x[-1], w1, w2, xtarg),
-        hx(x[-1], w1, w2, xtarg),
-        hxx(x[-1], w1, w2),
-    )
-    return q, qbold, r, Q, R
-
-
-def step3(A, B, C, cbold, q, qbold, r, Q, R, eps):
-    K = A.shape[0]
-    n, m = np.shape(B[0])
-    S = np.zeros((K + 1, n, n))
-    s = np.zeros(K + 1)
-    sbold = np.zeros((K + 1, n))
-    l = np.zeros((K, m))
-    L = np.zeros((K, m, n))
-
-    S[-1] = Q[-1]
-    s[-1] = q[-1]
-    sbold[-1] = qbold[-1]
-
-    for k in range(K - 1, -1, -1):
-        temp1, temp2, temp3 = 0, 0, 0
-
-        Sk = S[k + 1]
-        for i in range(m):
-            Ci = C[k, i, :, :]
-            cboldi = cbold[k, i, :]
-            # C[k,i].T @ S is common to temp1 and temp2; @ is left-associative
-            # so factoring it out leaves both products unchanged.
-            CiTS = Ci.T @ Sk
-            temp1 += CiTS @ cboldi
-            temp2 += CiTS @ Ci
-            temp3 += cboldi.T @ Sk @ cboldi
-
-        gbold = r[k] + B[k].T @ sbold[k + 1] + temp1
-        G = B[k].T @ S[k + 1] @ A[k]
-        H = R[k] + B[k].T @ S[k + 1] @ B[k] + temp2
-
-        eigenvalues, eigenvectors = np.linalg.eig(H)
-        V = np.diag(eigenvalues)
-
-        for i in range(V.shape[0]):
-            if V[i, i] < (eps):
-                print("H matrix poorly defined")
-                V[i, i] = eps
-            V[i, i] = 1 / V[i, i]
-        Hinv = eigenvectors @ V @ np.linalg.inv(eigenvectors)
-
-        S[k] = Q[k] + A[k].T @ S[k + 1] @ A[k] - G.T @ Hinv @ G
-        sbold[k] = qbold[k] + A[k].T @ sbold[k + 1] - G.T @ Hinv @ gbold
-        s[k] = q[k] + s[k + 1] + 0.5 * temp3 - 0.5 * gbold.T @ Hinv @ gbold
-
-        l[k] = -Hinv @ gbold
-        L[k] = -Hinv @ G
-
-    return l, L
-
-
-def compute_uincr(l, L, K, A, B):
-    m, n = L[0].shape
-    x = np.zeros(n)
-    u_incr = np.zeros((K, m))
-
-    for k in range(K):
-        u_incr[k] = l[k] + L[k] @ x
-        x = A[k] @ x + B[k] @ u_incr[k]
-
-    return u_incr
-
-
-
-def nonlinear_transform_command(u, L, x):
+def nonlinear_transform_command(L, x):
     M = np.array(
         [[a1 + 2 * a2 * cos(x[1]), a3 + a2 * cos(x[1])], [a3 + a2 * cos(x[1]), a3]]
     )
 
-    linear_command = u + L @ x
+    linear_command = -L @ x
 
     C = np.array(
         [
@@ -442,50 +421,16 @@ def nonlinear_transform_command(u, L, x):
     )
     fl, ff_v = muscle_force_scaling(x)
 
-    U = MOMENT_ARM_PINV @ (M @ linear_command + C + Viscous @ x[2:4])
-    u = U / (fl * ff_v)
+    Pinv_AD = np.linalg.pinv(MOMENT_ARM@np.diag(fl*ff_v))  # precompute the pseudoinverse for efficiency
+    u = Pinv_AD @ (M @ linear_command + C + Viscous @ x[2:4])
     return u, linear_command
 
-def perform_ilqg_iteration(targetangle,startingangle,Duration,A,B,cost_weights,eps,K,motornoise_variance):
-
-    
-    w1,w2,r = cost_weights
-    x0 = np.array([startingangle[0], startingangle[1], 0, 0])
-    m, n = 2, 4
-    u = np.zeros((K, m))
-
-    cbold = np.zeros((K, m, n))
-    C = np.zeros((K, m, n, m))
-    for i in range(K):
-        for j in range(2):
-            cbold[i, j, 2 + j] = sqrt(motornoise_variance)
-
-    u_incr = np.ones(u.shape) * np.inf
-
-    for iterate in range(300):
-        x = step1(
-            x0, u, Duration
-        )  # Forward step computing the sequence of state trajectory given a sequence of input u
-
-        if (
-            np.max(np.abs(u_incr)) < 1e-14
-        ): break # If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
-
-        q, qbold, r, Q, R = quadratizecost(
-            x, u, Duration, w1, w2, r, targetangle
-        )  # Compute the Linearizations of the dynamic
-        l, L = step3(
-            A, B, C, cbold, q, qbold, r, Q, R, eps
-        )  # Compute the control gains improvement (feedforward and feedback)
-        u_incr = compute_uincr(l, L, K, A, B)  # Compute the command sequence improvement
-        u += u_incr  # Improves the command sequence
-    return u, L
 
 def simulate_FL(
     Duration=0.6,
-    w1=1e8,
-    w2=1e4,
-    r=1e-5,
+    wp=1e8,
+    wv=1e4,
+    wr=1e-5,
     targets=[0, 55],
     starting_point=[0, 30],
     Activate_Noise=False,
@@ -494,10 +439,21 @@ def simulate_FL(
     FF=False,
     ff_power=0.3,
     motornoise_variance=1e-3,
-    Cartesian = False
+    wpath=0,  # set to 4*1e-3 if active
+    taupath=0.04,
+    percent=0.75,
 ):
     dt = Duration / Num_iter
     kdelay = int(Delay / dt)
+    Qk = compute_path(np.array(starting_point), np.array(targets), wpath, percent)
+    L = compute_linear_control_gains(
+        Num_iter,
+        Duration,
+        Qk,
+        taupath,
+        motor_cost=wr,
+        cost_weights=[wp, wp, wv, wv],
+    )
     num_states = 4
 
     all_true_states = np.zeros((Num_iter + 1, num_states + 4))
@@ -513,13 +469,8 @@ def simulate_FL(
     all_estimated_states[0, :] = np.copy(x0)
     sigma = np.zeros((8 * (kdelay + 1), 8 * (kdelay + 1)))
     F = np.zeros(2)
-    A,B = _delayed_dynamics(dt, 0)[1:]
-
-    u,L = perform_ilqg_iteration(np.array([tg1, tg2]), np.array([st1, st2]), Duration, A, B, (w1,w2,r), 1e-4, Num_iter, motornoise_variance
-    )
-
     for j in range(Num_iter):
-        u, v = nonlinear_transform_command(u[j], L[j], estimated_state[:8])
+        u, v = nonlinear_transform_command(L[j], estimated_state[:8])
         estimated_state, sigma = next_state_estimate(
             estimated_state,
             true_state,
