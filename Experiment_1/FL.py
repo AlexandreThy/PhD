@@ -2,20 +2,49 @@ import numpy as np
 from math import *
 
 # Biomechanical Parameters
+def kinematic_params(body_mass, body_height):
+    m1 = body_mass * 0.028
+    m2 = body_mass * 0.022
+    l1 = 0.186 * body_height
+    l2 = 0.254 * body_height
+    s1 = 0.436 * l1
+    s2 = 0.682 * l2
+    I1 = m1 * (l1 * 0.322) ** 2
+    I2 = m2 * (l2 * 0.468) ** 2
+    print(
+        "The person has segments masses of ",
+        m1,
+        " kg and ",
+        m2,
+        " kg.\n The person has segments lengts of ",
+        l1,
+        " m and ",
+        l2,
+        " m",
+    )
+    return I1, I2, m1, m2, l1, l2, s1, s2
 
-I1 = 0.025
-I2 = 0.045
-m2 = 1
-l1 = 0.3
-l2 = 0.33
-s2 = 0.16
+
+I1, I2, m1, m2, l1, l2, s1, s2 = kinematic_params(80, 1.8)
+# Segment lengths in cm, for the geometry (inverse kinematics, hand position,
+# force field), which works in cm while the dynamics work in m.
+L1_CM, L2_CM = 100 * l1, 100 * l2
+
+#I1 = 0.025
+#I2 = 0.045
+#m2 = 1
+#l1 = 0.3
+#l2 = 0.33
+#s2 = 0.16
 K = 1 / 0.06
 tau = 0.06
 
 # SHOULDER PUIS ELBOW
-a1 = I1 + I2 + m2 * l1 * l1
+# I1, I2 are about each segment's centre of mass (radii of gyration 0.322 l1 and
+# 0.468 l2), so the parallel-axis terms m1 s1**2 and m2 s2**2 are added here.
+a1 = I1 + m1 * s1**2 + I2 + m2 * (l1**2 + s2**2)
 a2 = m2 * l1 * s2
-a3 = I2
+a3 = I2 + m2 * s2**2
 
 Viscous = np.array([[0.05, 0.025], [0.025, 0.05]])
 
@@ -66,7 +95,7 @@ def muscle_force_scaling(x):
     return fl, ff_v
 
 
-def compute_angles_from_cartesian(x, y, l1=30, l2=33):
+def compute_angles_from_cartesian(x, y, l1=L1_CM, l2=L2_CM):
     """
     Computes joint angles in radians based on cartesian coordinates.
 
@@ -105,12 +134,12 @@ def compute_forcefield(theta, omega, coefficient):
     Jacobian = np.array(
         [
             [
-                -33 * np.sin(theta[0] + theta[1]) - 30 * np.sin(theta[0]),
-                -33 * np.sin(theta[0] + theta[1]),
+                -L2_CM * np.sin(theta[0] + theta[1]) - L1_CM * np.sin(theta[0]),
+                -L2_CM * np.sin(theta[0] + theta[1]),
             ],
             [
-                33 * np.cos(theta[0] + theta[1]) + 30 * np.cos(theta[0]),
-                33 * np.cos(theta[0] + theta[1]),
+                L2_CM * np.cos(theta[0] + theta[1]) + L1_CM * np.cos(theta[0]),
+                L2_CM * np.cos(theta[0] + theta[1]),
             ],
         ]
     )
@@ -135,15 +164,15 @@ def compute_forcefield_old(theta, omega, acc, coefficient):
     sin_t0, cos_t0 = np.sin(t0), np.cos(t0)
     sin_t01, cos_t01 = np.sin(t0 + t1), np.cos(t0 + t1)
 
-    fe = -33 * sin_t01
-    fs = fe - 30 * sin_t0
-    ge = 33 * cos_t01
-    gs = ge + 30 * cos_t0
+    fe = -L2_CM * sin_t01
+    fs = fe - L1_CM * sin_t0
+    ge = L2_CM * cos_t01
+    gs = ge + L1_CM * cos_t0
 
-    fse = -33 * cos_t01
-    gse = -33 * sin_t01
+    fse = -L2_CM * cos_t01
+    gse = -L2_CM * sin_t01
     fee = fse
-    fss = fse - 30 * cos_t0
+    fss = fse - L1_CM * cos_t0
     gee = fe
     gss = fs
 
@@ -337,8 +366,8 @@ def compute_path(x0, xf, wp, percent):
 
 
 def ToCartesian(s, e):
-    X = np.cos(s + e) * 33 + np.cos(s) * 30
-    Y = np.sin(s + e) * 33 + np.sin(s) * 30
+    X = np.cos(s + e) * L2_CM + np.cos(s) * L1_CM
+    Y = np.sin(s + e) * L2_CM + np.sin(s) * L1_CM
 
     return X, Y
 
@@ -491,6 +520,6 @@ def simulate_FL(
         all_commands[j] = u
 
     s, e = all_true_states[:, 0], all_true_states[:, 1]
-    X = np.cos(s + e) * 33 + np.cos(s) * 30
-    Y = np.sin(s + e) * 33 + np.sin(s) * 30
+    X = np.cos(s + e) * L2_CM + np.cos(s) * L1_CM
+    Y = np.sin(s + e) * L2_CM + np.sin(s) * L1_CM
     return X, Y, all_true_states, all_commands
