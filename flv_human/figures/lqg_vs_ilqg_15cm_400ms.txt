@@ -1,0 +1,28 @@
+start posture: shoulder 36.0 deg, elbow 101.3 deg
+
+macaque
+muscle            r_s[cm]  r_e[cm]  L0[cm]  r_s/L0  r_e/L0  l(start)
+muscle 1            2.00     0.00    7.32    0.27    0.00    0.900
+muscle 2           -2.00     0.00    3.26   -0.61    0.00    1.333
+muscle 3            0.00     2.00    6.40    0.00    0.31    0.888
+muscle 4            0.00    -2.00    4.26    0.00   -0.47    0.935
+muscle 5            1.50     2.00    5.95    0.25    0.34    0.812
+muscle 6           -2.00    -1.50    4.04   -0.50   -0.37    1.356
+
+human
+muscle            r_s[cm]  r_e[cm]  L0[cm]  r_s/L0  r_e/L0  l(start)
+pectoralis          3.00     0.00   13.40    0.22    0.00    1.047
+deltoid            -3.00     0.00   14.00   -0.21    0.00    0.985
+brachioradialis     0.00     2.81    9.20    0.00    0.31    0.833
+tricepslat          0.00    -1.72    9.30    0.00   -0.19    0.923
+biceps              3.00     3.62   13.70    0.22    0.26    0.811
+tricepslong        -3.00    -1.87   12.70   -0.24   -0.15    0.761
+
+15cm_400ms, 30 noisy trials x 8 targets per cell
+set      controller  median  mean    q10     q90    | position velocity motor | end error [cm]
+macaque  ILQG          0.86    0.94    0.34    1.70 |     0.43     0.09   0.42 | 0.15 +- 0.11
+macaque  LQG           3.20    3.96    0.99    7.34 |     2.28     1.00   0.68 | 0.32 +- 0.20
+         LQG / ILQG cost per trial: median 3.79, LQG cheaper in 5 % of trials
+human    ILQG          0.49    0.65    0.21    1.35 |     0.43     0.08   0.14 | 0.15 +- 0.10
+human    LQG           3.26   11.52    0.58   47.16 |     8.85     2.32   0.35 | 0.34 +- 0.26
+         LQG / ILQG cost per trial: median 5.97, LQG cheaper in 14 % of trials

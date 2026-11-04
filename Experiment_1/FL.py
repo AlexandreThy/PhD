@@ -146,54 +146,16 @@ def compute_forcefield(theta, omega, coefficient):
 
     return -Jacobian.T @ D @ Jacobian @ omega
 
+def SpeedProfil(X,Y,dt):
+    Vx = np.gradient(X,dt)
+    Vy = np.gradient(Y,dt)
+    V = np.sqrt(Vx**2 + Vy**2)
+    return V
 
-def compute_forcefield_old(theta, omega, acc, coefficient):
-    """
-    Compute the joint angles acceleration resulting from a lateral
-    velocity-dependent forcefield.
-
-    Args:
-        theta : current joint angles
-        omega : current joint angular velocities
-        acc : current joint angular accelerations
-        coefficient : Multiplier coefficient on the force field such that yddot = 13 * coeff * xdot
-
-    """
-    t0, t1 = theta
-    o0, o1 = omega
-    sin_t0, cos_t0 = np.sin(t0), np.cos(t0)
-    sin_t01, cos_t01 = np.sin(t0 + t1), np.cos(t0 + t1)
-
-    fe = -L2_CM * sin_t01
-    fs = fe - L1_CM * sin_t0
-    ge = L2_CM * cos_t01
-    gs = ge + L1_CM * cos_t0
-
-    fse = -L2_CM * cos_t01
-    gse = -L2_CM * sin_t01
-    fee = fse
-    fss = fse - L1_CM * cos_t0
-    gee = fe
-    gss = fs
-
-    xddot = (
-        13 * (gs * o0 + ge * o1) * coefficient
-        + fss * o0 * o0
-        + 2 * fse * o0 * o1
-        + fee * o1 * o1
-        + fs * acc[0]
-        + fe * acc[1]
-    )
-    yddot = (
-        gss * o0 * o0 + 2 * gse * o0 * o1 + gee * o1 * o1 + gs * acc[0] + ge * acc[1]
-    )
-
-    gamma = xddot - fss * o0 * o0 - 2 * fse * o0 * o1 - fee * o1 * o1
-    nu = yddot - gss * o0 * o0 - 2 * gse * o0 * o1 - gee * o1 * o1
-    F1 = (fe * nu - ge * gamma) / (fe * gs - ge * fs) - acc[0]
-    F2 = (gs * gamma - fs * nu) / (gs * fe - ge * fs) - acc[1]
-    return np.array([F1, F2])
-
+def rtpv(V):
+    max_idx = np.argmax(V)
+    length = len(V)
+    return max_idx/length
 
 def compute_next_state(x, u, dt, activate_noise, FF, F, ff_power, motornoise_variance):
     """
