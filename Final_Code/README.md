@@ -15,6 +15,7 @@ Every script shares its parameters, cost function and plotting style through
 | `velocity_profiles.py` | 17 | `centerout/kinematics` | `Kinematiccenterout.svg` |
 | `centerout_elbow_velocity.py` | new | `centerout/kinematics` | `elbow_vel_co.svg` + `.npz` |
 | `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `centerout/nonlinearity_index` | `PeakPower_{polar,vs_total,vs_motor}_<amp>cm_<dur>ms.svg` + `.npz` |
+| `cost_vs_kinematics.py` | new | `centerout/nonlinearity_index` | `CostVsKinematics_15cm_400ms_{8,24}dir.svg` + `.npz` (LQG cost against joint excursion and maximal lateral deviation) |
 | `force_field.py` | 20 | `force_field` | `FF3Controllers[_r1_<r1>].svg`, `FFFV[_r1_<r1>].svg` |
 | `nonlinearity_ablation.py` | from `CurrentParts/Nonlinearities.ipynb` | `force_field` | `NonlinearityAblation.svg` |
 | `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `two_directions` | `LQG_CostMap_90_315.svg` + `.npz` |
