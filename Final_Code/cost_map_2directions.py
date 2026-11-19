@@ -25,7 +25,9 @@ posture.
     python Final_Code/cost_map_2directions.py --directions 0 --num-sim 200
 
 LQG_ILQG_CostRatio_90_315.svg is the workspace view of the fourth column,
-coloured by the cost ratio LQG / ILQG instead of the LQG cost.
+coloured by the cost ratio LQG / ILQG instead of the LQG cost, one colour
+scale per direction; LQG_ILQG_CostRatio_90_315_shared.svg puts both directions
+on the same scale.
 """
 
 from matplotlib.colors import LogNorm, SymLogNorm
@@ -280,19 +282,30 @@ def plot(cost_maps, ilqg_maps, outdir, num_sim):
     save_figure(fig, outdir, f"LQG_CostMap_{_tag()}.svg")
 
 
-def plot_ratio_workspace(cost_maps, ilqg_maps, outdir, num_sim):
+def plot_ratio_workspace(cost_maps, ilqg_maps, outdir, num_sim, shared=False):
     """
     The fourth column of LQG_CostMap_90_315.svg coloured by LQG cost / ILQG
     cost. The two directions span very different ratios (about 4 to 110 at
-    90 deg, 1 to 8 at 315 deg), so each gets its own logarithmic scale and
-    colourbar rather than one shared scale that would flatten the 315 deg panel.
+    90 deg, 1 to 8 at 315 deg), so by default each gets its own logarithmic
+    scale and colourbar, which keeps the 315 deg panel from being flattened.
+    With `shared`, both use one logarithmic scale over all the ratios, so the
+    same colour means the same ratio in both panels (*_shared.svg).
     """
+    ratios = {d: cost_maps[d] / ilqg_maps[d] for d in DIRECTIONS}
+    if shared:
+        values = np.concatenate([ratios[d].ravel() for d in DIRECTIONS])
+        values = values[np.isfinite(values)]
+        shared_norm = LogNorm(vmin=values.min(), vmax=values.max())
+
     fig, axes = plt.subplots(1, len(DIRECTIONS), figsize=(7 * len(DIRECTIONS), 6),
                              layout="constrained", squeeze=False)
     for ax, direction in zip(axes[0], DIRECTIONS):
-        ratio = cost_maps[direction] / ilqg_maps[direction]
-        finite = ratio[np.isfinite(ratio)]
-        norm = LogNorm(vmin=finite.min(), vmax=finite.max())
+        ratio = ratios[direction]
+        if shared:
+            norm = shared_norm
+        else:
+            finite = ratio[np.isfinite(ratio)]
+            norm = LogNorm(vmin=finite.min(), vmax=finite.max())
         _plot_workspace(ax, ratio, direction, norm,
                         names=("lowest ratio", "highest ratio"),
                         title=f"LQG / ILQG cost, {direction} deg reach", fmt=".2f")
@@ -301,11 +314,19 @@ def plot_ratio_workspace(cost_maps, ilqg_maps, outdir, num_sim):
                 markeredgecolor="black", markeredgewidth=1.5, linestyle="none",
                 zorder=6, label=f"center-out start {list(START)}")
         ax.legend(fontsize=10, loc="lower left", frameon=False)
-        cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap="plasma"), ax=ax,
-                            location="right", shrink=0.8, pad=0.01)
+        if not shared:
+            cbar = fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap="plasma"), ax=ax,
+                                location="right", shrink=0.8, pad=0.01)
+            cbar.set_label(f"Mean LQG cost / mean ILQG cost ({num_sim} trials each)",
+                           fontsize=11)
+    if shared:
+        # One colourbar for both panels
+        cbar = fig.colorbar(plt.cm.ScalarMappable(norm=shared_norm, cmap="plasma"),
+                            ax=axes[0].tolist(), location="right", shrink=0.8, pad=0.01)
         cbar.set_label(f"Mean LQG cost / mean ILQG cost ({num_sim} trials each)",
                        fontsize=11)
-    save_figure(fig, outdir, f"LQG_ILQG_CostRatio_{_tag()}.svg")
+    suffix = "_shared" if shared else ""
+    save_figure(fig, outdir, f"LQG_ILQG_CostRatio_{_tag()}{suffix}.svg")
 
 
 def load_maps(path):
@@ -332,12 +353,14 @@ def main():
         cost_maps, ilqg_maps = load_maps(path)
         plot(cost_maps, ilqg_maps, args.outdir, args.num_sim)
         plot_ratio_workspace(cost_maps, ilqg_maps, args.outdir, args.num_sim)
+        plot_ratio_workspace(cost_maps, ilqg_maps, args.outdir, args.num_sim, shared=True)
         finish(not args.no_show)
         return
 
     cost_maps, ilqg_maps = simulate(args.num_sim, args.jobs)
     plot(cost_maps, ilqg_maps, args.outdir, args.num_sim)
     plot_ratio_workspace(cost_maps, ilqg_maps, args.outdir, args.num_sim)
+    plot_ratio_workspace(cost_maps, ilqg_maps, args.outdir, args.num_sim, shared=True)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     np.savez(path, shoulder_angles=SHOULDER_ANGLES, elbow_angles=ELBOW_ANGLES,

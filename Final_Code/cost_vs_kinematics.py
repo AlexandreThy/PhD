@@ -19,6 +19,7 @@ Two figures, 15 cm / 400 ms from START, WP1's (macaque) muscle parameters:
 
     python Final_Code/cost_vs_kinematics.py --jobs 1
     python Final_Code/cost_vs_kinematics.py --num-sim 10 --jobs 1   # quick check
+    python Final_Code/cost_vs_kinematics.py --replot   # redraw from the saved .npz
 
 Use --jobs 1 on a machine with little virtual memory: each worker process loads
 its own numpy / scipy, and 15 of them can exhaust the Windows paging file.
@@ -36,6 +37,12 @@ AMPLITUDE, DURATION, NUM_ITER = 15, 0.4, 40
 NUM_DIRECTIONS = 24  # must be a multiple of 8, so the 8 directions are among them
 COLOR = "#E69F00"  # LQG, COLORS[2] in common.py
 TAG = f"{AMPLITUDE}cm_{int(DURATION * 1000)}ms"
+# Font sizes [pt], large enough for the panels to go into a paper figure as is
+LABEL_SIZE = 20
+TICK_SIZE = 17
+ANGLE_SIZE = 16
+LEGEND_SIZE = 17
+TITLE_SIZE = 20
 
 
 def joint_displacement(target, start=START):
@@ -80,17 +87,18 @@ def scatter_panel(ax, x, x_err, cost, cost_err, xlabel, angles):
     res = stats.linregress(x, cost)
     rho, p_rho = stats.spearmanr(x, cost)
     ax.errorbar(x, cost, xerr=x_err, yerr=cost_err, fmt="o", color=COLOR, ecolor="0.6",
-                capsize=3, markersize=7)
+                capsize=4, markersize=10)
     xs = np.linspace(x.min(), x.max(), 50)
-    ax.plot(xs, res.slope * xs + res.intercept, "--", color=COLOR,
-            label=f"r$^2$ = {res.rvalue**2:.2f}")
+    ax.plot(xs, res.slope * xs + res.intercept, "--", color=COLOR, linewidth=2)
     step = 1 if len(angles) <= 8 else 3  # label every 45 deg when crowded
     for k in range(0, len(angles), step):
         ax.annotate(f"{angles[k]:.0f}°", (x[k], cost[k]), textcoords="offset points",
-                    xytext=(6, 4), fontsize=8, color="0.3")
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel("LQG total movement cost", fontsize=12)
-    ax.legend(fontsize=10, loc="upper left", frameon=False)
+                    xytext=(8, 5), fontsize=ANGLE_SIZE, color="0.3")
+    ax.set_xlabel(xlabel, fontsize=LABEL_SIZE)
+    ax.set_ylabel("LQG movement cost", fontsize=LABEL_SIZE)
+    ax.tick_params(labelsize=TICK_SIZE)
+    # Above the panel rather than as a legend, where it would cover points
+    ax.set_title(f"r$^2$ = {res.rvalue**2:.2f}", fontsize=LEGEND_SIZE, loc="left")
     ax.spines[["top", "right"]].set_visible(False)
     return res.rvalue, res.pvalue, rho, p_rho
 
@@ -106,7 +114,7 @@ def plot(displacement, deviation, deviation_err, cost, cost_err, source, outdir)
                                          cost, cost_err,
                                          "Joint excursion $\\|\\Delta\\theta\\|$ [deg]", angles),
         "max lateral deviation": scatter_panel(axes[1], deviation, deviation_err, cost, cost_err,
-                                               "Maximal lateral deviation of the LQG hand path [cm]",
+                                               "Max. lateral deviation [cm]",
                                                angles),
         "shoulder excursion": scatter_panel(axes[2], np.abs(displacement[:, 0]), None, cost, cost_err,
                                             "Shoulder excursion $|\\Delta\\theta_s|$ [deg]", angles),
@@ -114,7 +122,7 @@ def plot(displacement, deviation, deviation_err, cost, cost_err, source, outdir)
                                          "Elbow excursion $|\\Delta\\theta_e|$ [deg]", angles),
     }
     fig.suptitle(f"LQG movement cost against kinematics, {AMPLITUDE} cm / "
-                 f"{DURATION * 1000:.0f} ms, {n} directions ({source})", fontsize=13)
+                 f"{DURATION * 1000:.0f} ms, {n} directions ({source})", fontsize=TITLE_SIZE)
     save_figure(fig, outdir, f"CostVsKinematics_{TAG}_{n}dir.svg")
     return fits
 
@@ -122,20 +130,37 @@ def plot(displacement, deviation, deviation_err, cost, cost_err, source, outdir)
 def main():
     parser = build_parser(__doc__, num_sim_default=200,
                           subdir=FIGURE_SUBDIRS["nonlinearity_index"])
+    parser.add_argument("--replot", action="store_true",
+                        help="redraw from the saved .npz, no simulation; "
+                             "--num-sim then only labels the 24-direction figure")
     args = parser.parse_args()
+
+    every = NUM_DIRECTIONS // 8  # the 8 directions 0, 45, ... deg
+    path = args.outdir / f"CostVsKinematics_{TAG}.npz"
+    if args.replot:
+        saved = np.load(path)
+        displacement = saved["displacement"]
+        cost, cost_err = saved["cost"], saved["cost_sem"]
+        deviation, deviation_err = saved["deviation"], saved["deviation_sem"]
+        cost8, cost8_err = saved["cost_8_stored"], saved["cost_8_stored_sem"]
+        plot(displacement[::every], deviation[::every], deviation_err[::every], cost8, cost8_err,
+             "stored costs", args.outdir)
+        plot(displacement, deviation, deviation_err, cost, cost_err,
+             f"{args.num_sim} noisy trials each", args.outdir)
+        finish(not args.no_show)
+        return
 
     targets = centerout_targets(START, AMPLITUDE, NUM_DIRECTIONS)
     displacement = np.array([joint_displacement(t) for t in targets])  # (direction, 2)
     (cost, deviation), (cost_err, deviation_err) = simulate(args.num_sim, args.jobs)
 
-    every = NUM_DIRECTIONS // 8  # the 8 directions 0, 45, ... deg
     cost8, cost8_err = stored_8_directions()
     fits8 = plot(displacement[::every], deviation[::every], deviation_err[::every], cost8, cost8_err,
                  "stored costs", args.outdir)
     fitsn = plot(displacement, deviation, deviation_err, cost, cost_err,
                  f"{args.num_sim} noisy trials each", args.outdir)
 
-    np.savez(args.outdir / f"CostVsKinematics_{TAG}.npz", angles=np.arange(NUM_DIRECTIONS) * 360 / NUM_DIRECTIONS,
+    np.savez(path, angles=np.arange(NUM_DIRECTIONS) * 360 / NUM_DIRECTIONS,
              displacement=displacement, excursion=np.linalg.norm(displacement, axis=1),
              deviation=deviation, deviation_sem=deviation_err,
              cost=cost, cost_sem=cost_err, cost_8_stored=cost8, cost_8_stored_sem=cost8_err)
