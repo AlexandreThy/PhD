@@ -36,6 +36,10 @@ STATISTICS = {
 }
 WITHOUT_LQG = (0, 1)  # ILQG, FL
 COST_DIR = FIGURE_DIR / FIGURE_SUBDIRS["cost_polar"]
+# Font sizes [pt], large enough for the figures to go into a paper panel as is
+LABEL_SIZE = 20
+TICK_SIZE = 17
+LEGEND_SIZE = 15
 
 
 def load_costs(cost_dir=COST_DIR, start=START):
@@ -62,26 +66,33 @@ def plot(costs, statistic, outdir, controllers=tuple(range(NUM_CONTROLLERS)), su
     # Reduce over the direction axis: (durations, amplitudes, controllers)
     summary = reduce(costs, axis=2)
 
-    fig, ax = plt.subplots(figsize=(6, 5))
+    fig, ax = plt.subplots(figsize=(7, 6), layout="constrained")
     for i in controllers:
         for d, duration in enumerate(DURATIONS):
             ax.plot(AMPLITUDES, summary[d, :, i], color=COLORS[i],
                     linestyle=LINESTYLES[duration], marker=MARKERS[duration],
-                    markersize=8, linewidth=2,
+                    markersize=10, linewidth=2.5,
                     label=f"{LEGEND[i]}, {duration * 1000:.0f} ms")
 
     ax.set_xticks(AMPLITUDES)
-    ax.set_xlabel("Movement amplitude [cm]")
-    ax.set_ylabel(ylabel)
+    ax.set_xlabel("Movement amplitude [cm]", fontsize=LABEL_SIZE)
+    ax.set_ylabel(ylabel, fontsize=LABEL_SIZE)
+    ax.tick_params(which="both", labelsize=TICK_SIZE)
     if log:
         ax.set_yscale("log")
         # Plain numbers (1, 10, 100) rather than powers of ten
         ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+        # 1-2-5 ticks in the data range, so the axis carries more than one label per decade
+        shown = summary[:, :, list(controllers)]
+        low, high = ax.get_ylim()
+        ax.set_yticks([t for t in (0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500)
+                       if low <= t <= high and shown.min() / 1.5 <= t <= shown.max() * 1.5])
+        ax.yaxis.set_minor_formatter(FuncFormatter(lambda value, _: ""))
         suffix += "_log"
     else:
         ax.set_ylim(bottom=0)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(frameon=False)
+    ax.legend(frameon=False, fontsize=LEGEND_SIZE)
 
     save_figure(fig, outdir, f"CostVsAmplitude_{statistic}{suffix}.svg")
 

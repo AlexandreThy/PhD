@@ -19,7 +19,8 @@ Figures, 15 cm / 400 ms from START, WP1's (macaque) muscle parameters:
       check the relations with three times as many points.
 Each is drawn twice: for the LQG total cost (CostVsKinematics_*) and for the
 LQG / ILQG ratio, the mean LQG cost over the mean ILQG cost of the same
-direction (CostRatioVsKinematics_*). CostRatio_polar_* shows that ratio per
+direction (CostRatioVsKinematics_*), the 8-direction ratio also on a log axis
+with fits of log(ratio) (CostRatioVsKinematics_*_8dir_log). CostRatio_polar_* shows that ratio per
 direction, the 24 simulated directions and the 8 stored ones.
 
     python Final_Code/cost_vs_kinematics.py --jobs 4
@@ -34,6 +35,7 @@ paging file.
 
 import warnings
 
+from matplotlib.ticker import FuncFormatter
 from scipy import stats
 
 from common import (
@@ -111,14 +113,27 @@ def stored_8_directions():
     return saved["total"][:, 2], sem[:, 2], saved["total"][:, 0], sem[:, 0]
 
 
-def scatter_panel(ax, x, x_err, y, y_err, xlabel, ylabel, angles, color):
-    """y against one variable, with the regression line. Returns (r, p, rho, p_rho)."""
-    res = stats.linregress(x, y)
+def scatter_panel(ax, x, x_err, y, y_err, xlabel, ylabel, angles, color, log=False):
+    """
+    y against one variable, with the regression line. Returns (r, p, rho, p_rho).
+
+    With `log`, the y axis is logarithmic and the regression is of log(y) on x,
+    so the fitted line is straight on the axis and r2 is that of the log fit.
+    """
+    res = stats.linregress(x, np.log(y) if log else y)
     rho, p_rho = stats.spearmanr(x, y)
     ax.errorbar(x, y, xerr=x_err, yerr=y_err, fmt="o", color=color, ecolor="0.6",
                 capsize=4, markersize=10)
     xs = np.linspace(x.min(), x.max(), 50)
-    ax.plot(xs, res.slope * xs + res.intercept, "--", color=color, linewidth=2)
+    fit = res.slope * xs + res.intercept
+    ax.plot(xs, np.exp(fit) if log else fit, "--", color=color, linewidth=2)
+    if log:
+        ax.set_yscale("log")
+        low, high = np.min(y - y_err), np.max(y + y_err)
+        ax.set_yticks([t for t in (0.5, 1, 2, 5, 10, 20, 50, 100) if low / 1.5 <= t <= high * 1.5])
+        # Plain numbers (1, 2, 5) rather than powers of ten, no minor labels
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+        ax.yaxis.set_minor_formatter(FuncFormatter(lambda value, _: ""))
     step = 1 if len(angles) <= 8 else 3  # label every 45 deg when crowded
     for k in range(0, len(angles), step):
         ax.annotate(f"{angles[k]:.0f}°", (x[k], y[k]), textcoords="offset points",
@@ -133,8 +148,11 @@ def scatter_panel(ax, x, x_err, y, y_err, xlabel, ylabel, angles, color):
 
 
 def plot(displacement, deviation, deviation_err, y, y_err, source, outdir,
-         ylabel=COST_LABEL, name="CostVsKinematics", color=COLOR):
-    """displacement: (direction, 2) joint displacement [deg], shoulder then elbow."""
+         ylabel=COST_LABEL, name="CostVsKinematics", color=COLOR, log=False):
+    """
+    displacement: (direction, 2) joint displacement [deg], shoulder then elbow.
+    With `log`, a logarithmic y axis and log-linear fits; the file ends in _log.svg.
+    """
     n = len(y)
     angles = np.arange(n) * 360 / n
     fig, axes = plt.subplots(2, 2, figsize=(13, 11), layout="constrained")
@@ -148,11 +166,11 @@ def plot(displacement, deviation, deviation_err, y, y_err, source, outdir,
         ("elbow excursion", np.abs(displacement[:, 1]), None,
          "Elbow excursion $|\\Delta\\theta_e|$ [deg]"),
     ]
-    fits = {label: scatter_panel(ax, x, x_err, y, y_err, xlabel, ylabel, angles, color)
+    fits = {label: scatter_panel(ax, x, x_err, y, y_err, xlabel, ylabel, angles, color, log)
             for ax, (label, x, x_err, xlabel) in zip(axes.ravel(), panels)}
     fig.suptitle(f"{ylabel} against kinematics\n{AMPLITUDE} cm / "
                  f"{DURATION * 1000:.0f} ms, {n} directions ({source})", fontsize=TITLE_SIZE)
-    save_figure(fig, outdir, f"{name}_{TAG}_{n}dir.svg")
+    save_figure(fig, outdir, f"{name}_{TAG}_{n}dir{'_log' if log else ''}.svg")
     return fits
 
 
@@ -238,6 +256,9 @@ def main():
         f"{NUM_DIRECTIONS} directions: LQG / ILQG cost ratio against":
             plot(displacement, deviation, deviation_err, ratio, ratio_err, source, args.outdir,
                  RATIO_LABEL, "CostRatioVsKinematics", RATIO_COLOR),
+        "8 directions: log(LQG / ILQG cost ratio) against":
+            plot(disp8, dev8, dev8_err, ratio8, ratio8_err, "stored costs", args.outdir,
+                 RATIO_LABEL, "CostRatioVsKinematics", RATIO_COLOR, log=True),
     }
     plot_ratio_polar(ratio, ratio_err, ratio8, ratio8_err, num_sim, args.outdir)
     plot_ratio_polar_8(ratio8, ratio8_err, args.outdir)
