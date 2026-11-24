@@ -58,6 +58,7 @@ FIGURE_SUBDIRS = {
     "two_directions": "two_directions",
     "sensitivity": "sensitivity",
     "large_amplitude": "large_amplitude",
+    "muscle_commands": "muscle_commands",
 }
 
 # ----------------------------------------------------------------------------
@@ -135,13 +136,19 @@ def Compute_Cartesian_Speed(x, L1=30, L2=33):
 # Controller wrappers
 # ----------------------------------------------------------------------------
 def run_ilqg(duration, num_iter, start, target, noise=True, ff=False, ff_power=0.0,
-             wp=WP, wv=WV, wr=WR, motor_noise=MOTOR_NOISE, plant=FULL_PLANT):
+             wp=WP, wv=WV, wr=WR, motor_noise=MOTOR_NOISE, plant=FULL_PLANT,
+             applied=False):
     """Run ILQG. Returns (X, Y, state, command).
 
     `plant` selects which arm nonlinearities are kept; the default keeps all
     three, so every caller but nonlinearity_ablation.py can ignore it.
+    The command is the feedforward sequence; `applied=True` returns instead the
+    command sent in the noisy rollout (feedforward + feedback correction), which
+    is what FL and LQG return.
     """
     extra = {} if plant is None else {"plant": plant}
+    if applied:
+        extra["return_applied"] = True
     X, Y, x, u = simulate_ILQG(
         duration, wp, wv, wr, target, start, num_iter,
         delay=DELAY, Noise=noise, print_iterations=False,

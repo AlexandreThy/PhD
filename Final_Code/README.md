@@ -15,13 +15,15 @@ Every script shares its parameters, cost function and plotting style through
 | `velocity_profiles.py` | 17 | `centerout/kinematics` | `Kinematiccenterout.svg` |
 | `centerout_elbow_velocity.py` | new | `centerout/kinematics` | `elbow_vel_co.svg` + `.npz` |
 | `nonlinearity_index.py` | from `CurrentParts/NonlinearityIndex.py` | `centerout/nonlinearity_index` | `PeakPower_{polar,vs_total,vs_motor}_<amp>cm_<dur>ms.svg` + `.npz` |
-| `cost_vs_kinematics.py` | new | `centerout/nonlinearity_index` | `CostVsKinematics_15cm_400ms_{8,24}dir.svg` + `.npz` (LQG cost against joint excursion and maximal lateral deviation) |
+| `cost_vs_kinematics.py` | new | `centerout/nonlinearity_index` | `CostVsKinematics_15cm_400ms_{8,24}dir.svg`, `CostRatioVsKinematics_15cm_400ms_{8,24}dir.svg`, `CostRatio_polar_15cm_400ms{,_8dir}.svg` + `.npz` (LQG cost and LQG / ILQG cost ratio against joint, shoulder and elbow excursion and maximal lateral deviation) |
+| `centerout_conditions.py` | new | `centerout/nonlinearity_index` | `CostRatio_vs_amplitude.{svg,pdf}`, `CostVsExcursion_conditions{,_linear}.{svg,pdf}` + `.npz` (LQG / ILQG cost ratio against amplitude for both durations; LQG cost and ratio against joint, shoulder and elbow excursion, 6 conditions x 8 directions pooled). Reads the `Cfy40_*_cost.npz` of `centerout_cost_polar.py`, simulates nothing |
 | `force_field.py` | 20 | `force_field` | `FF3Controllers[_r1_<r1>].svg`, `FFFV[_r1_<r1>].svg` |
 | `nonlinearity_ablation.py` | from `CurrentParts/Nonlinearities.ipynb` | `force_field` | `NonlinearityAblation.svg` |
 | `cost_map_2directions.py` | from `CurrentParts/2Dir.py` | `two_directions` | `LQG_CostMap_90_315.svg` + `.npz` |
 | `sensitivity_analysis.py` | 22 | `sensitivity` | `SensitivityAnalysis.svg` |
 | `large_amplitude_reaching.py` | 24 | `large_amplitude` | `LongMove.svg`, `long_move_terminal.svg` |
 | `path_constraint.py` | 25 | `large_amplitude` | `PathConstraint.svg`, `PathConstraintCommands.svg` |
+| `muscle_command_sign.py` | new | `muscle_commands` | `MuscleCommandSign.svg`, `MuscleCommandSign_per_muscle.svg` + `.npz` (share of negative muscle commands per controller, in center-out 15 cm / 400 ms, force field ON and the two large amplitude movements; ILQG counted on its applied command, `run_ilqg(..., applied=True)`) |
 
 `nonlinearity_index.py` correlates against the costs written by
 `centerout_cost_polar.py` in `figures/centerout/cost_polar/`, so run that

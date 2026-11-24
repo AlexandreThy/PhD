@@ -555,6 +555,7 @@ def step5(
         Omega_sens[idx, idx] = motornoise_variance
 
     F = 0
+    applied = np.zeros((Num_steps, bestu.shape[1]))  # command actually sent: feedforward + feedback
     for i in range(Num_steps):
         F = (
             compute_forcefield(newx[i, 0:2], newx[i, 2:4], ff_power)
@@ -566,6 +567,7 @@ def step5(
 
         deltau = l[i] + L[i] @ xhat[i, :Num_Var]
         u = bestu[i] + deltau
+        applied[i] = u
 
         K, sigma = Kalman(Omega_measure, Omega_sens, Extended_A, sigma, H)
 
@@ -589,7 +591,7 @@ def step5(
         xhat[i + 1] = (Extended_A @ xhat[i] + Extended_B @ deltau) + K @ (
             y - H @ xhat[i]
         )
-    return newx[:, :Num_Var]
+    return newx[:, :Num_Var], applied
 
 
 def simulate_ILQG(
@@ -608,6 +610,7 @@ def simulate_ILQG(
     FF=False,
     ff_power=0.3,
     plant=FULL_PLANT,
+    return_applied=False,
 ):
     """
     Parameters :
@@ -622,10 +625,12 @@ def simulate_ILQG(
         - motornoise_variance : Variance of the motor noise
         - alpha : Body Tilt in radiant
         - plant : Plant, which arm nonlinearities to keep (default: all)
+        - return_applied : Boolean, True ==> return the command actually applied in the
+          final rollout (feedforward + feedback correction) instead of the feedforward u
 
     return :
         - X,Y : Cartesian coordinates of the hand trajectory
-        - u : Input command
+        - u : Input command (feedforward sequence, or the applied command if return_applied)
         - x : Vector state of the trajectory
     """
 
@@ -649,6 +654,7 @@ def simulate_ILQG(
     xtarg = np.array([obj1, obj2])
     u_incr = np.ones(u.shape) * np.inf
     step = np.zeros(u.shape)  # update actually applied to u (alpha * u_incr)
+    applied = None  # set by the final rollout (step5)
 
     for iterate in range(300):
         x = step1(
@@ -660,7 +666,7 @@ def simulate_ILQG(
         if (
             np.max(np.abs(u_incr)) < 1e-14
         ):  # If the trajectory improvement is small enough, stop the iteration and perform a full simulation with feedback and potential noise
-            x = step5(
+            x, applied = step5(
                 x0,
                 l,
                 L,
@@ -706,6 +712,10 @@ def simulate_ILQG(
             alpha, u_incr, l = 0.0, np.zeros(u.shape), np.zeros(l.shape)
         step = alpha * u_incr
         u += step  # Improves the command sequence
+    if return_applied:
+        if applied is None:
+            raise RuntimeError("ILQG did not converge, so no final rollout was run")
+        return X, Y, x, applied
     return X, Y, x, u
 
 
