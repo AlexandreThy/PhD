@@ -47,7 +47,13 @@ NUM_DIRECTIONS = 24  # must be a multiple of 8, so the 8 directions are among th
 COLOR = "#E69F00"  # LQG, COLORS[2] in common.py
 RATIO_COLOR = "#CC3311"
 TAG = f"{AMPLITUDE}cm_{int(DURATION * 1000)}ms"
-COST_LABEL = "LQG total movement cost"
+COST_LABEL = "LQG movement cost"
+# Font sizes [pt], large enough for the panels to go into a paper figure as is
+LABEL_SIZE = 20
+TICK_SIZE = 17
+ANGLE_SIZE = 16
+LEGEND_SIZE = 17
+TITLE_SIZE = 20
 RATIO_LABEL = "LQG cost / mean ILQG cost"
 
 
@@ -110,17 +116,18 @@ def scatter_panel(ax, x, x_err, y, y_err, xlabel, ylabel, angles, color):
     res = stats.linregress(x, y)
     rho, p_rho = stats.spearmanr(x, y)
     ax.errorbar(x, y, xerr=x_err, yerr=y_err, fmt="o", color=color, ecolor="0.6",
-                capsize=3, markersize=7)
+                capsize=4, markersize=10)
     xs = np.linspace(x.min(), x.max(), 50)
-    ax.plot(xs, res.slope * xs + res.intercept, "--", color=color,
-            label=f"r$^2$ = {res.rvalue**2:.2f}")
+    ax.plot(xs, res.slope * xs + res.intercept, "--", color=color, linewidth=2)
     step = 1 if len(angles) <= 8 else 3  # label every 45 deg when crowded
     for k in range(0, len(angles), step):
         ax.annotate(f"{angles[k]:.0f}°", (x[k], y[k]), textcoords="offset points",
-                    xytext=(6, 4), fontsize=8, color="0.3")
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.legend(fontsize=10, loc="upper left", frameon=False)
+                    xytext=(8, 5), fontsize=ANGLE_SIZE, color="0.3")
+    ax.set_xlabel(xlabel, fontsize=LABEL_SIZE)
+    ax.set_ylabel(ylabel, fontsize=LABEL_SIZE)
+    ax.tick_params(labelsize=TICK_SIZE)
+    # Above the panel rather than as a legend, where it would cover points
+    ax.set_title(f"r$^2$ = {res.rvalue**2:.2f}", fontsize=LEGEND_SIZE, loc="left")
     ax.spines[["top", "right"]].set_visible(False)
     return res.rvalue, res.pvalue, rho, p_rho
 
@@ -135,7 +142,7 @@ def plot(displacement, deviation, deviation_err, y, y_err, source, outdir,
         ("joint excursion", np.linalg.norm(displacement, axis=1), None,
          "Joint excursion $\\|\\Delta\\theta\\|$ [deg]"),
         ("max lateral deviation", deviation, deviation_err,
-         "Maximal lateral deviation of the LQG hand path [cm]"),
+         "Max. lateral deviation [cm]"),
         ("shoulder excursion", np.abs(displacement[:, 0]), None,
          "Shoulder excursion $|\\Delta\\theta_s|$ [deg]"),
         ("elbow excursion", np.abs(displacement[:, 1]), None,
@@ -143,8 +150,8 @@ def plot(displacement, deviation, deviation_err, y, y_err, source, outdir,
     ]
     fits = {label: scatter_panel(ax, x, x_err, y, y_err, xlabel, ylabel, angles, color)
             for ax, (label, x, x_err, xlabel) in zip(axes.ravel(), panels)}
-    fig.suptitle(f"{ylabel} against kinematics, {AMPLITUDE} cm / "
-                 f"{DURATION * 1000:.0f} ms, {n} directions ({source})", fontsize=13)
+    fig.suptitle(f"{ylabel} against kinematics\n{AMPLITUDE} cm / "
+                 f"{DURATION * 1000:.0f} ms, {n} directions ({source})", fontsize=TITLE_SIZE)
     save_figure(fig, outdir, f"{name}_{TAG}_{n}dir.svg")
     return fits
 
